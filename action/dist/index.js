@@ -118395,7 +118395,7 @@ var VERSION;
 var init_version = __esm({
   "../packages/cli/src/version.ts"() {
     "use strict";
-    VERSION = true ? "3.1.1" : readVersion();
+    VERSION = true ? "3.1.2" : readVersion();
   }
 });
 
