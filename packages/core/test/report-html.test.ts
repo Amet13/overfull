@@ -33,7 +33,7 @@ describe('formatHtml', () => {
     const html = formatHtml(
       report('`x` <img src=x onerror=alert(1)> ‮evil\u0007', '<script>alert(1)</script>\nline 2'),
     );
-    expect(html).not.toMatch(/<img|<script|onerror=alert\(1\)>/);
+    expect(html).not.toMatch(/<img|<script|onerror=alert\(1\)>/i);
     expect(html).toContain('&#60;img src=x onerror=alert(1)&#62;');
     expect(html).toContain('&#60;script&#62;');
     expect(html.includes('\u202e')).toBe(false);
@@ -46,7 +46,7 @@ describe('formatHtml', () => {
   it('is one page with no scripts or outside files, in light and dark', () => {
     const html = formatHtml(report('Not found'));
     expect(html).toMatch(/^<!doctype html>/);
-    expect(html).not.toMatch(/<script|<link|src="http/);
+    expect(html).not.toMatch(/<script|<link|src="http/i);
     expect(html).toContain('prefers-color-scheme:dark');
     expect(html).toContain('refs.bib:3');
   });
