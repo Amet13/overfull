@@ -5,6 +5,7 @@ import {
   type CheckResult,
   formatHuman,
   formatJson,
+  type Problem,
   pdfOutputProblems,
   type Report,
   reportStatus,
@@ -185,6 +186,42 @@ function progress(io: Io, verbose: boolean): (line: string) => void {
   };
 }
 
+/** TeX Live files a missing one can be installed for: packages, classes, styles, fonts. */
+const INSTALLABLE =
+  /\.(?:sty|cls|bst|cfg|def|clo|fd|ldf|lbx|bbx|cbx|dbx|otf|ttf|pfb|tfm|map|enc)$/i;
+
+/** The distribution files a failed build was missing (not the author's own .tex or figures). */
+export function missingTexFiles(problems: Problem[]): string[] {
+  const files = problems
+    .filter((p) => p.rule === 'missing-package' || p.rule === 'missing-file')
+    .map((p) => String(p.data?.file ?? ''))
+    .filter((f) => INSTALLABLE.test(f) && /^[\w.-]+$/.test(f));
+  return [...new Set(files)];
+}
+
+/**
+ * Package names from `tlmgr search --global --file /<name>` output: a package line
+ * (`name:`) followed by indented paths; a package counts only when one of its paths
+ * ends with the exact file name.
+ */
+export function packagesProviding(tlmgrOutput: string, file: string): string[] {
+  const out: string[] = [];
+  let current: string | undefined;
+  for (const line of tlmgrOutput.split('\n')) {
+    const pkg = /^([\w.+-]+):\s*$/.exec(line);
+    if (pkg && !line.startsWith('tlmgr')) {
+      current = pkg[1];
+      continue;
+    }
+    if (current && /^\s/.test(line) && line.trim().endsWith(`/${file}`) && !out.includes(current))
+      out.push(current);
+  }
+  return out;
+}
+
+/** Rounds of "install what was missing, build again" before giving up. */
+const INSTALL_ROUNDS = 3;
+
 export async function buildCommand(args: string[], io: Io): Promise<number> {
   const { values, positionals } = parse(
     args,
@@ -238,6 +275,38 @@ export async function buildCommand(args: string[], io: Io): Promise<number> {
     const engine = await resolveEngine(engineArg, io.env);
     const lmk = [...(force ? ['-g'] : []), ...latexmkArgs(config, main)];
     result = await runLatexmk(engine, lmk);
+    // The slim image ships only the TeX packages most papers use and sets
+    // OVERFULL_TEX_INSTALL=1: a package the document needs beyond that is installed from
+    // CTAN and the build runs again, like MiKTeX's install-on-demand.
+    if (engine === 'local' && io.env.OVERFULL_TEX_INSTALL === '1' && which('tlmgr', io.env)) {
+      const tried = new Set<string>();
+      for (let round = 0; round < INSTALL_ROUNDS && result.code !== 0; round++) {
+        const log = readIfExists(join(config.root, config.build.auxDir, `${config.jobname}.log`));
+        if (log === undefined) break;
+        const files = missingTexFiles(analyzeLog(log, { root: config.root }).build.problems).filter(
+          (f) => !tried.has(f),
+        );
+        if (!files.length) break;
+        const packages: string[] = [];
+        for (const file of files) {
+          tried.add(file);
+          const found = await run('tlmgr', ['search', '--global', '--file', `/${file}`]);
+          packages.push(
+            ...packagesProviding(found.stdout, file).filter((x) => !packages.includes(x)),
+          );
+        }
+        if (!packages.length) break;
+        io.stderr(`Installing ${packages.join(', ')} from CTAN (not in this image)…\n`);
+        const installed = await run('tlmgr', ['install', ...packages]);
+        if (installed.code !== 0) {
+          io.stderr(
+            `${(installed.stderr || installed.stdout).trim().split('\n').slice(-5).join('\n')}\n`,
+          );
+          break;
+        }
+        result = await runLatexmk(engine, ['-g', ...latexmkArgs(config, main)]);
+      }
+    }
   }
   async function runLatexmk(
     engine: 'local' | 'docker',

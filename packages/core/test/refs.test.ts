@@ -934,3 +934,45 @@ describe('sources allow-list', () => {
     expect(r?.status).toBe('verified');
   });
 });
+
+describe('arXiv ids are fetched in one request', () => {
+  const entry = (key: string, id: string, title: string) =>
+    `@misc{${key}, author = {Doe, Jane}, title = {${title}}, year = {2020}, eprint = {${id}}, archiveprefix = {arXiv}}`;
+  const feedEntry = (id: string, title: string) =>
+    `<entry><id>http://arxiv.org/abs/${id}v1</id><published>2020-01-01T00:00:00Z</published><title>${title}</title><author><name>Jane Doe</name></author></entry>`;
+  const bib = [
+    entry('a', '2001.00001', 'First Paper About Batching Requests'),
+    entry('b', '2001.00002v3', 'Second Paper About Batching Requests'),
+    entry('c', '2001.00003', 'Third Paper About Batching Requests'),
+  ].join('\n');
+
+  it('three entries, one arXiv request', async () => {
+    const f = router({
+      'export.arxiv.org': (u) => {
+        expect(u.searchParams.get('id_list')?.split(',')).toHaveLength(3);
+        return atom(
+          `<feed xmlns="http://www.w3.org/2005/Atom">${feedEntry('2001.00001', 'First Paper About Batching Requests')}${feedEntry('2001.00002', 'Second Paper About Batching Requests')}${feedEntry('2001.00003', 'Third Paper About Batching Requests')}</feed>`,
+        );
+      },
+    });
+    const results = await verifyEntries(parseBib(bib), { fetch: f.fetch, ...fast });
+    expect(results.map((r) => r.status)).toEqual(['verified', 'verified', 'verified']);
+    expect(f.calls).toHaveLength(1);
+  });
+
+  it('falls back to one request per id when the batch fails, and for ids it left out', async () => {
+    const f = router({
+      ...allEmpty,
+      'export.arxiv.org': (u) => {
+        const ids = u.searchParams.get('id_list')?.split(',') ?? [];
+        if (ids.length > 1) return new Response('bad', { status: 400 });
+        return atom(
+          `<feed xmlns="http://www.w3.org/2005/Atom">${feedEntry('2001.00001', 'First Paper About Batching Requests')}</feed>`,
+        );
+      },
+    });
+    const results = await verifyEntries(parseBib(bib).slice(0, 2), { fetch: f.fetch, ...fast });
+    expect(results[0]?.status).toBe('verified');
+    expect(f.calls.filter((c) => c.includes('id_list')).length).toBe(3);
+  });
+});

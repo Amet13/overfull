@@ -123,6 +123,11 @@ export function oneLine(s: string): string {
   return s.replace(/[\r\n\u0085\u2028\u2029]+/g, ' ').replace(UNSAFE_CHARS, '');
 }
 
+/** Removes control characters and bidi overrides (see `oneLine`), keeping line breaks. */
+export function stripUnsafe(s: string): string {
+  return s.replace(UNSAFE_CHARS, '');
+}
+
 /** Splits user-derived multi-line text into lines that are each safe (see `oneLine`). */
 export function safeLines(s: string): string[] {
   return s.split(/\r\n|[\r\n\u0085\u2028\u2029]/).map(oneLine);

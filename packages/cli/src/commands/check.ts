@@ -1,6 +1,7 @@
-import { type Dirent, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { type Dirent, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import {
+  formatHtml,
   formatHuman,
   formatJson,
   formatMarkdown,
@@ -38,6 +39,10 @@ Options:
   --markdown          Print a Markdown summary (GitHub job summary / PR comment)
   --annotations       Print GitHub workflow annotations
   --sarif             Print a SARIF 2.1.0 log (GitHub code scanning upload)
+  --html              Print a self-contained HTML page of the report (to share or attach)
+  --write fmt=file    Also write the report to a file: json, markdown, annotations, sarif
+                      or html. Repeat it to get several formats from one run, e.g.
+                      --write json=report.json --write markdown=summary.md
   --verbose, -v       Show why and how to fix each problem
   --watch             Check again whenever the log, PDF, .aux or a .bib file changes
                       (references are looked up again only when a .bib changed);
@@ -110,6 +115,25 @@ function classifyFiles(positionals: string[], values: Parsed['values']): FileArg
   return out;
 }
 
+const WRITE_FORMATS = ['json', 'markdown', 'annotations', 'sarif', 'html'] as const;
+type WriteFormat = (typeof WRITE_FORMATS)[number];
+
+/** `--write format=file` (repeatable): the extra report files one run writes. */
+function writeTargets(value: unknown, cwd: string): { format: WriteFormat; path: string }[] {
+  const items = Array.isArray(value) ? value : [];
+  return items.map((item) => {
+    const at = item.indexOf('=');
+    const format = item.slice(0, at) as WriteFormat;
+    const file = item.slice(at + 1);
+    if (at < 1 || !file || !WRITE_FORMATS.includes(format)) {
+      throw new UsageError(
+        `--write takes format=file with format one of ${WRITE_FORMATS.join(', ')}; got "${item}"`,
+      );
+    }
+    return { format, path: resolve(cwd, file) };
+  });
+}
+
 export async function checkCommand(args: string[], io: Io): Promise<number> {
   const { values, positionals } = parse(
     args,
@@ -123,6 +147,8 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
       markdown: { type: 'boolean' },
       annotations: { type: 'boolean' },
       sarif: { type: 'boolean' },
+      html: { type: 'boolean' },
+      write: { type: 'string', multiple: true },
       verbose: { type: 'boolean', short: 'v' },
       watch: { type: 'boolean' },
       main: { type: 'string' },
@@ -146,7 +172,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
   if (!['error', 'warning', 'never'].includes(failOn)) {
     throw new UsageError(`--fail-on must be error, warning or never, got "${failOn}"`);
   }
-  const formats = ['json', 'markdown', 'annotations', 'sarif'].filter((f) => values[f]);
+  const formats = ['json', 'markdown', 'annotations', 'sarif', 'html'].filter((f) => values[f]);
   if (formats.length > 1)
     throw new UsageError(
       `Choose one output format, not ${formats.map((f) => `--${f}`).join(' and ')}`,
@@ -156,7 +182,8 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
     throw new UsageError(`--engine must be auto, local or docker, got "${engine}"`);
   const files = classifyFiles(positionals, values);
   const checksArg = list(values.checks) ?? (files.onlyBib ? ['references'] : undefined);
-  const machine = Boolean(values.json || values.markdown || values.annotations || values.sarif);
+  const machine = formats.length > 0;
+  const writes = writeTargets(values.write, io.cwd);
   if (values.watch && machine)
     throw new UsageError(
       '--watch prints the human report; leave out --json, --markdown, --annotations and --sarif',
@@ -193,16 +220,24 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
         `No overfull.yml: assuming main ${a.main}${a.mainSource === 'detected' ? ' (the only document here)' : ''}, profile ${a.profile}. Run \`overfull init --here\` to save these settings.\n`,
       );
     }
-    if (values.json) io.stdout(formatJson(report));
-    else if (values.markdown) io.stdout(formatMarkdown(report));
-    else if (values.sarif) {
-      const fallbackFile = sarifFallbackFile(io.cwd, io.env, str(values.config), files.main);
-      io.stdout(formatSarif(report, fallbackFile ? { fallbackFile } : {}));
-    } else if (values.annotations) {
+    const render = (format: WriteFormat): string => {
+      if (format === 'json') return formatJson(report);
+      if (format === 'markdown') return formatMarkdown(report);
+      if (format === 'html') return formatHtml(report);
+      if (format === 'sarif') {
+        const fallbackFile = sarifFallbackFile(io.cwd, io.env, str(values.config), files.main);
+        return formatSarif(report, fallbackFile ? { fallbackFile } : {});
+      }
       const lines = githubAnnotations(report);
-      io.stdout(lines.length ? `${lines.join('\n')}\n` : '');
-    } else
-      io.stdout(formatHuman(report, { color: useColor(io), verbose: values.verbose === true }));
+      return lines.length ? `${lines.join('\n')}\n` : '';
+    };
+    for (const w of writes) {
+      mkdirSync(dirname(w.path), { recursive: true });
+      writeFileSync(w.path, render(w.format));
+    }
+    const stdoutFormat = formats[0] as WriteFormat | undefined;
+    if (stdoutFormat) io.stdout(render(stdoutFormat));
+    else io.stdout(formatHuman(report, { color: useColor(io), verbose: values.verbose === true }));
     return exitCodeFor(report, failOn as 'error' | 'warning' | 'never');
   };
   const offline = values.offline === true;

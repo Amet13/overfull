@@ -53,6 +53,7 @@ await build({
   logLevel: 'warning',
   alias: {
     overfull: join(root, 'packages/cli/src/index.ts'),
+    '@overfull/core/text': join(root, 'packages/core/src/report/shared.ts'),
     '@overfull/core': join(root, 'packages/core/src/index.ts'),
   },
   define: {

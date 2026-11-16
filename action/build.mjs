@@ -20,6 +20,9 @@ await build({
   // Bundle from TypeScript sources so the Action does not depend on a prior `pnpm -r build`.
   alias: {
     overfull: fileURLToPath(new URL('../packages/cli/src/index.ts', import.meta.url)),
+    '@overfull/core/text': fileURLToPath(
+      new URL('../packages/core/src/report/shared.ts', import.meta.url),
+    ),
     '@overfull/core': fileURLToPath(new URL('../packages/core/src/index.ts', import.meta.url)),
   },
   define: { __OVERFULL_VERSION__: JSON.stringify(version) },

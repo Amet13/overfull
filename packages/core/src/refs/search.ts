@@ -9,7 +9,7 @@ import {
 } from './cache.js';
 import { type HttpClient, SourceUnavailableError } from './http.js';
 import { aclById } from './sources/acl.js';
-import { arxivById, arxivSearch } from './sources/arxiv.js';
+import { arxivById, arxivByIds, arxivSearch } from './sources/arxiv.js';
 import { crossrefSearch } from './sources/crossref.js';
 import { dblpSearch } from './sources/dblp.js';
 import { type DoiResolution, resolveDoi } from './sources/doi.js';
@@ -25,6 +25,28 @@ export interface Ctx {
   outcome?: SearchOutcome;
   /** Epoch ms after which title searches stop asking further sources. */
   deadline?: number;
+  /** arXiv records fetched ahead in one batch (`prefetchArxiv`), by id without version. */
+  arxivBatch?: Map<string, WorkRecord>;
+}
+
+/**
+ * Fetches the arXiv records of many entries in one request, for the ids that are not
+ * in the cache yet. Best effort: when the batch fails or returns nothing, every id is
+ * looked up on its own as before.
+ */
+export async function prefetchArxiv(ctx: Ctx, ids: string[]): Promise<void> {
+  if (!sourceAllowed(ctx.opts, 'arxiv')) return;
+  const wanted: string[] = [];
+  for (const id of new Set(ids)) {
+    const hit = ctx.opts.refresh ? undefined : await ctx.opts.cache?.get(arxivCacheKey(id));
+    if (hit === undefined) wanted.push(id);
+  }
+  if (wanted.length < 2) return;
+  try {
+    ctx.arxivBatch = await arxivByIds(ctx.client, wanted);
+  } catch (err) {
+    if (ctx.opts.signal?.aborted) throw err;
+  }
 }
 
 export interface SourceFailure {
@@ -76,7 +98,11 @@ export async function arxivByIdCached(ctx: Ctx, id: string): Promise<WorkRecord 
   const value = await cached(
     ctx.opts.cache,
     arxivCacheKey(id),
-    async () => ({ record: await arxivById(ctx.client, id) }),
+    async () => ({
+      record:
+        ctx.arxivBatch?.get(id.replace(/v\d+$/, '').toLowerCase()) ??
+        (await arxivById(ctx.client, id)),
+    }),
     {
       isNegative: (v) => !v.record,
       maxAge: cacheMaxAge(ctx.opts.cacheMaxAgeDays),
