@@ -62,8 +62,12 @@ Set these once; the workflows cannot set them:
    reviews: the automation's merges would be refused.
 
    Automation pull requests (`automation/*`, opened by GitHub Actions) get their CI
-   from the workflow that opened them. GitHub also shows a pull_request run waiting
-   for approval; approving it is not needed, and its jobs are skipped if you do.
+   from the workflow that opened them, and that ci run merges the pull request when
+   every check passed, or opens "Automation failed: ci on automation/…" when one did
+   not (GitHub starts no follow-up workflow for runs started with GITHUB_TOKEN, so
+   automerge.yml and watchdog.yml never see them). GitHub also shows a pull_request
+   run waiting for approval; approving it is not needed, and its jobs are skipped if
+   you do.
 3. **Packages:** make `ghcr.io/amet13/overfull` public (Package settings → Change
    visibility), so anyone can pull the images.
 
