@@ -1,30 +1,15 @@
 /**
- * Crafted ~1 MB inputs that made regexes or scans quadratic. Each must finish well
- * under 300 ms; before the fixes several took seconds.
+ * Crafted ~1 MB inputs that made regexes or scans quadratic. Each must finish within
+ * the linear-time budget (see linear-time.ts); before the fixes they took seconds to
+ * minutes.
  */
 import { describe, expect, it } from 'vitest';
 import { hasOthers, parseBib, parseNames } from '../src/bib/index.js';
 import { analyzeLog, parseLog } from '../src/log/index.js';
 import { findCommands, grepTex } from '../src/venue/tex.js';
+import { LINEAR_BUDGET_MS as LIMIT_MS, timed } from './linear-time.js';
 
 const MB = 1_000_000;
-const LIMIT_MS = 300;
-
-/**
- * Best of three runs. One sample on a shared CI runner can be slowed by other
- * test files running at the same time (368 ms was seen on Windows for a scan
- * that takes ~100 ms); a quadratic scan takes seconds on every run, so the
- * minimum still catches it.
- */
-function timed(fn: () => unknown): number {
-  let best = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < 3 && best >= LIMIT_MS; i++) {
-    const start = performance.now();
-    fn();
-    best = Math.min(best, performance.now() - start);
-  }
-  return best;
-}
 
 function fill(unit: string, size = MB): string {
   return unit.repeat(Math.ceil(size / unit.length));

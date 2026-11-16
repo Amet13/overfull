@@ -8,15 +8,9 @@ import { identifiersOf } from '../src/refs/kind.js';
 import { parseAclId } from '../src/refs/sources/acl.js';
 import { parseDoi } from '../src/refs/sources/doi.js';
 import { parsePmcid, parsePmid } from '../src/refs/sources/europepmc.js';
+import { LINEAR_BUDGET_MS as LIMIT_MS, timed } from './linear-time.js';
 
-const LIMIT_MS = 100;
 const N = 100_000;
-
-function timed(fn: () => unknown): number {
-  const start = performance.now();
-  fn();
-  return performance.now() - start;
-}
 
 describe('identifier parsers stay linear on crafted input', () => {
   const inputs: Record<string, string> = {

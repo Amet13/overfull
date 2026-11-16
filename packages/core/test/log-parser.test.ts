@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeLog, normalizePath, parseLog } from '../src/log/index.js';
+import { LINEAR_BUDGET_MS, timed } from './linear-time.js';
 
 const BANNER =
   'This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.9.13)  8 NOV 2026 16:48';
@@ -470,7 +471,7 @@ describe('normalizePath', () => {
 });
 
 describe('performance', () => {
-  it('parses a 50k-line log in well under a second', () => {
+  it('parses a 50k-line log in linear time', () => {
     const chunk = [
       '(./chapters/chapter.tex [12]',
       "LaTeX Font Info:    External font `cmex10' loaded for size",
@@ -485,10 +486,12 @@ describe('performance', () => {
     while (lines.length < 50_000) lines.push(...chunk);
     lines.push(')');
     const text = lines.join('\n');
-    const start = performance.now();
-    const result = analyzeLog(text);
-    const elapsed = performance.now() - start;
-    expect(result.parsed.errors.length).toBeGreaterThan(1000);
-    expect(elapsed).toBeLessThan(1000);
+    let result: ReturnType<typeof analyzeLog> | undefined;
+    expect(
+      timed(() => {
+        result = analyzeLog(text);
+      }),
+    ).toBeLessThan(LINEAR_BUDGET_MS);
+    expect(result?.parsed.errors.length).toBeGreaterThan(1000);
   });
 });

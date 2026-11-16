@@ -54,10 +54,12 @@ Set these once; the workflows cannot set them:
 1. **Settings → Actions → General → Workflow permissions:** tick "Allow GitHub
    Actions to create and approve pull requests". Without it the maintenance
    workflows cannot open their pull requests.
-2. **Branch protection on `main`:** if you require reviews, the automation's
-   merges are refused; require status checks instead (for example "Lint, types,
-   unit tests" and "Image, corpus, templates, Action"), or exempt GitHub Actions
-   from the review rule.
+2. **The `main` ruleset requires the "CI passed" check** (Settings → Rules →
+   Rulesets → main → Require status checks to pass → add "CI passed", source
+   GitHub Actions). That one job passes only when every CI job passed or was
+   skipped on purpose, so nothing merges while a job is queued or after one
+   failed, and the list never needs updating when jobs change. Do not require
+   reviews: the automation's merges would be refused.
 3. **Packages:** make `ghcr.io/amet13/overfull` public (Package settings → Change
    visibility), so anyone can pull the images.
 
