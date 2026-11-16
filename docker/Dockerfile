@@ -103,7 +103,7 @@ FROM texlive/texlive:latest-basic@sha256:e930edb4e2ef4ed70de1374b262e0ae15fe55ae
 RUN set -eux; \
     tlmgr install \
       collection-luatex collection-latexrecommended collection-fontsrecommended \
-      latexmk biblatex biber csquotes babel-english \
+      latexmk biblatex biblatex-ieee biber csquotes babel-english \
       pgf pgfplots siunitx cleveref tocloft lastpage fontsize setspace float \
       booktabs mathtools unicode-math fontspec microtype lm; \
     tlmgr path add; \

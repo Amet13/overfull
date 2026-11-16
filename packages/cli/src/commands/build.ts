@@ -192,11 +192,15 @@ const INSTALLABLE =
 
 /** The distribution files a failed build was missing (not the author's own .tex or figures). */
 export function missingTexFiles(problems: Problem[]): string[] {
-  const files = problems
-    .filter((p) => p.rule === 'missing-package' || p.rule === 'missing-file')
-    .map((p) => String(p.data?.file ?? ''))
-    .filter((f) => INSTALLABLE.test(f) && /^[\w.-]+$/.test(f));
-  return [...new Set(files)];
+  const files = problems.flatMap((p) => {
+    if (p.rule === 'missing-package' || p.rule === 'missing-file')
+      return [String(p.data?.file ?? '')];
+    // biblatex reports a missing style by name, not as a missing file: its
+    // bibliography driver is <style>.bbx.
+    const style = /Style '([\w-]+)' not found/.exec(p.message);
+    return p.rule === 'biblatex-error' && style ? [`${style[1]}.bbx`] : [];
+  });
+  return [...new Set(files.filter((f) => INSTALLABLE.test(f) && /^[\w.-]+$/.test(f)))];
 }
 
 /**

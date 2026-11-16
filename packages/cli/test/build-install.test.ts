@@ -22,8 +22,20 @@ describe('missingTexFiles', () => {
         p('missing-figure', 'plot.pdf'),
         p('missing-package', 'evil;rm -rf.sty'),
         p('missing-package', 'tikz-cd.sty'),
+        {
+          rule: 'biblatex-error',
+          check: 'build',
+          severity: 'error',
+          message: "biblatex: Style 'ieee' not found.",
+        },
+        {
+          rule: 'biblatex-error',
+          check: 'build',
+          severity: 'error',
+          message: "biblatex: Command '\\cite' undefined.",
+        },
       ]),
-    ).toEqual(['tikz-cd.sty', 'acmart.cls', 'IEEEtran.bst']);
+    ).toEqual(['tikz-cd.sty', 'acmart.cls', 'IEEEtran.bst', 'ieee.bbx']);
   });
 });
 
