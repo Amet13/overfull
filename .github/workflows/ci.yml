@@ -17,9 +17,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The automation (autorelease, maintenance) dispatches ci on its own automation/* branch,
+# because a pull request opened with GITHUB_TOKEN starts no workflow without a maintainer's
+# approval. If that pull_request run is approved anyway, its jobs are skipped: the
+# dispatched run already tests the same commit, and a second run only doubles the queue
+# for scarce runners (macOS), with a second set of results that can disagree.
 jobs:
   node:
     name: Lint, types, unit tests
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'automation/') || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
@@ -61,6 +67,7 @@ jobs:
 
   cross-os:
     name: Unit tests (${{ matrix.os }})
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'automation/') || github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       fail-fast: false
       matrix:
@@ -93,6 +100,7 @@ jobs:
 
   changes:
     name: What changed
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'automation/') || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
@@ -269,6 +277,7 @@ jobs:
 
   site:
     name: Website
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'automation/') || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
@@ -308,6 +317,7 @@ jobs:
 
   installers:
     name: Installers (${{ matrix.os }})
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'automation/') || github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       fail-fast: false
       matrix:

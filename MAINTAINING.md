@@ -20,7 +20,7 @@ is still yours.
 | Wednesdays | `maintenance.yml` (sources-health) | Asks every reference source (doi.org, CrossRef, dblp, arXiv, OpenAlex, Semantic Scholar, ACL Anthology, Europe PMC) for one known work and one invented title. Sources that stop answering, answer with a bot wall, or no longer find the known work are listed in one issue: "Reference sources need a look". |
 | 5th of the month | `maintenance.yml` (venues-watch) | Compares every venue profile's official pages (and arXiv's build pages) with the text stored when a person last read them, and puts the changed lines, the next edition's call for papers, and profiles not checked for a year in one issue: "Venue profiles need a look". Also checks each style file against the venue's official kit and opens a pull request when a hash changed. |
 | 9th of the month | `maintenance.yml` (refresh-recordings) | Records again the live answers that the offline reference tests replay, and opens a pull request: green is merged, red means a source changed its answers or format. |
-| After any of the above | `watchdog.yml` | Opens "Automation failed: <workflow>" when a run on `main`, a scheduled run or an automation branch fails, and closes it when that workflow next succeeds. |
+| After any of the above | `watchdog.yml` | Opens "Automation failed: <workflow>" when a run on `main`, a scheduled run or an automation branch fails, and closes it when that workflow next succeeds. When a ci, image or release job never got a runner (GitHub's macOS capacity, a lost runner), it re-runs the failed jobs once; a job that ran and failed is never re-run. |
 
 Every pull request goes through the same CI as a person's: lint, types, unit
 tests on three operating systems, the image builds (full, slim, check-only, in parallel),
@@ -60,6 +60,10 @@ Set these once; the workflows cannot set them:
    skipped on purpose, so nothing merges while a job is queued or after one
    failed, and the list never needs updating when jobs change. Do not require
    reviews: the automation's merges would be refused.
+
+   Automation pull requests (`automation/*`, opened by GitHub Actions) get their CI
+   from the workflow that opened them. GitHub also shows a pull_request run waiting
+   for approval; approving it is not needed, and its jobs are skipped if you do.
 3. **Packages:** make `ghcr.io/amet13/overfull` public (Package settings → Change
    visibility), so anyone can pull the images.
 
