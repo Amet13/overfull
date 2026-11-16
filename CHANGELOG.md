@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ## [Unreleased]
 
+## [v3.1.2] - 2026-11-16
+
+Changes merged since v3.1.1, each after the full test suite and the template
+builds passed. Released automatically by autorelease.yml.
+
+### Changed
+
+- Automation PRs merge themselves when CI passes
+- CI: no duplicate runs on automation PRs; re-run jobs that never got a runner
+- CI: catch failures before main; stop timing tests failing on slow runners
+- Slim image and on-demand installs: retry when a CTAN mirror fails
+- Docs: on-demand installs cover missing biblatex styles
+- Install biblatex-ieee in the slim image; install missing biblatex styles on demand
+- Test: check for script and img tags in any letter case (CodeQL js/bad-tag-filter)
+- Docker: install libatomic1 where Node.js runs in the builder
+- Website: real CLI output on the home page, tool-first check page, report download; docs
+- Docker and CI: slim image, CLI layer apart from TeX, parallel image jobs, release by retag
+- CLI: faster start, one check with many report files, HTML report, batched arXiv, TeX packages on demand
+- Bump the npm group across 1 directory with 3 updates (#96)
+
 Faster everywhere: a slim image, parallel CI, releases that retag instead of
 rebuilding, and a quicker CLI.
 
