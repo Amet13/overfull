@@ -1,98 +1,71 @@
-# Overfull Docker image
+# Overfull Docker images
 
-`ghcr.io/amet13/overfull` is the one image needed to build and check an
-Overfull project without installing TeX. Tags: `3` (what the templates use),
-`3.0`, `3.0.0`, `edge` (main) and `sha-<commit>`; each is a multi-arch image
-for linux/amd64 and linux/arm64 with a build provenance attestation
-(`gh attestation verify oci://ghcr.io/amet13/overfull:3 --repo amet13/overfull`).
-`docker run --rm ghcr.io/amet13/overfull:3 overfull --version` prints the CLI
-version, which matches the image tag.
+Three images, each multi-arch (linux/amd64, linux/arm64) with a build provenance
+attestation (`gh attestation verify oci://ghcr.io/amet13/overfull:3 --repo amet13/overfull`).
+Tags follow the release: `3`, `3.1`, `3.1.1`, plus `edge` (main) and `sha-<commit>`,
+each with the image's suffix.
 
-The image is about 3 GB to download (compressed) and takes 9–10 GB on disk.
+| Image | What it has | Download |
+| --- | --- | --- |
+| `ghcr.io/amet13/overfull:3-slim` | TeX Live's basic scheme + LuaLaTeX, the recommended LaTeX packages and fonts, biblatex/biber, and what the templates use; installs any other package from CTAN on demand | about a fifth of the full image |
+| `ghcr.io/amet13/overfull:3` | all of TeX Live 2026 (scheme-full) | about 3 GB |
+| `ghcr.io/amet13/overfull:3-check` | no TeX Live: checks a PDF, log and bibliography built elsewhere | about 0.25 GB |
 
-## The check-only image
+All three have the `overfull` CLI (one bundled file run by Node.js 26), veraPDF,
+poppler and git. The TeX images add fonts (Microsoft core fonts, GNU FreeFont, TeX
+Gyre), qpdf, latexmk and biber; the full one also latexdiff and every package and
+font collection.
 
-`ghcr.io/amet13/overfull:3-check` (also `3.1-check`, `3.1.0-check`,
-`edge-check`) holds the `overfull` CLI, Node.js, veraPDF with its Java
-runtime, poppler-utils and git, and no TeX Live. It is much smaller and starts
-fast, and it is for checking a PDF, log and bibliography that something else
-built. It cannot compile a document (`overfull build`, `latexmk`, `latexdiff`
-are not in it). It has the same platforms and attestation as the full image.
+`docker run --rm ghcr.io/amet13/overfull:3-slim overfull --version` prints the CLI
+version, which matches the tag. The working directory is `/work`, marked as a safe
+git directory for `overfull diff`.
+
+## Which one
+
+- **Slim** for most papers and theses, and in CI: it is what the templates'
+  workflows use. When `overfull build` finds a missing package (`File 'x.sty' not
+  found`), it looks it up with `tlmgr`, installs it and builds again
+  (`OVERFULL_TEX_INSTALL=1` turns this on; only `overfull build` does it, plain
+  `latexmk` does not). In a long-lived container the package stays installed.
+- **Full** when a document uses many packages outside the slim set, or must build
+  without network access. `overfull build --engine docker` uses it by default
+  (`build.image` in `overfull.yml` changes that).
+- **Check** when the PDF is built elsewhere and you only want the checks, veraPDF
+  included.
+
+`:3-medium`, the image slim replaced, is now another name for slim.
 
 ```sh
+docker run --rm -v "$PWD:/work" -w /work ghcr.io/amet13/overfull:3-slim overfull build
 docker run --rm -v "$PWD:/work" -w /work ghcr.io/amet13/overfull:3-check overfull check
 ```
 
-Which one to use: the Action with no image when the runner only needs the log
-and PDF checks; the `-check` image when you also want veraPDF or a container
-job; the full image when you build the PDF with it.
+## How the templates use it
 
-## The medium image
-
-`ghcr.io/amet13/overfull:3-medium` (also `3.1-medium`, `3.1.0-medium`,
-`edge-medium`) builds on TeX Live's medium scheme instead of the full one, plus
-the collections the templates, the venue classes and the tools need
-(`latexextra`, `bibtexextra`, `pictures`, `publishers`, `binextra`,
-`mathscience`, the Inconsolata and Fira fonts, biber, latexdiff, latexmk). It
-leaves out most of the large font and language collections, so it is smaller
-to download; the package page shows the size of each tag. CI builds the three templates in it
-on every change to the image. If your document uses a package outside those
-collections, use the full image `ghcr.io/amet13/overfull:3`, or set
-`build.image` in `overfull.yml`.
-
-Build it from a clone:
-
-```bash
-docker build -f docker/Dockerfile --build-arg TEX_FLAVOR=medium -t overfull:medium .
-```
-
-## What is inside
-
-| Component | Version / source |
-| ----------- | ------------------ |
-| TeX Live 2026 | `texlive/texlive:latest` pinned by digest (LuaHBTeX 1.24, biber, latexmk, latexdiff, chktex) |
-| Fonts | Microsoft core fonts (Times New Roman, ...), GNU FreeFont, TeX Gyre |
-| PDF tools | poppler-utils (`pdfinfo`, `pdffonts`, `pdftoppm`), qpdf, Ghostscript |
-| veraPDF | 1.30.3 greenfield CLI: PDF/UA-1, PDF/UA-2, WTPDF and PDF/A profiles (`verapdf -f ua2 file.pdf`) |
-| Node.js | 24 (official binary, checksum-verified) |
-| `overfull` | the CLI from this repository (`packages/cli`), on `PATH` |
-| git | for `overfull diff` (`/work` is marked as a safe directory) |
-
-The working directory is `/work`.
-
-## How templates use it
-
-The template `Makefile`s run `overfull` when it is installed and otherwise:
-
-```sh
-docker run --rm -v "$PWD:/work" -w /work ghcr.io/amet13/overfull:3 overfull check
-docker run --rm -v "$PWD:/work" -w /work ghcr.io/amet13/overfull:3 latexmk
-```
-
-`overfull build --engine docker` does the same. The template CI workflow
-(`.github/workflows/paper.yml`) runs its job inside the image, and
-`.devcontainer/devcontainer.json` opens VS Code in it.
+The template `Makefile`s run `overfull` when it is installed and otherwise the full
+image. The template CI workflow (`.github/workflows/paper.yml`) runs its job inside
+the slim image, and `.devcontainer/devcontainer.json` opens VS Code in the full one.
 
 ## Build it
 
 The build context is the repository root:
 
 ```sh
-docker build -f docker/Dockerfile -t ghcr.io/amet13/overfull:dev .
-docker build -f docker/Dockerfile --target tex -t overfull-tex:dev .   # TeX + veraPDF only, no CLI
-docker build -f docker/Dockerfile --target check -t overfull-check:dev .  # CLI + veraPDF, no TeX Live
+docker build -f docker/Dockerfile -t overfull:dev .                              # full
+docker build -f docker/Dockerfile --build-arg TEX_FLAVOR=slim -t overfull:slim .  # slim
+docker build -f docker/Dockerfile --target check -t overfull:check .              # no TeX
 ```
 
-Stages: `tex` (TeX Live, fonts, poppler, qpdf, veraPDF), `node` (+ Node 26),
-`builder` (pnpm 12 builds the monorepo and deploys the CLI with production
-dependencies), `check` (Debian slim, no TeX Live), `overfull` (final, default
-target).
+Stages: `node-dist` (the Node.js binary), `builder` (bundles the CLI into one file;
+no TeX Live, so a code change never rebuilds a TeX layer), `texbase-full` /
+`texbase-slim`, `tex` (+ fonts, poppler, qpdf, veraPDF), `check`, and `overfull`
+(the default target). The CLI and Node.js are the last, small layers.
 
-Behind a TLS-intercepting proxy, pass its CA certificate as a build secret;
-it is trusted only during download steps and never stored in the image:
+Behind a TLS-intercepting proxy, pass its CA certificate as a build secret; it is
+trusted only during download steps and never stored in the image:
 
 ```sh
 docker build --secret id=build_ca,src=/path/to/ca.crt -f docker/Dockerfile .
 ```
 
-Template Makefiles accept another image: `make build IMAGE=overfull-tex:dev`.
+Template Makefiles accept another image: `make build IMAGE=overfull:slim`.

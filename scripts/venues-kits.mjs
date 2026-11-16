@@ -7,7 +7,7 @@
 //   node scripts/venues-kits.mjs --write   also write the new hashes into venues/*.yml
 //
 // The kit is the authority for its own files, so a new hash is a mechanical update
-// (venues-watch.yml opens a pull request with it). Nothing else in a profile is touched:
+// (maintenance.yml's venues-watch task opens a pull request with it). Nothing else in a profile is touched:
 // `checkedOn` still means a person read the venue's rules.
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';

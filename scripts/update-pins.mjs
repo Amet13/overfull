@@ -40,11 +40,11 @@ const cmpVersions = (a, b) => {
   return 0;
 };
 
+/** Sets every `ARG name=` line (a version can be declared in several stages). */
 function setArg(text, name, value) {
-  const re = new RegExp(`^(ARG ${name}=)(\\S+)$`, 'm');
-  const m = re.exec(text);
-  if (!m) throw new Error(`docker/Dockerfile: no ARG ${name}`);
-  return m[2] === value ? text : text.replace(re, `$1${value}`);
+  const re = new RegExp(`^(ARG ${name}=)(\\S+)$`, 'gm');
+  if (!re.test(text)) throw new Error(`docker/Dockerfile: no ARG ${name}`);
+  return text.replace(re, `$1${value}`);
 }
 
 const argOf = (text, name) => new RegExp(`^ARG ${name}=(\\S+)$`, 'm').exec(text)?.[1];

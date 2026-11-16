@@ -21,9 +21,11 @@ them run the same checks.
 The image `ghcr.io/amet13/overfull:3` contains TeX Live 2026, fonts, poppler,
 qpdf, veraPDF, latexdiff, Node.js and the `overfull` CLI. You do not need to
 install TeX or Node.
-`ghcr.io/amet13/overfull:3-medium` is a smaller variant on TeX Live's medium
-scheme plus the collections the templates need; `:3-check` has no TeX Live and
-only checks. See [the Docker README](https://github.com/amet13/overfull/blob/main/docker/README.md).
+`ghcr.io/amet13/overfull:3-slim` is about a fifth of the size: TeX Live's basic
+scheme plus LuaLaTeX, the recommended LaTeX packages and fonts, and what the
+templates use. When a document needs a package it lacks, `overfull build` installs
+it from CTAN and builds again. The templates' workflows use it. (`:3-medium`, the
+image it replaced, now points to it.) `:3-check` has no TeX Live and only checks. See [the Docker README](https://github.com/amet13/overfull/blob/main/docker/README.md).
 
 > **New to Docker?** Install [Docker Desktop](https://docs.docker.com/desktop/)
 > (macOS, Windows) or [Docker Engine](https://docs.docker.com/engine/install/)

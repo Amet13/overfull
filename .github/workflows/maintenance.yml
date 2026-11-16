@@ -1,0 +1,216 @@
+# The repository's scheduled upkeep, one job per task. Each runs on its own schedule,
+# and any one can be started by hand (Actions → maintenance → Run workflow → task).
+#   update-pins         Tuesdays: Node.js, veraPDF and pnpm pins Dependabot cannot update (pull request).
+#   sources-health      Wednesdays: every reference source answers for a known work and an invented title (issue).
+#   bench               3rd of the month: the reference-check benchmark against the live indexes (pull request).
+#   venues-watch        5th of the month: venue pages changed since last read, next editions, style-file hashes (issue, pull request).
+#   refresh-recordings  9th of the month: the live answers the offline reference tests replay, recorded again (pull request).
+# Pull requests are merged by automerge.yml when CI passes; issues close themselves
+# when the next run finds nothing. watchdog.yml reports a failed run.
+name: maintenance
+
+on:
+  schedule:
+    - cron: "37 5 * * 2"
+    - cron: "37 7 * * 3"
+    - cron: "17 4 3 * *"
+    - cron: "11 6 5 * *"
+    - cron: "23 6 9 * *"
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Task to run
+        type: choice
+        options: [update-pins, sources-health, bench, venues-watch, refresh-recordings]
+
+permissions:
+  contents: read
+
+jobs:
+  update-pins:
+    name: update-pins
+    if: github.event.schedule == '37 5 * * 2' || inputs.task == 'update-pins'
+    concurrency:
+      group: maintenance-update-pins
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Update the pins
+        run: node scripts/update-pins.mjs | tee "$RUNNER_TEMP/changes.txt"
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Updates the pins Dependabot cannot update:"
+            echo
+            sed 's/^/- /' "$RUNNER_TEMP/changes.txt"
+            echo
+            echo "Hashes come from nodejs.org's SHASUMS256.txt and from the veraPDF download itself."
+          } > "$RUNNER_TEMP/body.md"
+          bash .github/scripts/automation-pr.sh pins "Update pinned tools" "$RUNNER_TEMP/body.md"
+
+  sources-health:
+    name: sources-health
+    if: github.event.schedule == '37 7 * * 3' || inputs.task == 'sources-health'
+    concurrency:
+      group: maintenance-sources-health
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Probe the reference sources
+        # Keyless, like most users: a 429 from OpenAlex or Semantic Scholar (a shared
+        # budget used up) is listed as a note, not as a broken source.
+        run: node scripts/sources-health.mjs | tee "$RUNNER_TEMP/report.md"
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/scripts/issue.sh "Reference sources need a look" "$RUNNER_TEMP/report.md"
+
+  bench:
+    name: Reference check benchmark
+    if: github.event.schedule == '17 4 3 * *' || inputs.task == 'bench'
+    concurrency:
+      group: maintenance-bench
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        timeout-minutes: 5
+      - name: Run the benchmark (live network)
+        run: node bench/refs/run.mjs --summary "$GITHUB_STEP_SUMMARY"
+      # A complete live run is published: a pull request with results.json, merged by
+      # automerge.yml when CI passes. The site's accuracy page renders it.
+      - name: Open a pull request with the results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Monthly reference-check benchmark, run $GITHUB_RUN_ID, against the live indexes."
+            echo
+            echo "The accuracy page (docs/guide/accuracy.md) renders these numbers."
+          } > "$RUNNER_TEMP/body.md"
+          bash .github/scripts/automation-pr.sh benchmark "Benchmark results ($(date -u +%Y-%m-%d))" "$RUNNER_TEMP/body.md"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-results
+          path: bench/refs/results.json
+          if-no-files-found: error
+
+  venues-watch:
+    name: venues-watch
+    if: github.event.schedule == '11 6 5 * *' || inputs.task == 'venues-watch'
+    concurrency:
+      group: maintenance-venues-watch
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        timeout-minutes: 5
+      - name: Check the venues' official pages
+        run: node scripts/venues-watch.mjs | tee "$RUNNER_TEMP/report.md"
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/scripts/issue.sh "Venue profiles need a look" "$RUNNER_TEMP/report.md"
+      - name: Check style files against the official kits
+        run: |
+          node scripts/venues-kits.mjs --write | tee "$RUNNER_TEMP/kits.md"
+          node scripts/build-venues.mjs
+      - name: Open a pull request with new style-file hashes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            cat "$RUNNER_TEMP/kits.md"
+            echo
+            echo "The hashes come from the files in each venue's official author kit (the \`kit\` URL"
+            echo "in its profile). Nothing else in the profiles changed; \`checkedOn\` still means a"
+            echo "person read the venue's rules."
+          } > "$RUNNER_TEMP/kits-body.md"
+          bash .github/scripts/automation-pr.sh venue-kits "Update style-file hashes from the official kits" "$RUNNER_TEMP/kits-body.md"
+
+  refresh-recordings:
+    name: refresh-recordings
+    if: github.event.schedule == '23 6 9 * *' || inputs.task == 'refresh-recordings'
+    concurrency:
+      group: maintenance-refresh-recordings
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Record the reference sources again
+        run: |
+          node packages/core/test/fixtures/refs/record.mjs
+          node packages/core/test/fixtures/refs/record-sources.mjs
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "The live answers of the reference sources, recorded again (run $GITHUB_RUN_ID)."
+            echo
+            echo "If CI fails here, a source changed its answers or its format: compare the test"
+            echo "failures with the diff of the recordings before changing any expectation."
+          } > "$RUNNER_TEMP/body.md"
+          bash .github/scripts/automation-pr.sh recordings "Refresh recorded reference-source answers" "$RUNNER_TEMP/body.md"

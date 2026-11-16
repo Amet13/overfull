@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Weekly health check of every reference source Overfull asks (sources-health.yml).
+// Weekly health check of every reference source Overfull asks (maintenance.yml, sources-health task).
 // For each source, two fixed queries through the core's own source modules: one that
 // must find a known work, and one invented title that must find nothing similar. Prints
 // a Markdown report of the sources that need a look, and nothing when all are healthy.

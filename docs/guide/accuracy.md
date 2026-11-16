@@ -46,7 +46,7 @@ node bench/refs/run.mjs
 ```
 
 It writes `bench/refs/results.json` and prints the table. A GitHub workflow
-(`.github/workflows/bench.yml`) runs it monthly and on demand.
+(the bench task of `.github/workflows/maintenance.yml`) runs it monthly and on demand.
 
 ## What the check cannot do
 

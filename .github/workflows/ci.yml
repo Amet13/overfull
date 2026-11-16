@@ -102,9 +102,8 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      # The TeX job builds a 3 GB image and every template (about 10 minutes).
-      # Pull requests that touch only the website or prose skip it; pushes to
-      # main always run it.
+      # The image jobs build the TeX images and every template. Pull requests that
+      # touch only the website or prose skip them; pushes to main always run them.
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
@@ -122,18 +121,21 @@ jobs:
           echo "tex=$tex" >> "$GITHUB_OUTPUT"
           echo "TeX job: $tex"
 
-  tex:
-    name: Image, corpus, templates, Action
+  # Three images, built in parallel (each reuses the layer cache of image.yml's builds
+  # on main, so an unchanged TeX layer is never rebuilt). The CLI is a separate, small
+  # layer: a code change rebuilds only that.
+  image-full:
+    name: Full image, corpus
     needs: changes
     if: needs.changes.outputs.tex == 'true'
     runs-on: ubuntu-26.04
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - name: Build the Overfull image
+      - name: Build the full image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -141,42 +143,40 @@ jobs:
           target: overfull
           load: true
           tags: overfull:ci
-          # Same cache as image.yml's amd64 build: PRs reuse the layers from main.
           cache-from: type=gha,scope=overfull-linux-amd64
           cache-to: type=gha,scope=overfull-linux-amd64,mode=max
-      - name: Build the check-only image (no TeX Live)
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      - name: Corpus reproduces every rule on TeX Live 2026
+        run: docker run --rm -v "$PWD:/repo" -w /repo -e OVERFULL_TEX_LOCAL=1 overfull:ci node scripts/corpus.mjs --verify
+
+  image-slim:
+    name: Slim image, templates, Action
+    needs: changes
+    if: needs.changes.outputs.tex == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          context: .
-          file: docker/Dockerfile
-          target: check
-          load: true
-          tags: overfull:ci-check
-          cache-from: type=gha,scope=check-linux-amd64
-      - name: The check-only image checks a built project and has no TeX
-        run: |
-          docker run --rm overfull:ci-check sh -c 'overfull --version && verapdf --version && ! command -v lualatex'
-          code=0
-          docker run --rm -v "$PWD/packages/cli/test/fixtures/project:/work" -w /work \
-            overfull:ci-check overfull check --offline || code=$?
-          echo "overfull check exit code: $code"
-          test "$code" -le 1
-      - name: Build the medium image (TeX Live medium scheme)
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the slim image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: docker/Dockerfile
           target: overfull
-          build-args: TEX_FLAVOR=medium
+          build-args: TEX_FLAVOR=slim
           load: true
-          tags: overfull:ci-medium
-          cache-from: type=gha,scope=medium-linux-amd64
-      - name: Templates build and pass their own preflight in the medium image
-        run: bash scripts/e2e-templates.sh overfull:ci-medium out-medium
-      - name: Corpus reproduces every rule on TeX Live 2026
-        run: docker run --rm -v "$PWD:/repo" -w /repo -e OVERFULL_TEX_LOCAL=1 overfull:ci node scripts/corpus.mjs --verify
-      - name: Templates build and pass their own preflight
-        run: bash scripts/e2e-templates.sh overfull:ci out
+          tags: overfull:ci-slim
+          cache-from: type=gha,scope=slim-linux-amd64
+          cache-to: type=gha,scope=slim-linux-amd64,mode=max
+      # The image the template workflow uses: every template must build in it and pass
+      # its own preflight (a package missing from the image is installed on demand and
+      # named in the log, so the image's package list can be completed).
+      - name: Templates build and pass their own preflight in the slim image
+        run: bash scripts/e2e-templates.sh overfull:ci-slim out
+      - name: The paper template's arXiv build (pdfLaTeX) works in the slim image
+        run: docker run --rm -v "$PWD/out/paper:/work" -w /work overfull:ci-slim latexmk -pdf -jobname=paper-arxiv
       - name: Action runs on a built template
         id: action
         uses: ./
@@ -193,7 +193,38 @@ jobs:
           path: |
             out/*/*.pdf
             out/*/overfull-report.json
+            out/*/overfull-report.html
           if-no-files-found: ignore
+
+  image-check:
+    name: Check-only image
+    needs: changes
+    if: needs.changes.outputs.tex == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the check-only image (no TeX Live)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: check
+          load: true
+          tags: overfull:ci-check
+          cache-from: type=gha,scope=check-linux-amd64
+          cache-to: type=gha,scope=check-linux-amd64,mode=max
+      - name: The check-only image checks a built project and has no TeX
+        run: |
+          docker run --rm overfull:ci-check sh -c 'overfull --version && verapdf --version && ! command -v lualatex'
+          code=0
+          docker run --rm -v "$PWD/packages/cli/test/fixtures/project:/work" -w /work \
+            overfull:ci-check overfull check --offline || code=$?
+          echo "overfull check exit code: $code"
+          test "$code" -le 1
 
   site:
     name: Website

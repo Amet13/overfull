@@ -476,13 +476,10 @@ jobs:
       - name: Build
         run: ${build}
 
-      # The first two runs only report (summary + inline annotations);
-      # the last one sets the job status. Reference lookups are cached.
+      # One run: annotations on the changed lines, the report in the job summary and
+      # as a shareable HTML page; its exit code sets the job status.
       - name: Preflight
-        run: |
-          overfull check --markdown >> "$GITHUB_STEP_SUMMARY" || true
-          overfull check --annotations || true
-          overfull check
+        run: overfull check --annotations --write markdown="$GITHUB_STEP_SUMMARY" --write html=overfull-report.html
 
       - name: Diff against base branch
         if: github.event_name == 'pull_request'
@@ -498,6 +495,7 @@ jobs:
           path: |
             *.pdf
             *.log
+            overfull-report.html
           if-no-files-found: warn
 `;
 }

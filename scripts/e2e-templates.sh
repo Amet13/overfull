@@ -33,9 +33,10 @@ for t in "${templates[@]}"; do
   echo "::endgroup::"
   echo "::group::$t: check"
   set +e
-  docker run --rm "${extra[@]}" -v "$dir:/work" -w /work "$image" overfull check --json --fail-on error > "$dir/overfull-report.json"
+  # One check per template: the human report on the console, JSON and HTML as files.
+  docker run --rm "${extra[@]}" -v "$dir:/work" -w /work "$image" overfull check --fail-on error \
+    --write json=overfull-report.json --write html=overfull-report.html
   status=$?
-  docker run --rm "${extra[@]}" -v "$dir:/work" -w /work "$image" overfull check --fail-on never
   set -e
   echo "::endgroup::"
   if [ "$status" -ne 0 ]; then

@@ -1,0 +1,3 @@
+#!/bin/sh
+# The overfull CLI: one bundled file run by the Node.js binary next to it.
+exec node /opt/overfull/overfull.cjs "$@"
