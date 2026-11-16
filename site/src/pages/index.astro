@@ -1,5 +1,5 @@
 ---
-import { VERSION } from '@overfull/core';
+import { formatHuman, VERSION } from '@overfull/core';
 import Base from '../layouts/Base.astro';
 import { CHECK_LABELS, REPO_URL, url } from '../lib/paths';
 import { rulesByCheck } from '../lib/rules';
@@ -10,6 +10,17 @@ const groups = rulesByCheck();
 const ruleCount = (check: string) => groups.find((g) => g.check === check)?.rules.length ?? 0;
 const sheet = renderSheet(sampleReport(), { ruleHref: (r) => url(`rules/${r}/`), headingLevel: 3 });
 const checks = ['build', 'output', 'references', 'accessibility', 'venue'] as const;
+// What `overfull check` prints for the sample report, from the CLI's own formatter:
+// the terminal panel in the hero shows real output, not a mock-up.
+const terminal = formatHuman(sampleReport(), { color: false }).trimEnd().split('\n');
+const lineKind = (l: string) =>
+  /^\s+✕/.test(l) || /FAIL$/.test(l)
+    ? 'bad'
+    : /^\s+!/.test(l)
+      ? 'warn'
+      : /^\s+✓/.test(l)
+        ? 'ok'
+        : '';
 ---
 <Base title="Preflight for LaTeX papers and theses" description="Overfull checks the LaTeX paper or thesis you already have before you submit: every reference against the scholarly indexes, the PDF, accessibility and the venue's rules. In the terminal, in CI, with an AI agent, or on Overleaf." section="home">
   <section class="hero" aria-labelledby="hero-title">
@@ -26,11 +37,17 @@ const checks = ['build', 'output', 'references', 'accessibility', 'venue'] as co
         </p>
         <p class="hero-note">Drop a .zip (Overleaf's source download works), a folder, a log, a .bib or a PDF. It runs on this page; your files are not uploaded.</p>
       </div>
+      <figure class="term" aria-label="Example: what overfull check prints for a draft with problems">
+        <div class="term-bar" aria-hidden="true"><span></span><span></span><span></span><em>~/paper</em></div>
+        <pre class="term-body" tabindex="0"><code><span class="term-cmd"><span class="term-ps" aria-hidden="true">$ </span>overfull check</span>
+{terminal.map((l, i) => <span class={`term-line ${lineKind(l)}`} style={`--i:${i}`}>{l}{'\n'}</span>)}</code></pre>
+        <figcaption class="sr-only">Sample output for a ten-page draft: an undefined reference, an invented citation, a figure without alt text and one page over the limit.</figcaption>
+      </figure>
       <dl class="hero-facts" aria-label="At a glance">
         <div><dt>Version</dt><dd>{VERSION}, the successor to tex-thesis</dd></div>
         <div><dt>Licence</dt><dd>MIT; templates MIT-0</dd></div>
         <div><dt>Runs on</dt><dd>Linux, macOS, Windows, Docker, GitHub Actions, the browser</dd></div>
-        <div><dt>Venues</dt><dd>NeurIPS, ICLR, ICML, CVPR, AAAI, ACL, EMNLP, IEEE, ACM, Springer LNCS</dd></div>
+        <div><dt>Venues</dt><dd>NeurIPS, ICLR, ICML, CVPR, ECCV, AISTATS, AAAI, ACL, EMNLP, IEEE, ACM, Springer LNCS</dd></div>
         <div><dt>Agents</dt><dd>Claude Code, Codex, Cursor, Copilot, Gemini CLI, or none</dd></div>
       </dl>
     </div>
@@ -337,6 +354,87 @@ venue          pass   main text 9 pages, limit 9 (11 in total)</span></pre>
   .hero-note {
     font-size: var(--s-1);
     color: var(--ink-3);
+  }
+  /* ----- Hero terminal: the CLI's real output for the sample report ----- */
+  .term {
+    margin: 0;
+    min-width: 0;
+    border: 1px solid var(--hair-strong);
+    background: var(--term-bg, #10131c);
+    color: var(--term-ink, #e8e6df);
+    box-shadow: 0 1.2rem 2.4rem -1.6rem rgb(0 0 0 / 0.45);
+  }
+  .term-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 0.8rem;
+    border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  }
+  .term-bar span {
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 0.18);
+  }
+  .term-bar em {
+    margin-left: auto;
+    font: 0.72rem/1 var(--mono);
+    font-style: normal;
+    color: rgb(232 230 223 / 0.55);
+  }
+  .term-body {
+    margin: 0;
+    padding: 0.9rem 1rem 1.1rem;
+    overflow-x: auto;
+    background: transparent;
+    font: 0.74rem/1.55 var(--mono);
+    color: inherit;
+  }
+  .term-cmd {
+    display: block;
+    color: #fff;
+    margin-bottom: 0.4rem;
+  }
+  .term-ps {
+    color: #8fd19e;
+  }
+  .term-line {
+    display: inline;
+  }
+  .term-line.bad {
+    color: #ff9b8f;
+  }
+  .term-line.warn {
+    color: #f2c267;
+  }
+  .term-line.ok {
+    color: #8fd19e;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .term-line {
+      animation: term-in 180ms ease-out both;
+      animation-delay: calc(500ms + var(--i) * 70ms);
+    }
+  }
+  @keyframes term-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @media (min-width: 1000px) {
+    .hero-grid {
+      grid-template-columns: minmax(0, 30rem) minmax(0, 1fr);
+      align-items: start;
+      column-gap: 3rem;
+    }
+    .hero-measure,
+    .hero-facts {
+      grid-column: 1 / -1;
+    }
   }
   .hero-facts {
     display: grid;

@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ## [Unreleased]
 
+Faster everywhere: a slim image, parallel CI, releases that retag instead of
+rebuilding, and a quicker CLI.
+
+### Added
+
+- `ghcr.io/amet13/overfull:3-slim`: TeX Live's basic scheme plus LuaLaTeX, the
+  recommended LaTeX packages and fonts, and what the templates use, about a fifth
+  of the full image. `overfull build` installs any other package from CTAN on
+  demand and builds again (`OVERFULL_TEX_INSTALL=1`). The template workflows use
+  it. It replaces the medium image; the `-medium` tags now point to it.
+- `overfull check --write format=file` (repeatable) writes json, markdown,
+  annotations, sarif or html from one run; `overfull check --html` prints a
+  self-contained, printable HTML report. The browser check can download the same
+  page.
+- The home page shows what `overfull check` prints for a draft, from the CLI's own
+  formatter.
+
+### Changed
+
+- The CLI starts in about half the time: commands load only when used and Node's
+  compile cache is on.
+- The arXiv ids of a bibliography are fetched in one request instead of one
+  every three seconds.
+- Images: the CLI is one bundled file added last, built without TeX Live, so a
+  code change never rebuilds a TeX layer; the check image no longer builds on
+  TeX Live.
+- CI builds the full, slim and check images in parallel and the templates once;
+  a release retags the images already built on `main`.
+- The template workflows build with `overfull build` and run `overfull check`
+  once (annotations, job summary and an HTML report).
+- The scheduled upkeep is one `maintenance.yml` workflow.
+
+### Fixed
+
+- The pin updater updated only the first copy of a pinned version, so the check
+  image kept an old veraPDF.
+
 ## [v3.1.1] - 2026-11-11
 
 Changes merged since v3.1.0, each after the full test suite and the template
