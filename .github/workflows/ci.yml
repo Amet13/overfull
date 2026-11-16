@@ -226,6 +226,47 @@ jobs:
           echo "overfull check exit code: $code"
           test "$code" -le 1
 
+  # image.yml publishes every image for amd64 and arm64. The jobs above test the amd64
+  # builds; these build the arm64 ones (natively, with image.yml's layer cache), so a
+  # step that breaks only on arm64 fails here, not after the merge.
+  image-arm64:
+    name: Image (${{ matrix.name }}, arm64)
+    needs: changes
+    if: needs.changes.outputs.tex == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: full, target: overfull, flavor: full, scope: overfull-linux-arm64 }
+          - { name: slim, target: overfull, flavor: slim, scope: slim-linux-arm64 }
+          - { name: check, target: check, flavor: full, scope: check-linux-arm64 }
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: ${{ matrix.target }}
+          build-args: TEX_FLAVOR=${{ matrix.flavor }}
+          load: true
+          tags: overfull:ci-arm64
+          cache-from: type=gha,scope=${{ matrix.scope }}
+          cache-to: type=gha,scope=${{ matrix.scope }},mode=max
+      - name: The CLI and its tools run
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          docker run --rm overfull:ci-arm64 sh -c 'overfull --version && verapdf --version'
+          if [ "$TARGET" = overfull ]; then
+            docker run --rm overfull:ci-arm64 sh -c 'lualatex --version | head -1 && latexmk --version | head -2'
+          fi
+
   site:
     name: Website
     runs-on: ubuntu-26.04
@@ -284,3 +325,23 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/test-install.ps1
+
+  # The one check the main ruleset requires: it passes only when every job above passed
+  # or was skipped on purpose, so a pull request cannot be merged while a job is still
+  # queued or after one failed.
+  passed:
+    name: CI passed
+    if: always()
+    needs: [node, cross-os, changes, image-full, image-slim, image-check, image-arm64, site, installers]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          if jq -e 'any(.[]; . != "success" and . != "skipped")' <<< "$RESULTS" > /dev/null; then
+            echo "::error::A CI job failed or was cancelled."
+            exit 1
+          fi
