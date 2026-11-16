@@ -225,6 +225,9 @@ export function packagesProviding(tlmgrOutput: string, file: string): string[] {
 
 /** Rounds of "install what was missing, build again" before giving up. */
 const INSTALL_ROUNDS = 3;
+/** mirror.ctan.org sends each request to a random mirror; one that is down or
+ * mid-sync fails a single call, so try again (a new mirror) before giving up. */
+const TLMGR_TRIES = 3;
 
 export async function buildCommand(args: string[], io: Io): Promise<number> {
   const { values, positionals } = parse(
@@ -283,6 +286,11 @@ export async function buildCommand(args: string[], io: Io): Promise<number> {
     // OVERFULL_TEX_INSTALL=1: a package the document needs beyond that is installed from
     // CTAN and the build runs again, like MiKTeX's install-on-demand.
     if (engine === 'local' && io.env.OVERFULL_TEX_INSTALL === '1' && which('tlmgr', io.env)) {
+      const tlmgr = async (args: string[]) => {
+        let out = await run('tlmgr', args);
+        for (let i = 1; i < TLMGR_TRIES && out.code !== 0; i++) out = await run('tlmgr', args);
+        return out;
+      };
       const tried = new Set<string>();
       for (let round = 0; round < INSTALL_ROUNDS && result.code !== 0; round++) {
         const log = readIfExists(join(config.root, config.build.auxDir, `${config.jobname}.log`));
@@ -294,14 +302,14 @@ export async function buildCommand(args: string[], io: Io): Promise<number> {
         const packages: string[] = [];
         for (const file of files) {
           tried.add(file);
-          const found = await run('tlmgr', ['search', '--global', '--file', `/${file}`]);
+          const found = await tlmgr(['search', '--global', '--file', `/${file}`]);
           packages.push(
             ...packagesProviding(found.stdout, file).filter((x) => !packages.includes(x)),
           );
         }
         if (!packages.length) break;
         io.stderr(`Installing ${packages.join(', ')} from CTAN (not in this image)…\n`);
-        const installed = await run('tlmgr', ['install', ...packages]);
+        const installed = await tlmgr(['install', ...packages]);
         if (installed.code !== 0) {
           io.stderr(
             `${(installed.stderr || installed.stdout).trim().split('\n').slice(-5).join('\n')}\n`,
