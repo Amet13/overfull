@@ -355,3 +355,62 @@ jobs:
             echo "::error::A CI job failed or was cancelled."
             exit 1
           fi
+
+  # The automation dispatches this workflow on its automation/* branches with GITHUB_TOKEN,
+  # and GitHub starts no workflow_run (automerge, watchdog) when such a run finishes. So
+  # the run finishes the job itself: it merges the pull request when everything passed,
+  # or keeps one issue open while it fails.
+  automation:
+    name: Merge or report the automation pull request
+    needs: passed
+    if: >-
+      always() && github.event_name == 'workflow_dispatch' &&
+      startsWith(github.ref, 'refs/heads/automation/')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+      checks: read
+      issues: write
+    steps:
+      # The scripts from main, not from the branch under test.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: main
+          sparse-checkout: .github/scripts
+      - name: Merge, or report the failure
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PASSED: ${{ needs.passed.result }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Automation failed: ci on $BRANCH"
+          : > "$RUNNER_TEMP/body.md"
+          if [ "$PASSED" = success ]; then
+            bash .github/scripts/issue.sh "$title" "$RUNNER_TEMP/body.md"
+            suite="$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID" --jq .check_suite_id)"
+            bash .github/scripts/automerge.sh "$BRANCH" "$SHA" "$suite"
+            exit 0
+          fi
+          missed="$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" --paginate \
+            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .check_run_url' |
+            while read -r url; do gh api "${url#https://api.github.com/}/annotations" --jq '.[].message'; done |
+            grep -cE 'not acquired by Runner|lost communication with the server' || true)"
+          {
+            echo "ci failed on \`$BRANCH\`, so its pull request was not merged."
+            echo
+            echo "Run: $URL"
+            if [ "$missed" -gt 0 ]; then
+              echo
+              echo "A job never got a runner (GitHub capacity): re-run the failed jobs."
+            fi
+            echo
+            echo "This issue closes itself when ci next passes on the branch."
+          } > "$RUNNER_TEMP/body.md"
+          bash .github/scripts/issue.sh "$title" "$RUNNER_TEMP/body.md"
