@@ -14,7 +14,8 @@ rebuilding, and a quicker CLI.
 - `ghcr.io/amet13/overfull:3-slim`: TeX Live's basic scheme plus LuaLaTeX, the
   recommended LaTeX packages and fonts, and what the templates use, about a fifth
   of the full image. `overfull build` installs any other package from CTAN on
-  demand and builds again (`OVERFULL_TEX_INSTALL=1`). The template workflows use
+  demand, including a missing biblatex style, and builds again
+  (`OVERFULL_TEX_INSTALL=1`). The template workflows use
   it. It replaces the medium image; the `-medium` tags now point to it.
 - `overfull check --write format=file` (repeatable) writes json, markdown,
   annotations, sarif or html from one run; `overfull check --html` prints a

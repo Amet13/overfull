@@ -24,7 +24,7 @@ git directory for `overfull diff`.
 
 - **Slim** for most papers and theses, and in CI: it is what the templates'
   workflows use. When `overfull build` finds a missing package (`File 'x.sty' not
-  found`), it looks it up with `tlmgr`, installs it and builds again
+  found`) or biblatex style (`Style 'x' not found`), it looks it up with `tlmgr`, installs it and builds again
   (`OVERFULL_TEX_INSTALL=1` turns this on; only `overfull build` does it, plain
   `latexmk` does not). In a long-lived container the package stays installed.
 - **Full** when a document uses many packages outside the slim set, or must build
