@@ -100,12 +100,24 @@ FROM texlive/texlive:latest-basic@sha256:e930edb4e2ef4ed70de1374b262e0ae15fe55ae
 # scheme-basic plus what most papers use: LuaLaTeX (the templates' engine), the
 # recommended LaTeX packages and fonts, biblatex with biber, and the packages the
 # templates load. Everything else comes from CTAN when a document asks for it.
+# mirror.ctan.org sends each request to a random mirror, and one that is down or
+# mid-sync fails the build, so try it a few times, then two fixed mirrors, and leave
+# the redirector as the repository for on-demand installs.
 RUN set -eux; \
-    tlmgr install \
-      collection-luatex collection-latexrecommended collection-fontsrecommended \
+    pkgs="collection-luatex collection-latexrecommended collection-fontsrecommended \
       latexmk biblatex biblatex-ieee biber csquotes babel-english \
       pgf pgfplots siunitx cleveref tocloft lastpage fontsize setspace float \
-      booktabs mathtools unicode-math fontspec microtype lm; \
+      booktabs mathtools unicode-math fontspec microtype lm"; \
+    ctan=https://mirror.ctan.org/systems/texlive/tlnet; \
+    ok=; \
+    for repo in "$ctan" "$ctan" "$ctan" \
+        https://mirrors.mit.edu/CTAN/systems/texlive/tlnet \
+        https://ftp.fau.de/ctan/systems/texlive/tlnet; do \
+      if tlmgr --repository "$repo" install $pkgs; then ok=1; break; fi; \
+      sleep 5; \
+    done; \
+    test -n "$ok"; \
+    tlmgr option repository "$ctan"; \
     tlmgr path add; \
     rm -rf /usr/local/texlive/*/tlpkg/backups/* /usr/local/texlive/*/texmf-var/web2c/tlmgr.log
 ENV OVERFULL_TEX_INSTALL=1
