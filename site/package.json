@@ -14,7 +14,7 @@
     "@fontsource/libertinus-sans": "5.3.0",
     "@fontsource/libertinus-serif": "5.3.0",
     "@overfull/core": "workspace:*",
-    "astro": "7.4.8",
+    "astro": "7.4.11",
     "pdfjs-dist": "6.5.438"
   },
   "devDependencies": {
