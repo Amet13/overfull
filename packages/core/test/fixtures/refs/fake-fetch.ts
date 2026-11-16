@@ -87,6 +87,9 @@ export function recordedFetch(): FakeFetch {
     const key = fixtureKey(url, acceptOf(init));
     const hit = requests[key] ?? hostFallbacks[new URL(url).host];
     if (!hit) {
+      // Batched arXiv requests (several ids in one id_list) are not recorded: answer
+      // "bad request", and the code looks each id up on its own, from the recording.
+      if (/[?&]id_list=[^&]*(?:,|%2C)/i.test(url)) return new Response('', { status: 400 });
       misses.push(key);
       throw new TypeError(`fetch failed (no fixture for ${key})`);
     }

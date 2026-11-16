@@ -49,6 +49,9313 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// ../packages/core/src/bib/cited.ts
+function unescapeXml(s) {
+  return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+}
+function* auxKeys(text2) {
+  const re = /\\citation\{([^}]*)\}|\\abx@aux@cite\{([^}]*)\}(?:\{([^}]*)\})?/g;
+  for (const m of text2.matchAll(re)) {
+    if (m[1] !== void 0) yield* m[1].split(",");
+    else yield m[3] ?? m[2];
+  }
+}
+function* bcfKeys(text2) {
+  for (const m of text2.matchAll(/<bcf:citekey\b[^>]*>([^<]*)<\/bcf:citekey>/g)) {
+    yield unescapeXml(m[1]);
+  }
+}
+function citedKeys(auxOrBcf) {
+  const isBcf = /<bcf:citekey\b/.test(auxOrBcf);
+  const seen = /* @__PURE__ */ new Set();
+  for (const raw of isBcf ? bcfKeys(auxOrBcf) : auxKeys(auxOrBcf)) {
+    const key = raw.trim();
+    if (key && key !== "*") seen.add(key);
+  }
+  return [...seen];
+}
+function citesAll(auxOrBcf) {
+  const isBcf = /<bcf:citekey\b/.test(auxOrBcf);
+  for (const raw of isBcf ? bcfKeys(auxOrBcf) : auxKeys(auxOrBcf)) {
+    if (raw.trim() === "*") return true;
+  }
+  return false;
+}
+var init_cited = __esm({
+  "../packages/core/src/bib/cited.ts"() {
+    "use strict";
+  }
+});
+
+// ../packages/core/src/bib/tex.ts
+function accent(base, mark) {
+  const letter = base === "\\i" ? "i" : base === "\\j" ? "j" : base;
+  return (letter + mark).normalize("NFC");
+}
+function replaceAccents(s) {
+  const symbol = /\\([`'^"~=.])\s*(?:\{\s*(\\[ij]|[A-Za-z])\s*\}|(\\[ij])(?![A-Za-z])|([A-Za-z]))/g;
+  const letter = /\\([uvHckrdbt])(?:\s*\{\s*(\\[ij]|[A-Za-z])\s*\}|\s+(\\[ij](?![A-Za-z])|[A-Za-z]))/g;
+  return s.replace(
+    symbol,
+    (_m, cmd, a, b, c) => accent(a ?? b ?? c, SYMBOL_ACCENTS[cmd])
+  ).replace(
+    letter,
+    (_m, cmd, a, b) => accent(a ?? b, LETTER_ACCENTS[cmd])
+  );
+}
+function replaceCommands(s) {
+  return s.replace(
+    /\\([A-Za-z]+|[,; ])\*?(\{\})?( ?)/g,
+    (_m, name, empty, space = "") => {
+      if (name in LOGOS) return LOGOS[name] + (empty ? space : "");
+      const keep = (text2) => text2 + space;
+      if (name in SPECIAL_LETTERS) return keep(SPECIAL_LETTERS[name]);
+      if (name in GREEK_MAP) return keep(GREEK_MAP[name]);
+      if (name in NAMED_SYMBOLS) return keep(NAMED_SYMBOLS[name]);
+      if (MATH_OPERATORS.has(name)) return keep(name);
+      return space;
+    }
+  );
+}
+function texToPlain(s) {
+  let out = s.replace(/\\([{}$&%#_])/g, (_m, c) => ESCAPES[c]);
+  out = out.replace(/\\\\/g, " ");
+  out = replaceAccents(out);
+  out = replaceCommands(out);
+  out = out.replace(/---/g, "\u2014").replace(/--/g, "\u2013").replace(/``|''/g, '"').replace(/~/g, " ").replace(/[{}$]/g, "").replace(/[-]/g, (c) => RESTORE[c]);
+  return out.replace(/\s+/g, " ").trim().normalize("NFC");
+}
+var SYMBOL_ACCENTS, LETTER_ACCENTS, SPECIAL_LETTERS, NAMED_SYMBOLS, GREEK, GREEK_CHARS, GREEK_MAP, MATH_OPERATORS, ESCAPES, RESTORE, LOGOS;
+var init_tex = __esm({
+  "../packages/core/src/bib/tex.ts"() {
+    "use strict";
+    SYMBOL_ACCENTS = {
+      "`": "\u0300",
+      "'": "\u0301",
+      "^": "\u0302",
+      "~": "\u0303",
+      "=": "\u0304",
+      ".": "\u0307",
+      '"': "\u0308"
+    };
+    LETTER_ACCENTS = {
+      u: "\u0306",
+      v: "\u030C",
+      H: "\u030B",
+      c: "\u0327",
+      k: "\u0328",
+      r: "\u030A",
+      d: "\u0323",
+      b: "\u0331",
+      t: "\u0361"
+    };
+    SPECIAL_LETTERS = {
+      ss: "\xDF",
+      o: "\xF8",
+      O: "\xD8",
+      ae: "\xE6",
+      AE: "\xC6",
+      oe: "\u0153",
+      OE: "\u0152",
+      aa: "\xE5",
+      AA: "\xC5",
+      l: "\u0142",
+      L: "\u0141",
+      i: "i",
+      j: "j",
+      dh: "\xF0",
+      DH: "\xD0",
+      th: "\xFE",
+      TH: "\xDE",
+      ng: "\u014B",
+      NG: "\u014A"
+    };
+    NAMED_SYMBOLS = {
+      textendash: "\u2013",
+      textemdash: "\u2014",
+      textquoteright: "\u2019",
+      textquoteleft: "\u2018",
+      textquotedblleft: "\u201C",
+      textquotedblright: "\u201D",
+      ldots: "\u2026",
+      dots: "\u2026",
+      textellipsis: "\u2026",
+      textregistered: "\xAE",
+      texttrademark: "\u2122",
+      copyright: "\xA9",
+      textcopyright: "\xA9",
+      S: "\xA7",
+      P: "\xB6",
+      textasciitilde: "~",
+      textbackslash: "\\",
+      textunderscore: "_",
+      times: "\xD7",
+      pm: "\xB1",
+      infty: "\u221E",
+      to: "\u2192",
+      rightarrow: "\u2192",
+      leq: "\u2264",
+      le: "\u2264",
+      geq: "\u2265",
+      ge: "\u2265",
+      neq: "\u2260",
+      approx: "\u2248",
+      cdot: "\xB7",
+      ell: "\u2113",
+      // Spacing commands become a space.
+      quad: " ",
+      qquad: " ",
+      ",": " ",
+      ";": " ",
+      " ": " "
+    };
+    GREEK = [
+      "alpha",
+      "beta",
+      "gamma",
+      "delta",
+      "epsilon",
+      "varepsilon",
+      "zeta",
+      "eta",
+      "theta",
+      "vartheta",
+      "iota",
+      "kappa",
+      "lambda",
+      "mu",
+      "nu",
+      "xi",
+      "pi",
+      "varpi",
+      "rho",
+      "varrho",
+      "sigma",
+      "varsigma",
+      "tau",
+      "upsilon",
+      "phi",
+      "varphi",
+      "chi",
+      "psi",
+      "omega",
+      "Gamma",
+      "Delta",
+      "Theta",
+      "Lambda",
+      "Xi",
+      "Pi",
+      "Sigma",
+      "Upsilon",
+      "Phi",
+      "Psi",
+      "Omega"
+    ];
+    GREEK_CHARS = "\u03B1\u03B2\u03B3\u03B4\u03B5\u03B5\u03B6\u03B7\u03B8\u03D1\u03B9\u03BA\u03BB\u03BC\u03BD\u03BE\u03C0\u03D6\u03C1\u03F1\u03C3\u03C2\u03C4\u03C5\u03C6\u03D5\u03C7\u03C8\u03C9\u0393\u0394\u0398\u039B\u039E\u03A0\u03A3\u03A5\u03A6\u03A8\u03A9";
+    GREEK_MAP = Object.fromEntries(
+      GREEK.map((name, i) => [name, [...GREEK_CHARS][i]])
+    );
+    MATH_OPERATORS = /* @__PURE__ */ new Set([
+      "log",
+      "ln",
+      "exp",
+      "sin",
+      "cos",
+      "tan",
+      "lim",
+      "max",
+      "min",
+      "sup",
+      "inf",
+      "det",
+      "dim",
+      "ker",
+      "deg",
+      "gcd",
+      "Pr"
+    ]);
+    ESCAPES = {
+      "{": "\uE000",
+      "}": "\uE001",
+      $: "\uE002",
+      "&": "&",
+      "%": "%",
+      "#": "#",
+      _: "_"
+    };
+    RESTORE = { "\uE000": "{", "\uE001": "}", "\uE002": "$" };
+    LOGOS = {
+      TeX: "TeX",
+      LaTeX: "LaTeX",
+      LaTeXe: "LaTeX2\u03B5",
+      BibTeX: "BibTeX",
+      BibLaTeX: "BibLaTeX",
+      XeTeX: "XeTeX",
+      XeLaTeX: "XeLaTeX",
+      LuaTeX: "LuaTeX",
+      LuaLaTeX: "LuaLaTeX",
+      pdfTeX: "pdfTeX",
+      pdfLaTeX: "pdfLaTeX",
+      eTeX: "eTeX",
+      ConTeXt: "ConTeXt",
+      AmS: "AMS",
+      AMS: "AMS",
+      AmSTeX: "AMS-TeX",
+      AMSTeX: "AMS-TeX",
+      AmSLaTeX: "AMS-LaTeX",
+      SliTeX: "SliTeX",
+      METAFONT: "METAFONT",
+      MF: "METAFONT",
+      MP: "MetaPost",
+      MetaPost: "MetaPost"
+    };
+  }
+});
+
+// ../packages/core/src/bib/names.ts
+function splitTopLevel(s, sep4) {
+  const sticky = new RegExp(sep4.source.replace(/^\^/, ""), `${sep4.flags.replace(/[gy]/g, "")}y`);
+  const leadingSpace = /^\^?\\s/.test(sep4.source);
+  const parts = [];
+  let depth = 0;
+  let last = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "{") depth++;
+    else if (c === "}") depth--;
+    else if (depth === 0) {
+      if (leadingSpace && i > 0 && /\s/.test(s[i - 1] ?? "") && /\s/.test(c ?? "")) continue;
+      sticky.lastIndex = i;
+      const m = sticky.exec(s);
+      if (m) {
+        parts.push(s.slice(last, i));
+        i += m[0].length - 1;
+        last = i + 1;
+      }
+    }
+  }
+  parts.push(s.slice(last));
+  return parts.map((p) => p.trim()).filter(Boolean);
+}
+function parseOne(raw) {
+  const trimmed = raw.trim();
+  if (/^\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}$/.test(trimmed)) {
+    return { family: texToPlain(trimmed), given: "", corporate: true };
+  }
+  const commaParts = splitTopLevel(trimmed, /^,/);
+  if (commaParts.length >= 2) {
+    return {
+      family: texToPlain(commaParts[0]),
+      given: texToPlain(commaParts[commaParts.length - 1]),
+      corporate: false
+    };
+  }
+  const words2 = splitTopLevel(trimmed, /^\s+/);
+  if (words2.length <= 1) return { family: texToPlain(trimmed), given: "", corporate: false };
+  let split = words2.length - 1;
+  for (let i = 1; i < words2.length - 1; i++) {
+    if (/^[a-z]/.test(words2[i])) {
+      split = i;
+      break;
+    }
+  }
+  return {
+    family: texToPlain(words2.slice(split).join(" ")),
+    given: texToPlain(words2.slice(0, split).join(" ")),
+    corporate: false
+  };
+}
+function parseNames(field) {
+  if (!field) return [];
+  return splitTopLevel(field, /^\s+and\s+/i).filter((n) => n.toLowerCase() !== "others").map(parseOne);
+}
+var init_names = __esm({
+  "../packages/core/src/bib/names.ts"() {
+    "use strict";
+    init_tex();
+  }
+});
+
+// ../packages/core/src/bib/parse.ts
+function parseBibWithIssues(text2) {
+  const parser = new Parser(text2);
+  parser.run();
+  return { entries: parser.entries, issues: parser.issues };
+}
+function parseBib(text2) {
+  return parseBibWithIssues(text2).entries;
+}
+var MONTHS, ParseError, Parser;
+var init_parse = __esm({
+  "../packages/core/src/bib/parse.ts"() {
+    "use strict";
+    MONTHS = {
+      jan: "January",
+      feb: "February",
+      mar: "March",
+      apr: "April",
+      may: "May",
+      jun: "June",
+      jul: "July",
+      aug: "August",
+      sep: "September",
+      oct: "October",
+      nov: "November",
+      dec: "December"
+    };
+    ParseError = class extends Error {
+      pos;
+      constructor(message, pos) {
+        super(message);
+        this.pos = pos;
+      }
+    };
+    Parser = class {
+      pos = 0;
+      entryStart = 0;
+      lineStarts = [0];
+      macros = { ...MONTHS };
+      entries = [];
+      issues = [];
+      seenKeys = /* @__PURE__ */ new Map();
+      text;
+      constructor(text2) {
+        this.text = text2;
+        for (let i = 0; i < text2.length; i++) if (text2[i] === "\n") this.lineStarts.push(i + 1);
+      }
+      lineOf(pos) {
+        let lo = 0;
+        let hi = this.lineStarts.length - 1;
+        while (lo < hi) {
+          const mid = lo + hi + 1 >> 1;
+          if (this.lineStarts[mid] <= pos) lo = mid;
+          else hi = mid - 1;
+        }
+        return lo + 1;
+      }
+      run() {
+        while (this.skipToAt()) {
+          const start = this.pos;
+          try {
+            this.parseItem(start);
+          } catch (err) {
+            const message = err instanceof ParseError ? err.message : String(err);
+            const at = err instanceof ParseError ? err.pos : start;
+            this.issues.push({ line: this.lineOf(at), message, ...this.keyHint(start) });
+            this.pos = this.resyncFrom(start + 1);
+          }
+        }
+      }
+      /** Outside entries everything is a comment; `%` lines are skipped so `% @article{…` stays inert. */
+      skipToAt() {
+        const t = this.text;
+        while (this.pos < t.length) {
+          const c = t[this.pos];
+          if (c === "@") return true;
+          if (c === "%") {
+            const nl = t.indexOf("\n", this.pos);
+            this.pos = nl < 0 ? t.length : nl + 1;
+          } else this.pos++;
+        }
+        return false;
+      }
+      /** Next `@` at the start of a line (after optional indentation). */
+      resyncFrom(from) {
+        const re = /(^|\n)[ \t]*@/g;
+        re.lastIndex = from;
+        let m = re.exec(this.text);
+        while (m && m.index + m[0].length - 1 < from) m = re.exec(this.text);
+        return m ? m.index + m[0].length - 1 : this.text.length;
+      }
+      keyHint(start) {
+        const m = /^@\s*[A-Za-z]+\s*[{(]\s*([^\s,{}()=]+)\s*,/.exec(
+          this.text.slice(start, start + 300)
+        );
+        return m?.[1] ? { key: m[1] } : {};
+      }
+      parseItem(start) {
+        this.entryStart = start;
+        this.pos++;
+        this.skipWs();
+        const type = this.readWhile(/[A-Za-z_-]/).toLowerCase();
+        if (!type) throw new ParseError("expected an entry type after `@`", this.pos);
+        this.skipWs();
+        if (type === "comment") {
+          this.skipComment();
+          return;
+        }
+        const open = this.text[this.pos];
+        if (open !== "{" && open !== "(") {
+          throw new ParseError(`expected \`{\` after \`@${type}\``, this.pos);
+        }
+        const close = open === "{" ? "}" : ")";
+        this.pos++;
+        if (type === "preamble") {
+          this.parseValue(close);
+          this.expectClose(close, start);
+        } else if (type === "string") {
+          this.parseString(close, start);
+        } else {
+          this.parseEntry(type, close, start);
+        }
+      }
+      skipComment() {
+        const open = this.text[this.pos];
+        if (open === "{" || open === "(") {
+          const close = open === "{" ? "}" : ")";
+          let depth = 0;
+          for (; this.pos < this.text.length; this.pos++) {
+            const c = this.text[this.pos];
+            if (c === open) depth++;
+            else if (c === close && --depth === 0) {
+              this.pos++;
+              return;
+            }
+          }
+          return;
+        }
+        const nl = this.text.indexOf("\n", this.pos);
+        this.pos = nl < 0 ? this.text.length : nl + 1;
+      }
+      parseString(close, start) {
+        this.skipWsAndComments();
+        const name = this.readWhile(/[^\s=#{}(),"]/).toLowerCase();
+        if (!name) throw new ParseError("expected a macro name in `@string`", this.pos);
+        this.skipWsAndComments();
+        if (this.text[this.pos] !== "=") throw new ParseError("expected `=` in `@string`", this.pos);
+        this.pos++;
+        this.macros[name] = this.parseValue(close);
+        this.expectClose(close, start);
+      }
+      parseEntry(type, close, start) {
+        this.skipWs();
+        const key = this.readWhile(close === "}" ? /[^\s,{}]/ : /[^\s,()]/);
+        if (!key) throw new ParseError(`\`@${type}\` entry has no citation key`, this.pos);
+        const fields = {};
+        this.skipWsAndComments();
+        while (this.text[this.pos] === ",") {
+          this.pos++;
+          this.skipWsAndComments();
+          if (this.text[this.pos] === close) break;
+          this.parseField(key, fields, close);
+          this.skipWsAndComments();
+        }
+        this.expectClose(close, start, key);
+        this.addEntry({
+          key,
+          type,
+          fields,
+          line: this.lineOf(start),
+          raw: this.text.slice(start, this.pos)
+        });
+      }
+      parseField(key, fields, close) {
+        const at = this.pos;
+        const name = this.readWhile(/[^\s=,{}()"#%@]/).toLowerCase();
+        if (!name && this.text[this.pos] === "@") {
+          throw new ParseError(
+            `\`${key}\` is not closed (missing \`${close}\` before the next entry)`,
+            this.entryStart
+          );
+        }
+        if (!name) {
+          throw new ParseError(
+            `unexpected \`${this.text[this.pos] ?? "end of file"}\` in \`${key}\``,
+            at
+          );
+        }
+        this.skipWsAndComments();
+        if (this.text[this.pos] !== "=") {
+          throw new ParseError(`field \`${name}\` in \`${key}\` has no \`=\` (missing comma?)`, at);
+        }
+        this.pos++;
+        const value = this.parseValue(close).trim();
+        if (name in fields) {
+          this.issues.push({
+            line: this.lineOf(at),
+            key,
+            message: `duplicate field \`${name}\` in \`${key}\`; the first one is used`
+          });
+          return;
+        }
+        fields[name] = value;
+      }
+      addEntry(entry) {
+        const folded = entry.key.toLowerCase();
+        const previous = this.seenKeys.get(folded);
+        if (previous !== void 0) {
+          this.issues.push({
+            line: entry.line,
+            key: entry.key,
+            message: `duplicate key \`${entry.key}\` (first defined on line ${previous}); this entry is ignored`
+          });
+          return;
+        }
+        this.seenKeys.set(folded, entry.line);
+        this.entries.push(entry);
+      }
+      /** value := part ('#' part)*, part := {…} | "…" | digits | macro */
+      parseValue(close) {
+        let out = "";
+        for (; ; ) {
+          this.skipWsAndComments();
+          out += this.parsePart(close);
+          this.skipWsAndComments();
+          if (this.text[this.pos] !== "#") break;
+          this.pos++;
+        }
+        return out.replace(/\s+/g, " ");
+      }
+      parsePart(close) {
+        const c = this.text[this.pos];
+        if (c === "{") return this.readBraced();
+        if (c === '"') return this.readQuoted();
+        const word = this.readWhile(close === "}" ? /[^\s,#{}"%=]/ : /[^\s,#{}()"%=]/);
+        if (!word) {
+          throw new ParseError(`expected a value, found \`${c ?? "end of file"}\``, this.pos);
+        }
+        if (/^\d+$/.test(word)) return word;
+        const macro = this.macros[word.toLowerCase()];
+        if (macro === void 0) {
+          this.issues.push({
+            line: this.lineOf(this.pos),
+            message: `undefined macro \`${word}\` (kept as text)`
+          });
+          return word;
+        }
+        return macro;
+      }
+      readBraced() {
+        const start = this.pos + 1;
+        let depth = 0;
+        for (; this.pos < this.text.length; this.pos++) {
+          const c = this.text[this.pos];
+          if (c === "\\") {
+            this.pos++;
+            continue;
+          }
+          if (c === "{") depth++;
+          else if (c === "}" && --depth === 0) {
+            this.pos++;
+            return this.text.slice(start, this.pos - 1);
+          }
+        }
+        throw new ParseError("unbalanced braces in field value", start - 1);
+      }
+      readQuoted() {
+        const start = this.pos + 1;
+        let depth = 0;
+        for (this.pos = start; this.pos < this.text.length; this.pos++) {
+          const c = this.text[this.pos];
+          if (c === "\\") {
+            this.pos++;
+            continue;
+          }
+          if (c === "{") depth++;
+          else if (c === "}") depth--;
+          else if (c === '"' && depth === 0) {
+            this.pos++;
+            return this.text.slice(start, this.pos - 1);
+          }
+        }
+        throw new ParseError("unterminated quoted field value", start - 1);
+      }
+      expectClose(close, start, key) {
+        this.skipWsAndComments();
+        if (this.text[this.pos] === close) {
+          this.pos++;
+          return;
+        }
+        const what = key ? `\`${key}\`` : "entry";
+        if (this.pos >= this.text.length || this.text[this.pos] === "@") {
+          throw new ParseError(`${what} is not closed (missing \`${close}\`)`, start);
+        }
+        throw new ParseError(
+          `unexpected \`${this.text[this.pos]}\` in ${what} (missing comma or \`${close}\`?)`,
+          this.pos
+        );
+      }
+      readWhile(re) {
+        const start = this.pos;
+        while (this.pos < this.text.length && re.test(this.text[this.pos])) this.pos++;
+        return this.text.slice(start, this.pos);
+      }
+      skipWs() {
+        while (this.pos < this.text.length && /\s/.test(this.text[this.pos])) this.pos++;
+      }
+      skipWsAndComments() {
+        for (; ; ) {
+          this.skipWs();
+          if (this.text[this.pos] !== "%") return;
+          const nl = this.text.indexOf("\n", this.pos);
+          this.pos = nl < 0 ? this.text.length : nl + 1;
+        }
+      }
+    };
+  }
+});
+
+// ../packages/core/src/bib/index.ts
+var init_bib = __esm({
+  "../packages/core/src/bib/index.ts"() {
+    "use strict";
+    init_cited();
+    init_parse();
+  }
+});
+
+// ../packages/core/src/types.ts
+function statusOf(problems) {
+  if (problems.some((p) => p.severity === "error")) return "fail";
+  if (problems.some((p) => p.severity === "warning")) return "warn";
+  return "pass";
+}
+function reportStatus(checks) {
+  if (checks.length > 0 && checks.every((c) => c.status === "skipped")) return "skipped";
+  if (checks.some((c) => c.status === "fail")) return "fail";
+  if (checks.some((c) => c.status === "warn")) return "warn";
+  return "pass";
+}
+var CHECK_IDS;
+var init_types = __esm({
+  "../packages/core/src/types.ts"() {
+    "use strict";
+    CHECK_IDS = ["build", "output", "references", "accessibility", "venue"];
+  }
+});
+
+// ../packages/core/src/log/explain-data.ts
+var SIMPLE_EXPLANATIONS, EXPLAINER_PATTERNS;
+var init_explain_data = __esm({
+  "../packages/core/src/log/explain-data.ts"() {
+    "use strict";
+    SIMPLE_EXPLANATIONS = {
+      lonelyItem: {
+        rule: "lonely-item",
+        message: "`\\item` is used outside a list",
+        detail: "`\\item` only works inside `itemize`, `enumerate` or `description`.",
+        fix: "Wrap the items in `\\begin{itemize}` \u2026 `\\end{itemize}` (or `enumerate`)."
+      },
+      missingItem: {
+        rule: "missing-item",
+        message: "LaTeX expected `\\item` here",
+        detail: "Common causes: text inside a list before the first `\\item`, `\\\\` at the start of a paragraph, or an empty `thebibliography`.",
+        fix: "Start each list entry with `\\item`, move text before `\\begin{itemize}`, and remove `\\\\` after blank lines."
+      },
+      noLineToEnd: {
+        rule: "no-line-to-end",
+        message: "`\\\\` is used where there is no line to end",
+        detail: "`\\\\` ends a line inside a paragraph; after a blank line, at the start of a paragraph or after a list there is no line yet.",
+        fix: "Remove the `\\\\`. Use a blank line for a new paragraph and `\\vspace{\u2026}` for vertical space."
+      },
+      invalidUtf8: {
+        rule: "unicode-character",
+        message: "A source file is not saved as UTF-8",
+        detail: "LaTeX expects UTF-8 input, but the file contains bytes from another encoding (often Latin-1 or Windows-1252).",
+        fix: "Re-save the file as UTF-8 in your editor (or convert it with `iconv -f latin1 -t utf-8`)."
+      },
+      notInOuterParMode: {
+        rule: "not-in-outer-par-mode",
+        message: "A float or margin note is inside a box",
+        detail: "`figure`, `table` and `\\marginpar` cannot be placed inside a `minipage`, `\\parbox`, table cell, another float, or similar box.",
+        fix: "Move the float outside the box. Inside a minipage, drop the `figure` environment and use `\\captionof{figure}{\u2026}` (caption package)."
+      },
+      dimensionTooLarge: {
+        rule: "dimension-too-large",
+        message: "A length is larger than TeX allows (about 5.75 m / 16383pt)",
+        detail: "Common causes: a typo in a length (`20000pt`), a pgfplots axis with huge coordinates, or scaling by a very large factor.",
+        fix: "Check the length on this line; for plots, rescale the data or set `restrict y to domain`/`scaled ticks`."
+      },
+      floatsLost: {
+        rule: "not-in-outer-par-mode",
+        message: "Floats were lost",
+        detail: "A `figure` or `table` (or `\\marginpar`) was placed inside a box or another float, so LaTeX dropped it.",
+        fix: "Move floats out of minipages, `\\parbox`es and other floats; use `\\captionof` for captions inside a minipage."
+      }
+    };
+    EXPLAINER_PATTERNS = [
+      [/^Undefined control sequence/, "explainUndefinedControlSequence"],
+      [/^Missing \$ inserted/, "explainMissingDollar"],
+      [/^Display math should end with \$\$/, "explainMissingDollar"],
+      [/^Double (subscript|superscript)/, "explainDoubleScript"],
+      [/^Misplaced alignment tab character &/, "explainAlignmentTab"],
+      [/^Missing ([{}]) inserted/, "explainMissingBrace"],
+      [
+        /^(?:Extra \}, or forgotten (?:\$|\\endgroup|\\right)|Too many \}'s|Argument of \S+ has an extra \})/,
+        "explainExtraBrace"
+      ],
+      [
+        /^(Paragraph ended before|File ended while scanning use of|File ended while scanning definition of|Forbidden control sequence found while scanning use of) (\\?[^\s.]+)(?:\s+was complete)?(?:\s*\.)?\s*$/,
+        "explainRunaway"
+      ],
+      [/^(?:LaTeX|Package \S+) Error: File [`'](.+?)' not found/, "explainFileNotFound"],
+      [/^I can't find file [`'](.+?)'/, "explainFileNotFound"],
+      [/^LaTeX Error: Option clash for package (\S+?)\.?$/, "explainOptionClash"],
+      [/^LaTeX Error: Unknown graphics extension: (\.\S+?)\.?$/, "explainGraphicsExtension"],
+      [/^LaTeX Error: Environment (\S+) undefined/, "explainEnvironmentUndefined"],
+      [
+        /^LaTeX Error: \\begin\{([^}]*)\} on input line (\d+) ended by \\end\{([^}]*)\}/,
+        "explainEnvironmentMismatch"
+      ],
+      [/^LaTeX Error: \\begin\{(document)\}() ended by \\end\{([^}]*)\}/, "explainEnvironmentMismatch"],
+      [/^LaTeX Error: Lonely \\item/, "lonelyItem"],
+      [/^LaTeX Error: Something's wrong--perhaps a missing \\item/, "missingItem"],
+      [/^LaTeX Error: There's no line here to end/, "noLineToEnd"],
+      [/^LaTeX Error: Missing \\begin\{document\}/, "explainMissingBeginDocument"],
+      [/^LaTeX Error: Can be used only in preamble/, "explainPreambleOnly"],
+      [
+        /^(?:LaTeX|Package inputenc) Error: Unicode character (\S+) \(U\+([0-9A-Fa-f]+)\)/,
+        "explainUnicode"
+      ],
+      [/^Package inputenc Error: Invalid UTF-8 byte/, "invalidUtf8"],
+      [
+        /^Package fontspec Error: The font "([^"]+)" cannot be found|^Package fontspec Error: [^"]*?font "([^"]+)"[^\n]*?not found/,
+        "explainFontNotFound"
+      ],
+      [/^Font (\S+?)(?:=\S+)? (?:at [\d.]+pt )?not loadable/, "explainTfmFont"],
+      [/^Package biblatex Error: (.*)$/, "explainBiblatex"],
+      [/^Illegal parameter number in definition of (\\\S+?)\.?$/, "explainParameterNumber"],
+      [/^You can't use [`']macro parameter character #' in \w+ mode()/, "explainParameterNumber"],
+      [/^Package xcolor Error: Undefined color [`']([^']+)'/, "explainColor"],
+      [/^LaTeX Error: Not in outer par mode/, "notInOuterParMode"],
+      [/^Dimension too large/, "dimensionTooLarge"],
+      [/^TeX capacity exceeded, sorry \[(.+?)\]/, "explainCapacity"],
+      [/^Package (pgfkeys|tikz|pgf|pgfplots) Error: (.*)$/, "explainTikz"],
+      [/^Package hyperref Error: (.*)$/, "explainHyperref"],
+      [/^LaTeX Error: Command (\\\S+?) already defined/, "explainCommandDefined"],
+      [
+        /^LaTeX Error: Unknown option [`']([^']+)' for (?:package|class) [`']([^']+)'/,
+        "explainUnknownOption"
+      ],
+      [/^LaTeX Error: Float\(s\) lost/, "floatsLost"]
+    ];
+  }
+});
+
+// ../packages/core/src/log/hints.ts
+function words(text2) {
+  return text2.split(/\s+/).filter(Boolean);
+}
+function list(text2) {
+  return text2.split(",").map((item) => item.trim()).filter(Boolean);
+}
+function editDistance(a, b, max = 3) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const value = Math.min(
+        (previous[j] ?? 0) + 1,
+        (current[j - 1] ?? 0) + 1,
+        (previous[j - 1] ?? 0) + cost
+      );
+      current.push(value);
+      rowMin = Math.min(rowMin, value);
+    }
+    if (rowMin > max) return max + 1;
+    previous = current;
+  }
+  return previous[b.length] ?? max + 1;
+}
+function closest(word, candidates) {
+  if (word.length < 3) return void 0;
+  const max = word.length <= 4 ? 1 : 2;
+  let best;
+  let bestDistance = max + 1;
+  for (const candidate of candidates) {
+    if (candidate === word) return void 0;
+    const d = editDistance(word, candidate, max);
+    if (d < bestDistance) {
+      best = candidate;
+      bestDistance = d;
+    }
+  }
+  return best;
+}
+var COMMAND_PACKAGES, NATBIB_TO_BIBLATEX, SIUNITX_V3, COMMON_COMMANDS, ENVIRONMENT_PACKAGES, THEOREM_LIKE, COMMON_ENVIRONMENTS, MATH_COMMANDS, UNICODE_REPLACEMENTS, TIKZ_KEYS;
+var init_hints = __esm({
+  "../packages/core/src/log/hints.ts"() {
+    "use strict";
+    COMMAND_PACKAGES = {
+      mathbb: "amssymb",
+      mathfrak: "amssymb",
+      checkmark: "amssymb",
+      square: "amssymb",
+      blacksquare: "amssymb",
+      leqslant: "amssymb",
+      geqslant: "amssymb",
+      varnothing: "amssymb",
+      therefore: "amssymb",
+      mathscr: "mathrsfs",
+      eqref: "amsmath",
+      text: "amsmath",
+      dfrac: "amsmath",
+      tfrac: "amsmath",
+      binom: "amsmath",
+      operatorname: "amsmath",
+      DeclareMathOperator: "amsmath",
+      boldsymbol: "amsmath",
+      intertext: "amsmath",
+      numberwithin: "amsmath",
+      bm: "bm",
+      toprule: "booktabs",
+      midrule: "booktabs",
+      bottomrule: "booktabs",
+      cmidrule: "booktabs",
+      includegraphics: "graphicx",
+      graphicspath: "graphicx",
+      rotatebox: "graphicx",
+      scalebox: "graphicx",
+      resizebox: "graphicx",
+      textcolor: "xcolor",
+      color: "xcolor",
+      colorbox: "xcolor",
+      definecolor: "xcolor",
+      rowcolor: "xcolor (with the `table` option)",
+      cellcolor: "xcolor (with the `table` option)",
+      url: "url (or hyperref)",
+      path: "url",
+      href: "hyperref",
+      hypersetup: "hyperref",
+      autoref: "hyperref",
+      texorpdfstring: "hyperref",
+      cref: "cleveref",
+      Cref: "cleveref",
+      crefname: "cleveref",
+      multirow: "multirow",
+      makecell: "makecell",
+      captionof: "caption",
+      captionsetup: "caption",
+      subcaption: "subcaption",
+      subcaptionbox: "subcaption",
+      subfloat: "subfig",
+      lipsum: "lipsum",
+      blindtext: "blindtext",
+      todo: "todonotes",
+      missingfigure: "todonotes",
+      xspace: "xspace",
+      ce: "mhchem",
+      lstinline: "listings",
+      lstset: "listings",
+      mintinline: "minted",
+      tikz: "tikz",
+      usetikzlibrary: "tikz",
+      pgfplotsset: "pgfplots",
+      nicefrac: "nicefrac",
+      sout: "ulem",
+      uline: "ulem",
+      hl: "soul",
+      euro: "eurosym",
+      degree: "gensymb",
+      celsius: "gensymb",
+      addbibresource: "biblatex",
+      printbibliography: "biblatex",
+      parencite: "biblatex",
+      textcite: "biblatex",
+      autocite: "biblatex",
+      footcite: "biblatex",
+      gls: "glossaries",
+      newacronym: "glossaries",
+      acrshort: "glossaries",
+      ac: "acronym",
+      newgeometry: "geometry",
+      geometry: "geometry",
+      setstretch: "setspace",
+      onehalfspacing: "setspace",
+      doublespacing: "setspace",
+      fancyhead: "fancyhdr",
+      fancyfoot: "fancyhdr",
+      pagestyle: "fancyhdr",
+      KOMAoption: "a KOMA-Script class",
+      newtheorem: "amsthm (or the LaTeX kernel)",
+      qedhere: "amsthm",
+      theoremstyle: "amsthm",
+      setmainfont: "fontspec",
+      setsansfont: "fontspec",
+      setmonofont: "fontspec",
+      newfontfamily: "fontspec",
+      setmathfont: "unicode-math",
+      SetKwFunction: "algorithm2e",
+      KwData: "algorithm2e",
+      State: "algpseudocode",
+      Require: "algpseudocode",
+      Ensure: "algpseudocode",
+      If: "algpseudocode",
+      For: "algpseudocode",
+      Procedure: "algpseudocode",
+      enquote: "csquotes",
+      num: "siunitx",
+      qty: "siunitx",
+      unit: "siunitx",
+      ang: "siunitx",
+      qtyrange: "siunitx",
+      numrange: "siunitx",
+      sisetup: "siunitx"
+    };
+    NATBIB_TO_BIBLATEX = {
+      citep: "\\parencite",
+      Citep: "\\Parencite",
+      citet: "\\textcite",
+      Citet: "\\Textcite",
+      citealp: "\\cite",
+      citealt: "\\cite",
+      citeyearpar: "\\parencite*",
+      citeauthor: "\\citeauthor",
+      Citeauthor: "\\Citeauthor",
+      citeyear: "\\citeyear",
+      citenum: "\\cite"
+    };
+    SIUNITX_V3 = {
+      SI: "\\qty",
+      si: "\\unit",
+      SIrange: "\\qtyrange",
+      SIlist: "\\qtylist",
+      SIproduct: "\\qtyproduct",
+      numrange: "\\numrange"
+    };
+    COMMON_COMMANDS = words(`
+  textbf textit texttt textsc textrm textsf emph underline textsuperscript textsubscript
+  section subsection subsubsection paragraph chapter part caption label ref pageref eqref
+  cite footnote footnotetext item begin end includegraphics centering raggedright
+  noindent newline linebreak pagebreak newpage clearpage vspace hspace vfill hfill
+  textwidth linewidth columnwidth tableofcontents listoffigures listoftables maketitle
+  title author date thanks bibliography bibliographystyle printbibliography
+  addbibresource usepackage documentclass newcommand renewcommand small footnotesize
+  scriptsize large Large LARGE huge frac sqrt sum prod int infty alpha beta gamma delta
+  epsilon varepsilon lambda sigma theta omega mathbf mathrm mathit mathcal mathbb left
+  right cdot cdots ldots dots times leq geq neq approx equiv partial nabla rightarrow
+  Rightarrow leftarrow mapsto hline multicolumn toprule midrule bottomrule url href
+  textcolor parencite textcite autocite citep citet autoref cref Cref input include
+  appendix today LaTeX TeX quad qquad mathbb operatorname
+`);
+    ENVIRONMENT_PACKAGES = {
+      align: "amsmath",
+      "align*": "amsmath",
+      aligned: "amsmath",
+      gather: "amsmath",
+      "gather*": "amsmath",
+      multline: "amsmath",
+      "multline*": "amsmath",
+      "equation*": "amsmath",
+      split: "amsmath",
+      cases: "amsmath",
+      pmatrix: "amsmath",
+      bmatrix: "amsmath",
+      vmatrix: "amsmath",
+      matrix: "amsmath",
+      proof: "amsthm",
+      algorithm: "algorithm (or algorithm2e)",
+      algorithmic: "algpseudocode (algorithmicx)",
+      subfigure: "subcaption",
+      subtable: "subcaption",
+      tabularx: "tabularx",
+      longtable: "longtable",
+      tabulary: "tabulary",
+      lstlisting: "listings",
+      minted: "minted",
+      tikzpicture: "tikz",
+      axis: "pgfplots",
+      landscape: "pdflscape",
+      multicols: "multicol",
+      "multicols*": "multicol",
+      wrapfigure: "wrapfig",
+      comment: "comment",
+      frame: "the beamer document class",
+      columns: "the beamer document class",
+      threeparttable: "threeparttable",
+      tcolorbox: "tcolorbox",
+      mdframed: "mdframed",
+      refsection: "biblatex",
+      dmath: "breqn",
+      spacing: "setspace",
+      singlespace: "setspace",
+      CJK: "CJK"
+    };
+    THEOREM_LIKE = new Set(
+      words(`
+  theorem lemma corollary proposition definition remark example conjecture claim
+  assumption hypothesis observation notation problem
+`)
+    );
+    COMMON_ENVIRONMENTS = words(`
+  itemize enumerate description figure figure* table table* tabular equation center
+  flushleft flushright verbatim quote quotation minipage abstract document
+  thebibliography array eqnarray align align* gather theorem lemma proof definition
+  tikzpicture algorithm algorithmic subfigure tabularx longtable lstlisting appendix
+  titlepage displaymath
+`);
+    MATH_COMMANDS = new Set(
+      words(`
+  alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu
+  nu xi pi rho sigma tau upsilon phi varphi chi psi omega Gamma Delta Theta Lambda Xi Pi
+  Sigma Phi Psi Omega frac dfrac sqrt sum prod int oint lim infty leq geq neq le ge ne
+  approx equiv sim simeq propto pm mp times div cdot cdots circ partial nabla forall
+  exists in notin subset subseteq supset cup cap emptyset rightarrow leftarrow to
+  Rightarrow Leftarrow leftrightarrow mapsto mathbf mathrm mathit mathcal mathbb mathfrak
+  boldsymbol hat bar tilde vec dot ddot overline underbrace overbrace log ln exp sin cos
+  tan max min arg argmax argmin det mid parallel perp angle ell hbar Re Im aleph prime
+  langle rangle lfloor rfloor lceil rceil left right
+`)
+    );
+    UNICODE_REPLACEMENTS = {
+      "\u2265": "$\\geq$",
+      "\u2264": "$\\leq$",
+      "\u2260": "$\\neq$",
+      "\u2248": "$\\approx$",
+      "\xB1": "$\\pm$",
+      "\xD7": "$\\times$",
+      "\xF7": "$\\div$",
+      "\u2192": "$\\rightarrow$",
+      "\u2190": "$\\leftarrow$",
+      "\u21D2": "$\\Rightarrow$",
+      "\u2194": "$\\leftrightarrow$",
+      "\u221E": "$\\infty$",
+      "\u2211": "$\\sum$",
+      "\u2208": "$\\in$",
+      "\u2200": "$\\forall$",
+      "\u2203": "$\\exists$",
+      "\u221A": "$\\sqrt{}$",
+      "\u2202": "$\\partial$",
+      "\xB7": "$\\cdot$",
+      "\u2212": "$-$",
+      \u03B1: "$\\alpha$",
+      \u03B2: "$\\beta$",
+      \u03B3: "$\\gamma$",
+      \u03B4: "$\\delta$",
+      \u03B5: "$\\varepsilon$",
+      \u03B8: "$\\theta$",
+      \u03BB: "$\\lambda$",
+      \u03BC: "$\\mu$ (or `\\textmu` from textcomp)",
+      \u03C0: "$\\pi$",
+      \u03C3: "$\\sigma$",
+      \u03C9: "$\\omega$",
+      \u0394: "$\\Delta$",
+      \u03A3: "$\\Sigma$",
+      \u03A9: "$\\Omega$",
+      "\u2713": "$\\checkmark$ (amssymb)",
+      "\u2717": "$\\times$",
+      "\u20AC": "\\euro{} (eurosym)",
+      "\u2122": "\\texttrademark",
+      "\xA0": "~",
+      "\u200B": "nothing (delete the zero-width space)",
+      "\uFEFF": "nothing (delete the byte-order mark)"
+    };
+    TIKZ_KEYS = list(`
+  color, draw, fill, line width, thick, thin, very thick, ultra thick, dashed, dotted,
+  densely dashed, solid, opacity, fill opacity, draw opacity, text, font, align, anchor,
+  above, below, left, right, above left, above right, below left, below right,
+  node distance, minimum width, minimum height, minimum size, text width, inner sep,
+  outer sep, rounded corners, sharp corners, scale, rotate, xshift, yshift, shift,
+  xscale, yscale, circle, rectangle, ellipse, label, pin, midway, near start, near end,
+  pos, sloped, bend left, bend right, loop, out, in, looseness, shorten, arrows,
+  line cap, line join, pattern, shading, top color, bottom color, left color,
+  right color, ball color, double, radius, x radius, y radius, samples, domain, smooth,
+  mark, every node, style, name, shape, grow, level distance, sibling distance,
+  remember picture, overlay
+`);
+  }
+});
+
+// ../packages/core/src/log/paths.ts
+function spacedPathLength(text2, start) {
+  const m = SPACED_PATH_AT.exec(text2.slice(start, start + 1100));
+  return m ? m[0].length : 0;
+}
+function basename(path) {
+  const parts = path.split("/");
+  return parts[parts.length - 1] || path;
+}
+function extension(path) {
+  const name = basename(path);
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+}
+function cleanRoot(root) {
+  let r = root.replace(/\\/g, "/");
+  while (r.length > 1 && r.endsWith("/")) r = r.slice(0, -1);
+  return r;
+}
+function underRoot(p, root) {
+  if (p.startsWith(`${root}/`)) return true;
+  const drive = /^[A-Za-z]:\//;
+  return drive.test(root) && drive.test(p) && p.length > root.length && p[root.length] === "/" && p.slice(0, root.length).toLowerCase() === root.toLowerCase();
+}
+function normalizePath(path, root) {
+  let p = path.trim().replace(/\\/g, "/");
+  if (p.startsWith('"') && p.endsWith('"') && p.length >= 2) p = p.slice(1, -1);
+  const r = root ? cleanRoot(root) : "";
+  if (r && underRoot(p, r)) p = p.slice(r.length + 1);
+  else if (DISTRIBUTION_DIR.test(p)) return basename(p);
+  p = p.replace(/\/{2,}/g, "/").replace(/\/(?:\.\/)+/g, "/");
+  while (p.startsWith("./")) p = p.slice(2);
+  return p;
+}
+function isFileToken(token) {
+  if (token.length === 0) return false;
+  if (/^(?:\.{1,2}\/|\/|~\/|[A-Za-z]:[\\/])/.test(token)) return token.length > 2;
+  return /^[\w-][\w.\-/]*$/.test(token) && TEX_EXTENSIONS.test(token);
+}
+var DISTRIBUTION_DIR, TEX_EXTENSION_GROUP, TEX_EXTENSIONS, SPACED_PATH_SOURCE, SPACED_PATH_AT;
+var init_paths = __esm({
+  "../packages/core/src/log/paths.ts"() {
+    "use strict";
+    DISTRIBUTION_DIR = /(?:^|\/)(?:texmf[\w-]*|\.texlive\d*|texlive\/\d{4}|miktex[^/]*)\//i;
+    TEX_EXTENSION_GROUP = "(?:tex|ltx|sty|cls|clo|cfg|def|fd|aux|toc|lof|lot|bbl|out|nav|snm|vrb|ldf|dfu|lua|bst|tikz|pgf|mkii|trsl|dict|xmpi|ins|dtx|tikzstyles)";
+    TEX_EXTENSIONS = new RegExp(`\\.${TEX_EXTENSION_GROUP}$`, "i");
+    SPACED_PATH_SOURCE = `(?:\\.{1,2}/|/|~/|[A-Za-z]:[\\\\/])[^:()[\\]{}<>\\n"]{0,1024}?\\.${TEX_EXTENSION_GROUP}`;
+    SPACED_PATH_AT = new RegExp(`^${SPACED_PATH_SOURCE}(?=[\\s()[\\]{}<>"]|$)`, "i");
+  }
+});
+
+// ../packages/core/src/log/explain.ts
+function sourceText(error) {
+  if (!error.source) return "";
+  return (error.source.before.replace(/^\.\.\./, "") + error.source.after).trim();
+}
+function firstContextBefore(error) {
+  const first2 = error.context[0] ?? "";
+  return first2.replace(/^l\.\d+ /, "").replace(/^<[^>]*> ?/, "");
+}
+function trailingControlSequence(text2) {
+  return /\\([A-Za-z@]+|[^A-Za-z@\s])\s*$/.exec(text2)?.[1];
+}
+function wordAtStop(error) {
+  if (!error.source) return "";
+  const before = /(\S*)$/.exec(error.source.before)?.[1] ?? "";
+  const after = /^\s*(\S*)/.exec(error.source.after)?.[1] ?? "";
+  return (before + after).replace(/[.,;:!?)]+$/, "");
+}
+function textNearStop(error, length = 40) {
+  const before = (error.source?.before ?? "").replace(/^\.\.\./, "").trim();
+  return before.length > length ? `\u2026${before.slice(-length)}` : before;
+}
+function escapeSpecials(text2) {
+  return text2.replace(/\\?([_&#%$])/g, "\\$1").replace(/\^/g, "\\^{}");
+}
+function loadAdvice(pkg) {
+  const m = /^([a-z][\w-]*)(.*)$/.exec(pkg);
+  if (!m) return `Load ${pkg}.`;
+  return `Add ${code(`\\usepackage{${m[1]}}`)}${m[2]} to the preamble.`;
+}
+function hasPackage(ctx, name) {
+  return ctx.packages.has(name);
+}
+function windowsPathIn(text2) {
+  const braced = /\{([^{}]*\\[^{}]*)\}/.exec(text2)?.[1];
+  if (braced && /(?:^[A-Za-z]:\\|\\[\w.-]+\\|\\[\w-]+\.[A-Za-z]{2,4}$)/.test(braced)) return braced;
+  return void 0;
+}
+function undefinedInGraphicsPath(path) {
+  const name = path.split("\\").pop() ?? path;
+  return {
+    rule: "undefined-control-sequence",
+    check: "build",
+    message: `Backslashes in the file path ${code(path)} are read as commands`,
+    detail: "TeX treats every `\\` as the start of a command, so a Windows-style path breaks into undefined commands. TeX paths always use forward slashes.",
+    fix: `Use a forward-slash path relative to the main file, e.g. ${code(`\\includegraphics{figures/${name}}`)}, and copy the file into the project.`,
+    data: { path }
+  };
+}
+function natbibAdvice(cs, ctx) {
+  const replacement = NATBIB_TO_BIBLATEX[cs];
+  if (!replacement) return void 0;
+  if (hasPackage(ctx, "biblatex")) {
+    return {
+      rule: "undefined-control-sequence",
+      check: "build",
+      message: `${code(`\\${cs}`)} is a natbib command, but this document uses biblatex`,
+      detail: "biblatex has its own citation commands and does not define the natbib ones by default.",
+      fix: `Write ${code(`${replacement}{\u2026}`)} instead, or load biblatex with ${code("\\usepackage[natbib=true]{biblatex}")} to keep the natbib names.`,
+      data: { command: `\\${cs}`, replacement }
+    };
+  }
+  if (hasPackage(ctx, "natbib")) return void 0;
+  return {
+    rule: "undefined-control-sequence",
+    check: "build",
+    message: `${code(`\\${cs}`)} needs a citation package (natbib or biblatex)`,
+    detail: `${code(`\\${cs}`)} is not part of plain LaTeX; it is defined by natbib (and, for some names, by biblatex).`,
+    fix: `Add ${code("\\usepackage{natbib}")} to the preamble, or with biblatex write ${code(`${replacement}{\u2026}`)}.`,
+    data: { command: `\\${cs}`, package: "natbib" }
+  };
+}
+function siunitxAdvice(cs, ctx) {
+  const v3 = SIUNITX_V3[cs];
+  if (v3 && !hasPackage(ctx, "siunitx")) {
+    return {
+      rule: "undefined-control-sequence",
+      check: "build",
+      message: `${code(`\\${cs}`)} comes from the siunitx package, which is not loaded`,
+      detail: `${code(`\\${cs}`)} is the siunitx version 2 name; siunitx version 3 calls it ${code(v3)}.`,
+      fix: `Add ${code("\\usepackage{siunitx}")} to the preamble and prefer the current name ${code(v3)}.`,
+      data: { command: `\\${cs}`, package: "siunitx", replacement: v3 }
+    };
+  }
+  if (["qty", "unit", "qtyrange", "qtylist"].includes(cs) && hasPackage(ctx, "siunitx")) {
+    return {
+      rule: "undefined-control-sequence",
+      check: "build",
+      message: `${code(`\\${cs}`)} needs siunitx version 3, but an older siunitx is installed`,
+      detail: "siunitx version 3 (2021) introduced `\\qty` and `\\unit`; older versions only have `\\SI` and `\\si`.",
+      fix: "Update TeX Live (or use the Overfull Docker image), or write `\\SI{\u2026}{\u2026}` and `\\si{\u2026}`.",
+      data: { command: `\\${cs}`, package: "siunitx" }
+    };
+  }
+  return void 0;
+}
+function packageAdvice(cs, ctx) {
+  if (cs === "mathbb" || cs === "mathfrak") {
+    if (hasPackage(ctx, "amssymb") || hasPackage(ctx, "unicode-math")) return void 0;
+    return {
+      rule: "undefined-control-sequence",
+      check: "build",
+      message: `${code(`\\${cs}`)} needs the amssymb package`,
+      detail: `${code(`\\${cs}`)} (blackboard bold letters such as \u211D) is not part of plain LaTeX math.`,
+      fix: `Add ${code("\\usepackage{amssymb}")} to the preamble. With LuaLaTeX or XeLaTeX, ${code("\\usepackage{unicode-math}")} also provides it.`,
+      data: { command: `\\${cs}`, package: "amssymb" }
+    };
+  }
+  const pkg = COMMAND_PACKAGES[cs];
+  if (!pkg) return void 0;
+  const name = pkg.split(" ")[0] ?? pkg;
+  if (/^[a-z][\w-]*$/.test(name) && hasPackage(ctx, name)) return void 0;
+  const load = loadAdvice(pkg);
+  return {
+    rule: "undefined-control-sequence",
+    check: "build",
+    message: `${code(`\\${cs}`)} needs the ${pkg} package`,
+    detail: `${code(`\\${cs}`)} is defined by ${pkg}, which this document does not load.`,
+    fix: load,
+    data: { command: `\\${cs}`, package: pkg }
+  };
+}
+function mathyScript(word) {
+  return /^\$?[A-Za-z]{1,2}[_^]\{?[A-Za-z0-9]{1,3}\}?\$?$/.test(word);
+}
+function explainError(error, ctx) {
+  for (const [pattern, explain] of EXPLAINERS) {
+    const m = pattern.exec(error.message);
+    if (m) return explain(m, error, ctx);
+  }
+  const near = sourceText(error);
+  return {
+    rule: "tex-error",
+    check: "build",
+    message: error.message.replace(/\.$/, ""),
+    detail: near ? `TeX stopped while reading ${code(near)}.` : void 0,
+    fix: "Read the message and the source line it points to; fix the first error in the log first, later ones often follow from it."
+  };
+}
+var code, explainUndefinedControlSequence, explainMissingDollar, explainDoubleScript, explainAlignmentTab, explainMissingBrace, explainExtraBrace, explainRunaway, IMAGE_EXTENSIONS, explainFileNotFound, explainOptionClash, explainGraphicsExtension, explainEnvironmentUndefined, explainEnvironmentMismatch, simple, explainMissingBeginDocument, explainPreambleOnly, explainUnicode, explainFontNotFound, explainTfmFont, explainBiblatex, explainParameterNumber, explainColor, explainCapacity, explainTikz, explainHyperref, explainCommandDefined, explainUnknownOption, HANDLERS, EXPLAINERS;
+var init_explain = __esm({
+  "../packages/core/src/log/explain.ts"() {
+    "use strict";
+    init_explain_data();
+    init_hints();
+    init_paths();
+    code = (text2) => `\`${text2}\``;
+    explainUndefinedControlSequence = (_m, error, ctx) => {
+      const path = windowsPathIn(sourceText(error)) ?? windowsPathIn(error.context.join(" "));
+      if (path) return undefinedInGraphicsPath(path);
+      const cs = trailingControlSequence(firstContextBefore(error));
+      const fromBib = extension(error.file ?? "") === "bbl";
+      if (!cs) {
+        return {
+          rule: "undefined-control-sequence",
+          check: "build",
+          message: "A command on this line is not defined",
+          detail: sourceText(error) ? `TeX stopped in ${code(sourceText(error))}.` : void 0,
+          fix: "Check the spelling of each command on the line, and load the package that defines it."
+        };
+      }
+      const specific = natbibAdvice(cs, ctx) ?? siunitxAdvice(cs, ctx) ?? packageAdvice(cs, ctx);
+      if (specific) return specific;
+      const command = `\\${cs}`;
+      const internal = cs.includes("@");
+      const suggestion = internal ? void 0 : closest(cs, COMMON_COMMANDS);
+      if (suggestion) {
+        return {
+          rule: "undefined-control-sequence",
+          check: "build",
+          message: `Unknown command ${code(command)} (did you mean ${code(`\\${suggestion}`)}?)`,
+          detail: `${code(command)} is not defined by LaTeX or any loaded package; it looks like a typo of ${code(`\\${suggestion}`)}.`,
+          fix: `Replace ${code(command)} with ${code(`\\${suggestion}`)}.`,
+          data: { command, suggestion: `\\${suggestion}` }
+        };
+      }
+      return {
+        rule: "undefined-control-sequence",
+        check: "build",
+        message: `Unknown command ${code(command)}`,
+        detail: fromBib ? `The command comes from a field in your .bib file (via the .bbl file), not from the .tex sources.` : internal ? `${code(command)} is an internal command of a package or class; this usually follows an earlier error or a package conflict.` : `${code(command)} is not defined by LaTeX or by any package this document loads.`,
+        fix: fromBib ? `Find ${code(command)} in the .bib file and replace it, or define it in the preamble.` : internal ? "Fix the first error in the log first; if this is the only error, check for two packages that conflict." : `Check the spelling, load the package that defines ${code(command)}, or define it with ${code(`\\newcommand{${command}}{\u2026}`)}.`,
+        data: { command }
+      };
+    };
+    explainMissingDollar = (_m, error) => {
+      const before = error.source?.before ?? "";
+      const word = wordAtStop(error);
+      const script = /([_^])\s*$/.exec(before)?.[1];
+      if (script && word) {
+        const math = mathyScript(word) || script === "^" && !/[./]/.test(word);
+        const name = script === "_" ? "underscore `_`" : "caret `^`";
+        if (math) {
+          return {
+            rule: "missing-dollar",
+            check: "build",
+            message: `${code(word)} uses ${script === "_" ? "a subscript" : "a superscript"} outside math mode`,
+            detail: `The ${name} only works inside a formula, so TeX inserted a ${code("$")} and continued in math mode.`,
+            fix: `Write ${code(`$${word.replace(/\$/g, "")}$`)}.`,
+            data: { text: word, char: script }
+          };
+        }
+        const escaped = escapeSpecials(word);
+        return {
+          rule: "missing-dollar",
+          check: "build",
+          message: `The ${name} in ${code(word)} needs escaping`,
+          detail: `In running text ${code(script)} starts a ${script === "_" ? "subscript" : "superscript"}, which only works in math mode, so TeX inserted a ${code("$")} and typeset the rest as a formula.`,
+          fix: `Write ${code(escaped)}, or for file names and identifiers use ${code(`\\path{${word}}`)} (url package) or ${code(`\\texttt{${escaped}}`)}.`,
+          data: { text: word, char: script, replacement: escaped }
+        };
+      }
+      const cs = trailingControlSequence(before);
+      if (cs && MATH_COMMANDS.has(cs)) {
+        return {
+          rule: "missing-dollar",
+          check: "build",
+          message: `${code(`\\${cs}`)} is a math command used outside math mode`,
+          detail: `${code(`\\${cs}`)} only works inside a formula, so TeX inserted a ${code("$")}.`,
+          fix: `Write ${code(`$\\${cs}$`)} (or put the whole expression in ${code("$\u2026$")}).`,
+          data: { command: `\\${cs}` }
+        };
+      }
+      if (error.context.some((line) => /\\par\b/.test(line)) || before.trim() === "") {
+        return {
+          rule: "missing-dollar",
+          check: "build",
+          message: "A formula is interrupted by a blank line or is not closed",
+          detail: "Formulas cannot contain blank lines (paragraph breaks), and every `$` or `\\(` must be closed in the same paragraph.",
+          fix: "Remove blank lines inside the equation environment or `\\[ \u2026 \\]`, and check that every `$` has a matching `$`."
+        };
+      }
+      return {
+        rule: "missing-dollar",
+        check: "build",
+        message: `Math-only text outside math mode near ${code(textNearStop(error))}`,
+        detail: "TeX met a symbol that only works in formulas (such as `_`, `^` or a math command), or a formula that is not closed.",
+        fix: "Put the formula inside `$\u2026$`, escape `_` as `\\_` in text, and check that every `$` is closed."
+      };
+    };
+    explainDoubleScript = (m, error) => {
+      const which2 = m[1] === "subscript" ? "subscript" : "superscript";
+      const word = wordAtStop(error).replace(/\$/g, "");
+      const sym = which2 === "subscript" ? "_" : "^";
+      const parts = word.split(sym);
+      const grouped = parts.length >= 3 ? `${parts[0]}${sym}{${parts.slice(1).join("")}}` : void 0;
+      return {
+        rule: "double-script",
+        check: "build",
+        message: word ? `${code(word)} has two ${which2}s` : `A symbol has two ${which2}s`,
+        detail: `TeX allows one ${which2} per symbol; ${code(`${sym}a${sym}b`)} is ambiguous.`,
+        fix: grouped ? `Group them: ${code(grouped)}${which2 === "subscript" ? ` or ${code(`${parts[0]}_{${parts.slice(1).join(",")}}`)}` : ""}.` : `Group the ${which2}s in braces, e.g. ${code(`x${sym}{ab}`)} or ${code(`{x${sym}a}${sym}b`)}.`,
+        data: word ? { text: word } : void 0
+      };
+    };
+    explainAlignmentTab = (_m, error) => {
+      const before = (error.source?.before ?? "").replace(/&\s*$/, "");
+      const prev = /(\S+)\s*$/.exec(before)?.[1] ?? "";
+      const next = /^\s*(\S+)/.exec(error.source?.after ?? "")?.[1] ?? "";
+      const phrase = prev && next ? `${prev} & ${next}` : "";
+      const fromBib = extension(error.file ?? "") === "bbl";
+      return {
+        rule: "misplaced-alignment-tab",
+        check: "build",
+        message: phrase ? `Unescaped ${code("&")} in ${code(phrase)}` : `Unescaped ${code("&")} outside a table`,
+        detail: fromBib ? "`&` separates table columns; this one comes from a .bib field (often a journal or publisher name)." : "`&` separates table columns and cannot appear in running text.",
+        fix: phrase ? `Write ${code(`${prev} \\& ${next}`)}${fromBib ? " in the .bib file" : ""}.` : "Write `\\&` for a literal ampersand.",
+        data: phrase ? { text: phrase } : void 0
+      };
+    };
+    explainMissingBrace = (m, error) => {
+      const near = textNearStop(error);
+      const inMath = /\$|\\\]|\\\)/.test(near) || /\$/.test(error.source?.after ?? "");
+      return {
+        rule: "missing-brace",
+        check: "build",
+        message: `A ${code(m[1] === "{" ? "{" : "}")} is missing near ${code(near || sourceText(error))}`,
+        detail: inMath ? "A `{` group opened inside a formula is still open when the formula ends; braces and `$` must nest properly." : "Braces are unbalanced: a group was closed in the wrong order or not at all.",
+        fix: inMath ? "Close every `{` before the closing `$`, e.g. write `$x^{2}$` instead of `$x^{2$`." : "Check that every `{` on this line has a matching `}`."
+      };
+    };
+    explainExtraBrace = (m, error) => {
+      const near = textNearStop(error);
+      const forgottenDollar = /forgotten \$/.test(m[0]);
+      return {
+        rule: "extra-brace",
+        check: "build",
+        message: near ? `A ${code("}")} has no matching ${code("{")} near ${code(near)}` : `A ${code("}")} has no matching ${code("{")}`,
+        detail: forgottenDollar ? "TeX found a `}` that closes nothing, often a typo or a `$` that ends a formula too early." : "There are more closing braces than opening ones, so TeX ignored the extra `}`.",
+        fix: "Delete the extra `}` or add the missing `{`; check that each formula opens and closes with `$`."
+      };
+    };
+    explainRunaway = (m, error) => {
+      const command = m[2] ?? "";
+      const arg = (error.runaway ?? "").replace(/\\par\b.*$/, "").trimEnd().replace(/\\ETC\.$/, "").trim();
+      const fileEnded = m[1]?.startsWith("File ended");
+      const definition = /definition/.test(m[1] ?? "");
+      return {
+        rule: "runaway-argument",
+        check: "build",
+        message: definition ? `The definition of ${code(command)} is never closed` : `The argument of ${code(command)} is never closed${arg ? `: ${code(`${command}${arg}`)}` : ""}`,
+        detail: fileEnded ? `TeX read to the end of the file looking for the ${code("}")} that closes ${code(command)}.` : `TeX reached a blank line (paragraph end) while still reading the argument of ${code(command)}, so a ${code("}")} is missing before it.`,
+        fix: arg ? `Add the missing ${code("}")}; search for ${code(`${command}${arg.slice(0, 30)}`)} in the source.` : `Add the missing ${code("}")} after the argument of ${code(command)}.`,
+        data: { command, ...arg ? { argument: arg } : {} }
+      };
+    };
+    IMAGE_EXTENSIONS = /\.(?:pdf|png|jpe?g|eps|ps|svg|gif|tiff?|bmp|webp|jbig2|jb2|mps)$/i;
+    explainFileNotFound = (m, error) => {
+      const file = m[1] ?? "";
+      const ext = extension(file);
+      if (ext === "sty" || ext === "cls") {
+        const name = file.replace(/\.(?:sty|cls)$/, "");
+        const kind = ext === "sty" ? "package" : "document class";
+        return {
+          rule: "missing-package",
+          check: "build",
+          message: `The ${kind} ${code(name)} is not installed`,
+          detail: `TeX could not find ${code(file)}. Either the name is misspelled or the ${kind} is not part of this TeX installation.`,
+          fix: `Check the spelling of ${code(name)}. If it is correct, install it with ${code(`tlmgr install ${name}`)} (TeX Live) or the MiKTeX console, or build with the Overfull Docker image, which has the full TeX Live. A custom ${kind} must sit next to the main .tex file.`,
+          data: { file, package: name }
+        };
+      }
+      const graphics = /\\includegraphics|draft setting/.test(`${error.message} ${error.context.join(" ")}`) || error.help.some((line) => /extensions:/.test(line)) || IMAGE_EXTENSIONS.test(file);
+      if (graphics) {
+        const tried = error.help.find((line) => /^\.\w+,/.test(line));
+        return {
+          rule: "missing-figure",
+          check: "output",
+          message: `Figure file ${code(file)} not found`,
+          detail: `${code("\\includegraphics")} could not find ${code(file)}${tried ? ` with any of the extensions ${tried.split(",").slice(0, 4).join(", ")}\u2026` : ""}. The PDF has an empty box instead of the figure.`,
+          fix: "Check the path and the file name, including upper/lower case (CI runs on Linux, where case matters). Paths are relative to the main .tex file or to `\\graphicspath`.",
+          data: { file }
+        };
+      }
+      return {
+        rule: "missing-file",
+        check: "build",
+        message: `File ${code(file)} not found`,
+        detail: `TeX could not open ${code(file)}, so the build stopped there.`,
+        fix: "Check the path and spelling in `\\input`/`\\include`. Paths are relative to the main .tex file, and case matters on Linux.",
+        data: { file }
+      };
+    };
+    explainOptionClash = (m, error) => {
+      const pkg = m[1] ?? "";
+      const help = error.help.join("\n");
+      const first2 = /already been loaded with options:\s*\n?\s*\[([^\]]*)\]/.exec(help)?.[1];
+      const second = /load it with options\s*\n?\s*\[([^\]]*)\]/.exec(help)?.[1];
+      const options = [first2, second].flatMap((o) => (o ?? "").split(",")).map((o) => o.trim()).filter(Boolean);
+      const merged = [...new Set(options)].join(",");
+      const shown = first2 !== void 0 && second !== void 0 ? ` (${code(`[${first2}]`)} and ${code(`[${second}]`)})` : "";
+      const arxiv = pkg === "hyperref" ? " Note that arXiv and many classes load hyperref themselves; use `\\hypersetup{\u2026}` for options instead of loading it again." : "";
+      return {
+        rule: "option-clash",
+        check: "build",
+        message: `${code(pkg)} is loaded twice with different options${shown}`,
+        detail: `A package can be loaded only once. It was loaded again (by you, the class, or another package) with options it was not first loaded with.${arxiv}`,
+        fix: merged ? `Load it once with all options: ${code(`\\usepackage[${merged}]{${pkg}}`)}. If the class or another package loads it first, put ${code(`\\PassOptionsToPackage{${merged}}{${pkg}}`)} before ${code("\\documentclass")}.` : `Remove the second ${code(`\\usepackage{${pkg}}`)} and merge its options into the first; use ${code("\\PassOptionsToPackage")} before ${code("\\documentclass")} if a class loads it.`,
+        data: {
+          package: pkg,
+          ...first2 !== void 0 ? { firstOptions: first2 } : {},
+          ...second !== void 0 ? { secondOptions: second } : {}
+        }
+      };
+    };
+    explainGraphicsExtension = (m, error) => {
+      const ext = (m[1] ?? "").toLowerCase();
+      const path = /\{([^{}]+\.\w+)\}/.exec(sourceText(error))?.[1];
+      const target = path ? path.replace(/\.\w+$/, ".pdf") : `figure.pdf`;
+      let fix;
+      if (ext === ".svg") {
+        fix = `Convert it to PDF (e.g. ${code(`inkscape ${path ?? "figure.svg"} --export-filename=${target}`)}) and include ${code(target)}, or use the svg package's ${code("\\includesvg")}.`;
+      } else if (ext === ".eps" || ext === ".ps") {
+        fix = `Convert it to PDF with ${code(`epstopdf ${path ?? "figure.eps"}`)} and include the .pdf, or load ${code("\\usepackage{epstopdf}")}.`;
+      } else {
+        fix = `Convert it to PNG (photos: JPEG, drawings: PDF) and include that file instead.`;
+      }
+      return {
+        rule: "unknown-graphics-extension",
+        check: "build",
+        message: `${code("\\includegraphics")} cannot use ${code(ext)} files${path ? `: ${code(path)}` : ""}`,
+        detail: "pdfLaTeX, LuaLaTeX and XeLaTeX include PDF, PNG and JPEG images (and EPS via conversion). Other formats must be converted first.",
+        fix,
+        data: { extension: ext, ...path ? { file: path } : {} }
+      };
+    };
+    explainEnvironmentUndefined = (m) => {
+      const env = m[1] ?? "";
+      const base = {
+        rule: "environment-undefined",
+        check: "build",
+        data: { environment: env }
+      };
+      if (THEOREM_LIKE.has(env)) {
+        const title = env.charAt(0).toUpperCase() + env.slice(1);
+        return {
+          ...base,
+          message: `The ${code(env)} environment is not defined`,
+          detail: "Theorem-like environments do not exist until you declare them.",
+          fix: `Declare it in the preamble: ${code("\\usepackage{amsthm}")} and ${code(`\\newtheorem{${env}}{${title}}`)}.`
+        };
+      }
+      const pkg = ENVIRONMENT_PACKAGES[env];
+      if (pkg) {
+        return {
+          ...base,
+          message: `The ${code(env)} environment needs the ${pkg} package`,
+          detail: `${code(env)} is defined by ${pkg}, which this document does not load.`,
+          fix: loadAdvice(pkg),
+          data: { environment: env, package: pkg }
+        };
+      }
+      const suggestion = closest(env, COMMON_ENVIRONMENTS);
+      return {
+        ...base,
+        message: suggestion ? `Unknown environment ${code(env)} (did you mean ${code(suggestion)}?)` : `Unknown environment ${code(env)}`,
+        detail: `No loaded package defines ${code(`\\begin{${env}}`)}.`,
+        fix: suggestion ? `Change ${code(`\\begin{${env}}`)} and its ${code("\\end")} to ${code(suggestion)}.` : `Check the spelling, load the package that defines ${code(env)}, or define it with ${code("\\newenvironment")}.`
+      };
+    };
+    explainEnvironmentMismatch = (m) => {
+      const opened = m[1] ?? "";
+      const openedLine = m[2] ?? "";
+      const closed = m[3] ?? "";
+      if (opened === "document") {
+        return {
+          rule: "environment-mismatch",
+          check: "build",
+          message: `${code(`\\end{${closed}}`)} has no matching ${code(`\\begin{${closed}}`)}`,
+          detail: `LaTeX found ${code(`\\end{${closed}}`)} while no ${code(closed)} environment was open.`,
+          fix: `Remove ${code(`\\end{${closed}}`)} or add the missing ${code(`\\begin{${closed}}`)}.`,
+          data: { opened, closed }
+        };
+      }
+      return {
+        rule: "environment-mismatch",
+        check: "build",
+        message: `${code(`\\begin{${opened}}`)} (line ${openedLine}) is closed by ${code(`\\end{${closed}}`)}`,
+        detail: "Environments must be closed in the reverse order they were opened.",
+        fix: `Change ${code(`\\end{${closed}}`)} to ${code(`\\end{${opened}}`)}, or add the missing ${code(`\\end{\u2026}`)} of an inner environment.`,
+        data: { opened, closed, openedLine: Number(openedLine) }
+      };
+    };
+    simple = (rule, message, detail, fix) => () => ({ rule, check: "build", message, detail, fix });
+    explainMissingBeginDocument = (_m, error) => {
+      const text2 = sourceText(error);
+      return {
+        rule: "missing-begin-document",
+        check: "build",
+        message: text2 ? `Text in the preamble before ${code("\\begin{document}")}: ${code(text2.slice(0, 60))}` : `Text appears before ${code("\\begin{document}")}`,
+        detail: "Only definitions and package settings may appear in the preamble. Typeset text (or a stray character, often from a broken package or a byte-order mark) starts the document too early.",
+        fix: "Move the text after `\\begin{document}` or comment it out with `%`.",
+        ...text2 ? { data: { text: text2 } } : {}
+      };
+    };
+    explainPreambleOnly = (_m, error) => {
+      const cs = trailingControlSequence(error.source?.before ?? "");
+      const statement = cs ? `\\${cs}${/^\s*(\[[^\]]*\])?\{[^}]*\}/.exec(error.source?.after ?? "")?.[0].trim() ?? ""}` : "";
+      return {
+        rule: "preamble-only",
+        check: "build",
+        message: statement ? `${code(statement)} must come before ${code("\\begin{document}")}` : `A preamble-only command is used after ${code("\\begin{document}")}`,
+        detail: "Commands such as `\\usepackage` and `\\documentclass` options only work in the preamble.",
+        fix: statement ? `Move ${code(statement)} above ${code("\\begin{document}")}.` : "Move the command above `\\begin{document}`.",
+        ...statement ? { data: { command: statement } } : {}
+      };
+    };
+    explainUnicode = (m) => {
+      const char = m[1] ?? "";
+      const codePoint = m[2] ?? "";
+      const replacement = UNICODE_REPLACEMENTS[char];
+      return {
+        rule: "unicode-character",
+        check: "build",
+        message: `pdfLaTeX cannot typeset the character ${code(char)} (U+${codePoint})`,
+        detail: "pdfLaTeX only knows the Unicode characters its font encodings define. LuaLaTeX and XeLaTeX handle any character the font has.",
+        fix: replacement ? `Write ${code(replacement)} instead, or compile with LuaLaTeX (\`latexmk -lualatex\`).` : `Compile with LuaLaTeX (\`latexmk -lualatex\`), or replace the character with a LaTeX command, or declare it with ${code(`\\DeclareUnicodeCharacter{${codePoint}}{\u2026}`)}.`,
+        data: { char, code: `U+${codePoint}`, ...replacement ? { replacement } : {} }
+      };
+    };
+    explainFontNotFound = (m) => {
+      const font = (m[1] ?? m[2] ?? "").trim();
+      return {
+        rule: "font-not-found",
+        check: "build",
+        message: `The font ${code(font)} is not installed`,
+        detail: "fontspec looks fonts up by name among the fonts installed on this machine (or in the TeX tree). CI machines and Docker images rarely have commercial fonts.",
+        fix: `Use a font that ships with TeX Live (e.g. ${code("TeX Gyre Termes")}, ${code("TeX Gyre Heros")}, ${code("Latin Modern Roman")}), or add the font files to the project and load them by file name: ${code("\\setmainfont{MyFont-Regular.otf}[Path=fonts/]")}. List installed names with ${code("luaotfload-tool --list=*")} or ${code("fc-list")}.`,
+        data: { font }
+      };
+    };
+    explainTfmFont = (m) => ({
+      rule: "font-not-found",
+      check: "build",
+      message: `The font ${code(m[1] ?? "")} cannot be loaded`,
+      detail: "TeX found no metric file for this font: the font package is missing from the installation, or a font name is wrong.",
+      fix: "Install the font package that provides it (`tlmgr install \u2026`), or switch to LuaLaTeX with fontspec and an installed font.",
+      data: { font: m[1] }
+    });
+    explainBiblatex = (m) => {
+      const what = m[1] ?? "";
+      const base = { rule: "biblatex-error", check: "build", data: { message: what } };
+      if (/'\\bibliographystyle' invalid/.test(what)) {
+        return {
+          ...base,
+          message: `${code("\\bibliographystyle")} cannot be used with biblatex`,
+          detail: "`\\bibliographystyle` belongs to BibTeX. biblatex chooses its style with a package option.",
+          fix: "Delete `\\bibliographystyle{\u2026}` and set the style when loading biblatex, e.g. `\\usepackage[style=numeric]{biblatex}`."
+        };
+      }
+      const incompatible = /Incompatible package '([^']+)'/.exec(what);
+      if (incompatible) {
+        const pkg = incompatible[1] ?? "";
+        return {
+          ...base,
+          message: `${code(pkg)} cannot be used together with biblatex`,
+          detail: `${code(pkg)} is a BibTeX-era citation package; biblatex replaces it.`,
+          fix: pkg === "natbib" ? "Remove `\\usepackage{natbib}`. To keep `\\citep`/`\\citet`, load `\\usepackage[natbib=true]{biblatex}`." : `Remove ${code(`\\usepackage{${pkg}}`)}.`
+        };
+      }
+      if (/backend|created by biblatex|wrong format version|bbl/.test(what)) {
+        return {
+          ...base,
+          message: "The bibliography file does not match the biblatex backend or version",
+          detail: `biblatex reported: ${what}. The .bbl was written by a different backend (BibTeX vs. Biber) or biblatex version.`,
+          fix: "Delete the .bbl file (or run `latexmk -C`), then build again so Biber regenerates it. Use `backend=biber` (the default) unless you know you need BibTeX."
+        };
+      }
+      return {
+        ...base,
+        message: `biblatex: ${what}`,
+        detail: "biblatex stopped with an error; the bibliography may be missing or incomplete.",
+        fix: "Read the message, check the biblatex options and the .bib file, then rebuild."
+      };
+    };
+    explainParameterNumber = (m) => {
+      const macro = m[1];
+      if (macro) {
+        return {
+          rule: "illegal-parameter-number",
+          check: "build",
+          message: `The definition of ${code(macro)} uses a ${code("#")} argument it does not have`,
+          detail: `Inside ${code(macro)}, a ${code("#n")} refers to an argument number larger than the declared number of arguments (or a literal ${code("#")} appears in the definition).`,
+          fix: `Declare enough arguments, e.g. ${code(`\\newcommand{${macro}}[2]{\u2026#1\u2026#2\u2026}`)}, or write a literal hash sign as ${code("\\#")}.`,
+          data: { command: macro }
+        };
+      }
+      return {
+        rule: "illegal-parameter-number",
+        check: "build",
+        message: `A literal ${code("#")} appears in the text`,
+        detail: "`#` marks macro arguments in TeX and cannot be typeset directly.",
+        fix: "Write `\\#` (for example `issue \\#42`)."
+      };
+    };
+    explainColor = (m) => {
+      const color = m[1] ?? "";
+      return {
+        rule: "undefined-color",
+        check: "build",
+        message: `Color ${code(color)} is not defined`,
+        detail: `xcolor knows only a few base color names unless more are loaded or defined.`,
+        fix: `Define it, e.g. ${code(`\\definecolor{${color}}{RGB}{139,0,0}`)}, or load ${code("\\usepackage[dvipsnames,svgnames]{xcolor}")} for named colors (such as ${code("DarkRed")} or ${code("BrickRed")}), or use a base name like ${code("red")}.`,
+        data: { color }
+      };
+    };
+    explainCapacity = (m, error) => {
+      const what = m[1] ?? "";
+      const cs = trailingControlSequence(error.source?.before ?? "");
+      const recursion = /grouping levels|input stack size|save size|parameter stack|expansion depth|semantic nest/.test(
+        what
+      );
+      return {
+        rule: "tex-capacity-exceeded",
+        check: "build",
+        message: recursion ? `TeX ran out of ${what.replace(/=.*$/, "")}: probably a command that calls itself${cs ? ` (${code(`\\${cs}`)})` : ""}` : `TeX ran out of memory (${what})`,
+        detail: recursion ? `This almost always means infinite recursion: a macro whose definition uses itself${cs ? `, such as ${code(`\\newcommand{\\${cs}}{\u2026\\${cs}\u2026}`)}` : ""}, or a redefinition of a command in terms of itself.` : "Very large TikZ/pgfplots figures or huge tables can exhaust pdfLaTeX memory.",
+        fix: recursion ? `Check the definition of ${cs ? code(`\\${cs}`) : "the command on this line"}; to extend an existing command, save it first with ${code("\\let\\oldcmd\\cmd")} or use ${code("\\NewCommandCopy")}.` : "Compile with LuaLaTeX (dynamic memory), externalize large TikZ figures, or reduce plotted data points.",
+        data: { capacity: what, ...cs ? { command: `\\${cs}` } : {} }
+      };
+    };
+    explainTikz = (m) => {
+      const what = m[2] ?? "";
+      const key = /I do not know the key '([^']+)'(?:, to which you passed '([^']*)')?/.exec(what);
+      if (key) {
+        const full = key[1] ?? "";
+        const name = full.split("/").pop() ?? full;
+        const family = full.split("/")[1] ?? "tikz";
+        const suggestion = family === "tikz" ? closest(name, TIKZ_KEYS) : void 0;
+        const value = key[2] ? `=${key[2]}` : "";
+        return {
+          rule: "tikz-error",
+          check: "build",
+          message: `${family === "tikz" ? "TikZ" : family} does not know the option ${code(name)}${suggestion ? ` (did you mean ${code(suggestion)}?)` : ""}`,
+          detail: `The key ${code(full)} is not defined; it is misspelled, belongs to a library that is not loaded, or needs a newer ${family} version.`,
+          fix: suggestion ? `Write ${code(`${suggestion}${value}`)} instead of ${code(`${name}${value}`)}.` : `Check the spelling, or load the TikZ library that defines it with ${code("\\usetikzlibrary{\u2026}")}.`,
+          data: { key: full, ...suggestion ? { suggestion } : {} }
+        };
+      }
+      if (/Giving up on this path\. Did you forget a semicolon/.test(what)) {
+        return {
+          rule: "tikz-error",
+          check: "build",
+          message: "A TikZ path does not end with a semicolon",
+          detail: "Every `\\draw`, `\\node`, `\\path` and `\\fill` command must end with `;`.",
+          fix: "Add the missing `;` at the end of the previous TikZ command."
+        };
+      }
+      const shape = /No shape named [`']?([^`'\s]+)'? is known/.exec(what);
+      if (shape) {
+        return {
+          rule: "tikz-error",
+          check: "build",
+          message: `TikZ node ${code(shape[1] ?? "")} does not exist`,
+          detail: "A path refers to a node name that was never defined (or is defined later, or in another picture).",
+          fix: `Check the spelling of ${code(`(${shape[1]})`)} and define the node before it is used; across pictures use ${code("remember picture")}.`,
+          data: { node: shape[1] }
+        };
+      }
+      return {
+        rule: "tikz-error",
+        check: "build",
+        message: `${m[1] ?? "TikZ"}: ${what}`,
+        detail: "TikZ/PGF stopped with an error; the figure may be incomplete.",
+        fix: "Check the TikZ code on this line against the PGF/TikZ manual."
+      };
+    };
+    explainHyperref = (m) => ({
+      rule: "hyperref-error",
+      check: "build",
+      message: `hyperref: ${m[1] ?? ""}`,
+      detail: "hyperref reported an error; links or PDF metadata may be wrong. hyperref should normally be loaded last.",
+      fix: "Load hyperref after other packages (except cleveref), pass options with `\\hypersetup{\u2026}`, and use `\\texorpdfstring{\u2026}{\u2026}` for math or commands in headings."
+    });
+    explainCommandDefined = (m) => {
+      const cs = m[1] ?? "";
+      return {
+        rule: "command-already-defined",
+        check: "build",
+        message: `${code(cs)} is already defined`,
+        detail: `${code("\\newcommand")} refuses to overwrite an existing command; ${code(cs)} is already defined by LaTeX, a package, or earlier in your preamble.`,
+        fix: `Pick a different name, or use ${code(`\\renewcommand{${cs}}`)} if you really mean to replace it. If two packages clash over ${code(cs)}, load only one of them.`,
+        data: { command: cs }
+      };
+    };
+    explainUnknownOption = (m) => {
+      const option = m[1] ?? "";
+      const pkg = m[2] ?? "";
+      return {
+        rule: "unknown-package-option",
+        check: "build",
+        message: `${code(pkg)} has no option ${code(option)}`,
+        detail: `The option ${code(option)} is misspelled or is not supported by the installed version of ${code(pkg)}.`,
+        fix: `Check the spelling against the ${pkg} documentation (\`texdoc ${pkg}\`) and remove or correct ${code(option)}.`,
+        data: { package: pkg, option }
+      };
+    };
+    HANDLERS = {
+      explainUndefinedControlSequence,
+      explainMissingDollar,
+      explainDoubleScript,
+      explainAlignmentTab,
+      explainMissingBrace,
+      explainExtraBrace,
+      explainRunaway,
+      explainFileNotFound,
+      explainOptionClash,
+      explainGraphicsExtension,
+      explainEnvironmentUndefined,
+      explainEnvironmentMismatch,
+      explainMissingBeginDocument,
+      explainPreambleOnly,
+      explainUnicode,
+      explainFontNotFound,
+      explainTfmFont,
+      explainBiblatex,
+      explainParameterNumber,
+      explainColor,
+      explainCapacity,
+      explainTikz,
+      explainHyperref,
+      explainCommandDefined,
+      explainUnknownOption
+    };
+    EXPLAINERS = EXPLAINER_PATTERNS.map(([pattern, key]) => {
+      const fixed = SIMPLE_EXPLANATIONS[key];
+      if (fixed) return [pattern, simple(fixed.rule, fixed.message, fixed.detail, fixed.fix)];
+      const handler = HANDLERS[key];
+      if (!handler) throw new Error(`explain: no handler named ${key}`);
+      return [pattern, handler];
+    });
+  }
+});
+
+// ../packages/core/src/log/lines.ts
+function engineFamily(firstLine) {
+  if (/^This is (?:Lua(?:HB|HBJIT|JIT)?TeX)/.test(firstLine)) return "luatex";
+  if (/^This is XeTeX/.test(firstLine)) return "xetex";
+  if (/^This is (?:pdf|e-|)TeX/.test(firstLine)) return "pdftex";
+  return "unknown";
+}
+function utf8Bytes(text2) {
+  let bytes = 0;
+  for (let i = 0; i < text2.length; i++) {
+    const code3 = text2.charCodeAt(i);
+    if (code3 < 128) bytes += 1;
+    else if (code3 < 2048) bytes += 2;
+    else if (code3 >= 55296 && code3 <= 56319) {
+      bytes += 4;
+      i++;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+function isAscii(text2) {
+  for (let i = 0; i < text2.length; i++) if (text2.charCodeAt(i) >= 128) return false;
+  return true;
+}
+function isFullWidth(line, engine) {
+  if (line.length < MAX_PRINT_LINE - 4 * 4) return false;
+  if (isAscii(line)) {
+    if (line.length === MAX_PRINT_LINE) return true;
+    return line.length === MAX_PRINT_LINE + 1 && (engine === "luatex" || engine === "unknown");
+  }
+  const chars2 = [...line].length;
+  if (engine === "xetex") return chars2 === MAX_PRINT_LINE;
+  if (chars2 === MAX_PRINT_LINE) return true;
+  const bytes = utf8Bytes(line);
+  return bytes >= MAX_PRINT_LINE - 3 && bytes <= MAX_PRINT_LINE + 2 || line.endsWith("\uFFFD");
+}
+var MAX_PRINT_LINE, STARTS_FRESH, SPACED_FILE_LINE, LineReader;
+var init_lines = __esm({
+  "../packages/core/src/log/lines.ts"() {
+    "use strict";
+    init_paths();
+    MAX_PRINT_LINE = 79;
+    STARTS_FRESH = /^(?:! |(?:[A-Za-z]:[\\/])?[^\s:()]+\.[A-Za-z0-9]+:\d+: |(?:LaTeX|LaTeX3|Package|Class|Module) .*?(?:Warning|Error|Info)|LaTeX Font |Package: |File: |Document Class: |Overfull \\|Underfull \\|Missing character: |Runaway |\([\w@.-]+\) {2,}|l\.\d+ |No file |Output written on |No pages of output|\\[A-Za-z@]+=\\)/;
+    SPACED_FILE_LINE = new RegExp(`^${SPACED_PATH_SOURCE}:\\d+: `, "i");
+    LineReader = class {
+      lines;
+      engine;
+      index = 0;
+      constructor(text2) {
+        this.lines = text2.split(/\r?\n/);
+        if (this.lines.length > 0 && this.lines[this.lines.length - 1] === "") this.lines.pop();
+        this.engine = engineFamily(this.lines[0] ?? "");
+      }
+      get done() {
+        return this.index >= this.lines.length;
+      }
+      peek(offset = 0) {
+        return this.lines[this.index + offset];
+      }
+      /** Next physical line, without joining. */
+      nextRaw() {
+        return this.lines[this.index++] ?? "";
+      }
+      /** Next logical line: physical lines joined while TeX wrapped them. */
+      next() {
+        const start = this.index;
+        let segment = this.nextRaw();
+        let text2 = segment;
+        while (isFullWidth(segment, this.engine) && this.index < this.lines.length) {
+          const following = this.lines[this.index] ?? "";
+          if (following === "") {
+            this.index++;
+            break;
+          }
+          if (STARTS_FRESH.test(following) || SPACED_FILE_LINE.test(following)) break;
+          text2 += following;
+          segment = following;
+          this.index++;
+        }
+        return { text: text2, start };
+      }
+    };
+  }
+});
+
+// ../packages/core/src/log/parse.ts
+function escapeRegExp(text2) {
+  return text2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function messageHeader(text2) {
+  let m = /^LaTeX(?:3)? (Font )?(Warning|Info): ?(.*)$/.exec(text2);
+  if (m) {
+    const font = Boolean(m[1]);
+    return {
+      source: font ? "Font" : "LaTeX",
+      body: m[3] ?? "",
+      info: m[2] === "Info",
+      continuation: font ? /^\(Font\)\s+(.*)$/ : /^ {8,}(\S.*)$/
+    };
+  }
+  m = /^(?:Package|Class|Module) (\S+) (Warning|Info): ?(.*)$/.exec(text2);
+  if (m) {
+    const name = m[1] ?? "";
+    return {
+      source: name,
+      body: m[3] ?? "",
+      info: m[2] === "Info",
+      continuation: new RegExp(`^\\(${escapeRegExp(name)}\\)\\s*(.*)$`)
+    };
+  }
+  return void 0;
+}
+function joinParts(parts) {
+  return parts.join(" ").replace(/\s+/g, " ").trim().slice(0, MAX_MESSAGE_LENGTH);
+}
+function classifyWarning(source, message) {
+  let m = /^(Citation|Reference) [`']([^']+)' on page (\d+) undefined/.exec(message);
+  if (m) {
+    return m[1] === "Citation" ? { kind: "undefined-citation", data: { key: m[2] } } : { kind: "undefined-reference", data: { label: m[2] } };
+  }
+  if (/^There were undefined (?:references|citations)/.test(message)) {
+    return { kind: "undefined-references-summary", data: {} };
+  }
+  m = /^Label [`']([^']+)' multiply defined/.exec(message);
+  if (m) return { kind: "duplicate-label", data: { label: m[1] } };
+  if (/^Label\(s\) may have changed/.test(message)) return { kind: "labels-changed", data: {} };
+  if (/Please \(re\)run Biber/i.test(message)) return { kind: "rerun-biber", data: {} };
+  if (/Please \(re\)run BibTeX/i.test(message)) return { kind: "rerun-bibtex", data: {} };
+  m = /^The following entry could not be found in the database: (\S+)/.exec(message);
+  if (m) return { kind: "bib-entry-not-found", data: { key: m[1] } };
+  if (/^Empty bibliography/.test(message)) return { kind: "empty-bibliography", data: {} };
+  if (/Rerun to get|Please rerun LaTeX|Rerun LaTeX|Temporary extra page added/i.test(message)) {
+    return { kind: "rerun-latex", data: {} };
+  }
+  m = /^Font shape [`']([^']+)' undefined using [`']([^']+)' instead/.exec(message);
+  if (m) return { kind: "font-substitution", data: { from: m[1], to: m[2] } };
+  if (message.startsWith("Token not allowed in a PDF string")) {
+    m = /removing [`']([^']+)'/.exec(message);
+    if (m) return { kind: "pdf-string-token", data: { token: m[1] } };
+  }
+  if (source === "fontspec" && /does not contain requested|not available|cannot be found/.test(message)) {
+    return { kind: "font-feature", data: {} };
+  }
+  m = /^Float too large for page by ([\d.]+)pt/.exec(message);
+  if (m) return { kind: "float-too-large", data: { amountPt: Number(m[1]) } };
+  return { kind: "other", data: {} };
+}
+function parseLog(text2, options = {}) {
+  return new Parser2(text2, options.root).run();
+}
+var ERROR_START, FILE_LINE_ERROR, RUNAWAY, CONTEXT_BEFORE, SOURCE_LINE, TERMINAL_CONTEXT, ERROR_BOILERPLATE, BANNER, OUTPUT, BOX, MISSING_CHAR, NO_FILE, MAX_ERROR_LINES, MAX_MESSAGE_LENGTH, HAS_TEX_EXTENSION, PLAIN_MESSAGE, FileStack, Parser2;
+var init_parse2 = __esm({
+  "../packages/core/src/log/parse.ts"() {
+    "use strict";
+    init_lines();
+    init_paths();
+    ERROR_START = /^! (.*)$/;
+    FILE_LINE_ERROR = new RegExp(
+      `^(${SPACED_PATH_SOURCE}|(?:[A-Za-z]:)?[^\\s:()]*\\.[A-Za-z0-9]+):(\\d+): (.*)$`,
+      "i"
+    );
+    RUNAWAY = /^Runaway (?:argument|definition|preamble|text)\?$/;
+    CONTEXT_BEFORE = /^(?:<[^>]*>|\\\S|\s?\.\.\.)/;
+    SOURCE_LINE = /^l\.(\d+)(?: (.*))?$/;
+    TERMINAL_CONTEXT = /^<(?:\*|read [^>]*|insert)>/;
+    ERROR_BOILERPLATE = /^(?:See the .* for explanation\.|Type {1,2}H <return> {1,2}for immediate help\.)$/;
+    BANNER = /^This is (\S+), Version (\S+)\s*\(([^)]*)\)(?:\s+\((?:preloaded )?format=([^\s)]+)[^)]*\))?/;
+    OUTPUT = /^Output written on (.+?) \((\d+) pages?(?:, (\d+) bytes)?\)\.?$/;
+    BOX = /^(Overfull|Underfull) \\([hv]box) \((?:(-?[\d.]+)pt too (?:wide|high)|badness (\d+))\)(.*)$/;
+    MISSING_CHAR = /^Missing character: There is no (\S+) (?:\((U\+[0-9A-Fa-f]+)\) )?in font (.*?)!?$/;
+    NO_FILE = /^No file (.+?)\.$/;
+    MAX_ERROR_LINES = 60;
+    MAX_MESSAGE_LENGTH = 4096;
+    HAS_TEX_EXTENSION = new RegExp(`\\.${TEX_EXTENSION_GROUP}$`, "i");
+    PLAIN_MESSAGE = /^(?:Package: |File: |Document Class: |Language: |Dictionary: |\\[A-Za-z@]+=\\|\\openout\d+ = |\([\w@.-]+\) {2,})/;
+    FileStack = class {
+      /** `null` marks a parenthesis that did not open a file. */
+      entries = [];
+      lastClosed;
+      opened = [];
+      /** Last page number shipped out (`[12]`). */
+      page = 0;
+      root;
+      constructor(root) {
+        this.root = root;
+      }
+      current() {
+        for (let i = this.entries.length - 1; i >= 0; i--) {
+          const entry = this.entries[i];
+          if (entry) return entry;
+        }
+        return this.lastClosed;
+      }
+      scan(text2) {
+        for (let i = 0; i < text2.length; i++) {
+          const c = text2[i];
+          if (c === "(") i = this.open(text2, i + 1) - 1;
+          else if (c === ")") this.close();
+          else if (c === "[") this.maybePage(text2, i);
+        }
+      }
+      open(text2, start) {
+        let end = start;
+        if (text2[start] === '"') {
+          const close = text2.indexOf('"', start + 1);
+          end = close === -1 ? text2.length : close + 1;
+        } else {
+          while (end < text2.length && !/[\s()[\]{}<>"]/.test(text2[end] ?? "")) end++;
+          if (end < text2.length && /\s/.test(text2[end] ?? "") && !HAS_TEX_EXTENSION.test(text2.slice(start, end))) {
+            const spaced = spacedPathLength(text2, start);
+            if (spaced > end - start) end = start + spaced;
+          }
+        }
+        const token = text2.slice(start, end);
+        const unquoted = token.startsWith('"') ? token.slice(1, -1) : token;
+        if (isFileToken(unquoted)) {
+          const path = normalizePath(unquoted, this.root);
+          this.entries.push(path);
+          this.opened.push(path);
+          return end;
+        }
+        this.entries.push(null);
+        return start;
+      }
+      close() {
+        const entry = this.entries.pop();
+        if (entry) this.lastClosed = entry;
+      }
+      maybePage(text2, i) {
+        const before = i === 0 ? " " : text2[i - 1] ?? " ";
+        if (!/[\s\]})]/.test(before)) return;
+        const m = /^\[(\d+)/.exec(text2.slice(i, i + 12));
+        if (m) this.page = Number(m[1]);
+      }
+    };
+    Parser2 = class {
+      reader;
+      stack;
+      runaway;
+      result = {
+        errors: [],
+        warnings: [],
+        noPages: false,
+        fatal: false,
+        rerunNeeded: { latex: false, biber: false, bibtex: false },
+        files: []
+      };
+      root;
+      constructor(text2, root) {
+        this.root = root;
+        this.reader = new LineReader(text2);
+        this.stack = new FileStack(root);
+      }
+      run() {
+        while (!this.reader.done) this.handle(this.reader.next());
+        this.result.files = [...new Set(this.stack.opened)];
+        return this.result;
+      }
+      handle(line) {
+        const text2 = line.text;
+        if (line.start === 0 && this.banner(text2)) return;
+        if (ERROR_START.test(text2) || this.fileLineError(text2)) {
+          this.error(line);
+          return;
+        }
+        if (RUNAWAY.test(text2)) {
+          this.runaway = this.reader.done ? "" : this.reader.next().text;
+          return;
+        }
+        const header = messageHeader(text2);
+        if (header) {
+          this.message(line, header);
+          return;
+        }
+        if (BOX.test(text2)) {
+          this.box(line);
+          return;
+        }
+        if (MISSING_CHAR.test(text2)) {
+          this.missingChar(line);
+          return;
+        }
+        if (this.output(text2)) return;
+        const noFile = NO_FILE.exec(text2);
+        if (noFile) {
+          this.warn(line, "no-file", "TeX", text2, { file: normalizePath(noFile[1] ?? "", this.root) });
+          return;
+        }
+        if (PLAIN_MESSAGE.test(text2)) return;
+        this.stack.scan(text2);
+      }
+      banner(text2) {
+        const m = BANNER.exec(text2);
+        if (!m) return false;
+        this.result.engine = `${m[1]} ${m[2]} (${m[3]})`;
+        if (m[4]) this.result.format = m[4];
+        return true;
+      }
+      fileLineError(text2) {
+        const m = FILE_LINE_ERROR.exec(text2);
+        if (!m) return null;
+        return isFileToken(m[1] ?? "") || /^[\w./-]+$/.test(m[1] ?? "") ? m : null;
+      }
+      output(text2) {
+        const m = OUTPUT.exec(text2);
+        if (m) {
+          this.result.outputFile = { name: m[1] ?? "", pages: Number(m[2]) };
+          if (m[3]) this.result.outputFile.bytes = Number(m[3]);
+          return true;
+        }
+        if (text2.startsWith("No pages of output")) {
+          this.result.noPages = true;
+          return true;
+        }
+        return false;
+      }
+      /**
+       * Reads continuation lines matching `pattern`; returns their captured text. All
+       * continuation lines are consumed, but the text kept is capped at
+       * MAX_MESSAGE_LENGTH characters (and the raw evidence at MAX_ERROR_LINES lines) so a
+       * pathological log cannot make later matching slow.
+       */
+      continuation(pattern, raw) {
+        const parts = [];
+        let length = raw.reduce((n, r) => n + r.length, 0);
+        while (!this.reader.done) {
+          const peek = this.reader.peek() ?? "";
+          if (!pattern.test(peek)) break;
+          const next = this.reader.next().text;
+          if (length >= MAX_MESSAGE_LENGTH) continue;
+          length += next.length;
+          if (raw.length < MAX_ERROR_LINES) raw.push(next);
+          parts.push(pattern.exec(next)?.[1] ?? next);
+        }
+        return parts;
+      }
+      error(first2) {
+        const raw = [first2.text];
+        const fle = this.fileLineError(first2.text);
+        let message = (fle ? fle[3] ?? "" : (ERROR_START.exec(first2.text)?.[1] ?? "").trim()).slice(
+          0,
+          MAX_MESSAGE_LENGTH
+        );
+        const pkg = /^(?:Package|Class|Module) (\S+) Error:/.exec(message);
+        if (pkg) {
+          const pattern = new RegExp(`^\\(${escapeRegExp(pkg[1] ?? "")}\\)\\s*(.*)$`);
+          message = joinParts([message, ...this.continuation(pattern, raw)]);
+        } else if (/^LaTeX Error:/.test(message)) {
+          message = joinParts([message, ...this.continuation(/^ {4,}(\S.*)$/, raw)]);
+        }
+        const error = {
+          message,
+          context: [],
+          help: [],
+          raw: "",
+          logLine: first2.start + 1
+        };
+        if (this.runaway !== void 0) {
+          error.runaway = this.runaway;
+          this.runaway = void 0;
+        }
+        this.errorBody(error, raw);
+        error.raw = raw.join("\n");
+        if (fle) {
+          error.file = normalizePath(fle[1] ?? "", this.root);
+          error.line = Number(fle[2]);
+        } else {
+          const file = this.stack.current();
+          if (file) error.file = file;
+        }
+        if (/^(?:Emergency stop|==> Fatal error occurred|TeX capacity exceeded|Interruption)/.test(
+          message
+        )) {
+          this.result.fatal = true;
+        }
+        this.result.errors.push(error);
+      }
+      /** Reads the context and help text that follow an error message. */
+      errorBody(error, raw) {
+        let blanks = 0;
+        let contextDone = false;
+        let sawSourceLine = false;
+        while (!this.reader.done && raw.length < MAX_ERROR_LINES) {
+          const peek = this.reader.peek() ?? "";
+          if (ERROR_START.test(peek) || this.fileLineError(peek)) return;
+          if (peek === "") {
+            raw.push(this.reader.nextRaw());
+            if (contextDone || ++blanks >= 2) return;
+            continue;
+          }
+          const source = SOURCE_LINE.exec(peek);
+          if (source && !sawSourceLine) {
+            raw.push(this.reader.nextRaw());
+            const after = this.reader.done ? "" : this.reader.nextRaw();
+            raw.push(after);
+            const before = source[2] ?? "";
+            error.context.push(peek, after);
+            error.source = { before, after: after.slice(Math.min(peek.length, after.length)) };
+            error.line = Number(source[1]);
+            sawSourceLine = true;
+            contextDone = true;
+            continue;
+          }
+          if (!contextDone && CONTEXT_BEFORE.test(peek)) {
+            raw.push(this.reader.nextRaw());
+            const after = this.reader.done ? "" : this.reader.nextRaw();
+            raw.push(after);
+            error.context.push(peek, after);
+            if (TERMINAL_CONTEXT.test(peek)) contextDone = true;
+            continue;
+          }
+          raw.push(this.reader.nextRaw());
+          if (!ERROR_BOILERPLATE.test(peek)) error.help.push(peek);
+        }
+      }
+      message(line, header) {
+        const raw = [line.text];
+        const parts = [header.body, ...this.continuation(header.continuation, raw)];
+        if (header.info) return;
+        const message = joinParts(parts);
+        const { kind, data } = classifyWarning(header.source, message);
+        this.warn(line, kind, header.source, message, data, raw);
+      }
+      warn(line, kind, source, message, data, raw = [line.text]) {
+        const warning = {
+          kind,
+          message,
+          source,
+          data,
+          raw: raw.join("\n"),
+          logLine: line.start + 1
+        };
+        const file = this.stack.current();
+        if (file) warning.file = file;
+        const inputLine = /on input line (\d+)/.exec(message);
+        if (inputLine) warning.line = Number(inputLine[1]);
+        const page = /on page (\d+)/.exec(message);
+        if (page) warning.page = Number(page[1]);
+        this.result.warnings.push(warning);
+        this.noteRerun(kind);
+        return warning;
+      }
+      noteRerun(kind) {
+        const rerun = this.result.rerunNeeded;
+        if (kind === "labels-changed" || kind === "rerun-latex") rerun.latex = true;
+        if (kind === "rerun-biber") rerun.biber = true;
+        if (kind === "rerun-bibtex") rerun.bibtex = true;
+      }
+      box(line) {
+        const m = BOX.exec(line.text);
+        if (!m) return;
+        const raw = [line.text];
+        while (!this.reader.done && raw.length < 40) {
+          const next = this.reader.nextRaw();
+          if (next === "") break;
+          raw.push(next);
+        }
+        const where = m[5] ?? "";
+        const lines = /lines? (\d+)(?:--(\d+))?/.exec(where);
+        const data = { box: m[2], where: where.trim() };
+        if (m[3] !== void 0) data.amountPt = Number(m[3]);
+        if (m[4] !== void 0) data.badness = Number(m[4]);
+        if (lines) data.lines = [Number(lines[1]), Number(lines[2] ?? lines[1])];
+        const kind = m[1] === "Overfull" ? "overfull" : "underfull";
+        const warning = this.warn(line, kind, "TeX", line.text, data, raw);
+        if (lines) {
+          const [from, to] = [Number(lines[1]), Number(lines[2] ?? lines[1])];
+          warning.line = Math.min(from, to);
+          if (from > to) data.spansFiles = true;
+        }
+        warning.page = this.stack.page + 1;
+      }
+      missingChar(line) {
+        const m = MISSING_CHAR.exec(line.text);
+        if (!m) return;
+        const data = { char: m[1], font: (m[3] ?? "").trim() };
+        if (m[2]) data.code = m[2].toUpperCase();
+        this.warn(line, "missing-glyph", "TeX", line.text, data);
+      }
+    };
+  }
+});
+
+// ../packages/core/src/log/analyze.ts
+function location(file, line, page) {
+  const loc = {};
+  if (file) loc.file = file;
+  if (line !== void 0) loc.line = line;
+  if (page !== void 0) loc.page = page;
+  return Object.keys(loc).length > 0 ? loc : void 0;
+}
+function evidence(lines) {
+  const all = lines.join("\n").split("\n");
+  if (all.length <= MAX_EVIDENCE_LINES) return all.join("\n");
+  return [
+    ...all.slice(0, MAX_EVIDENCE_LINES),
+    `\u2026 (${all.length - MAX_EVIDENCE_LINES} more lines)`
+  ].join("\n");
+}
+function compact(value) {
+  for (const key of Object.keys(value)) {
+    if (value[key] === void 0) delete value[key];
+  }
+  return value;
+}
+function isTerminationNotice(error) {
+  return /^(?:Emergency stop|==> Fatal error occurred|\s*==> Fatal error occurred)/.test(
+    error.message.trim()
+  );
+}
+function paragraphEnd(error) {
+  const before = (error.source?.before ?? "").trim();
+  return before === "" || /^(?:\.\.\.)?\\(?:par|end)\b/.test(before);
+}
+function atEndDocument(error) {
+  return /^\s*(?:\.\.\.)?\\end\s*\{document\}/.test(error.source?.before ?? "");
+}
+function isFollower(error, rule, check2, group) {
+  if (!group) return false;
+  if (isTerminationNotice(error)) return true;
+  const { root, problem: problem3 } = group;
+  if (rule === "runaway-argument" && problem3.rule === "missing-dollar" && isInternalRunaway(error)) {
+    return true;
+  }
+  if (problem3.rule === "undefined-control-sequence" && rule === "missing-dollar") {
+    return atEndDocument(error);
+  }
+  if (atEndDocument(error) && check2 === problem3.check) return true;
+  if (rule === "missing-dollar" && problem3.rule === "missing-dollar" && paragraphEnd(error) && error.logLine > root.logLine) {
+    return true;
+  }
+  if (error.file !== root.file || error.line === void 0 || root.line === void 0) return false;
+  if (error.line === root.line) return true;
+  if (check2 !== problem3.check) return false;
+  if (error.line < root.line || error.line - root.line > CASCADE_LINES) return false;
+  const sideEffect = CONSEQUENCE_RULES.has(rule) || rule === "undefined-control-sequence" && problem3.rule !== rule;
+  return rule === problem3.rule || sideEffect;
+}
+function isInternalRunaway(error) {
+  return /\\__[A-Za-z]/.test(error.message);
+}
+function bySourcePosition(groups, files) {
+  const order = new Map(files.map((f, i) => [f, i]));
+  const key = (g) => {
+    const loc = g.problem.location;
+    const file = loc?.file !== void 0 ? order.get(loc.file) ?? files.length : files.length + 1;
+    return [file, loc?.line ?? Number.POSITIVE_INFINITY];
+  };
+  return groups.map((g, i) => ({ g, k: key(g), i })).sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1] || a.i - b.i).map(({ g }) => g);
+}
+function errorProblems(parsed, ctx) {
+  const groups = [];
+  let last;
+  for (const error of parsed.errors) {
+    const explanation = explainError(error, ctx);
+    if (last && isFollower(error, explanation.rule, explanation.check, last)) {
+      last.followers.push(error);
+      continue;
+    }
+    const problem3 = compact({
+      rule: explanation.rule,
+      check: explanation.check,
+      severity: "error",
+      message: explanation.message,
+      location: location(error.file, error.line),
+      detail: explanation.detail,
+      fix: explanation.fix,
+      data: { ...explanation.data, tex: error.message }
+    });
+    last = { root: error, problem: problem3, followers: [] };
+    groups.push(last);
+  }
+  return bySourcePosition(groups, parsed.files).map(({ root, problem: problem3, followers }) => {
+    if (followers.length > 0) problem3.related = followers.length;
+    const lined = followers.find((f) => f.line !== void 0 && f.file === root.file);
+    if (root.line === void 0 && lined?.line !== void 0 && problem3.location && problem3.rule !== "missing-package") {
+      problem3.location.line = lined.line;
+    }
+    problem3.evidence = evidence([root.raw, ...followers.map((f) => f.raw)]);
+    return problem3;
+  });
+}
+function fatalWithoutError(parsed, problems) {
+  if (problems.some((p) => p.check === "build") || !(parsed.fatal || parsed.noPages)) return [];
+  return [
+    {
+      rule: "tex-error",
+      check: "build",
+      severity: "error",
+      message: parsed.noPages ? "The build produced no pages" : "The build stopped before finishing",
+      detail: parsed.noPages ? "TeX finished without typesetting anything, so there is no PDF." : "TeX aborted the run; the PDF is missing or incomplete.",
+      fix: "Check that the document has content between `\\begin{document}` and `\\end{document}`, then read the end of the log."
+    }
+  ];
+}
+function indexWarnings(warnings) {
+  const map = /* @__PURE__ */ new Map();
+  for (const w of warnings) {
+    const list2 = map.get(w.kind);
+    if (list2) list2.push(w);
+    else map.set(w.kind, [w]);
+  }
+  return { get: (kind) => map.get(kind) ?? [] };
+}
+function groupBy(warnings, key) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const w of warnings) {
+    const value = String(w.data[key] ?? "");
+    const list2 = groups.get(value);
+    if (list2) list2.push(w);
+    else groups.set(value, [w]);
+  }
+  return groups;
+}
+function occurrences(list2) {
+  return list2.map((w) => compact({ file: w.file, line: w.line, page: w.page }));
+}
+function undefinedCitations(list2, notInBib) {
+  return [...groupBy(list2, "key")].map(([key, items]) => {
+    const first2 = items[0];
+    const missing = notInBib.has(key);
+    return compact({
+      rule: "undefined-citation",
+      check: "output",
+      severity: "error",
+      message: `Citation ${code2(key)} is undefined${items.length > 1 ? ` (cited ${items.length} times)` : ""}`,
+      location: location(first2.file, first2.line, first2.page),
+      detail: missing ? `The key ${code2(key)} is not in any loaded .bib file, so the PDF shows it in bold or as [?].` : `No bibliography entry has the key ${code2(key)}, so the PDF shows it in bold or as [?].`,
+      fix: `Check the spelling of ${code2(key)} against the .bib file, or add the entry (\`overfull cite <doi>\` can fetch it), then rebuild; or remove the \`\\cite\` if the source is not known.`,
+      evidence: evidence(items.map((w) => w.raw)),
+      data: { key, count: items.length, occurrences: occurrences(items) }
+    });
+  });
+}
+function undefinedReferences(list2) {
+  return [...groupBy(list2, "label")].map(([label, items]) => {
+    const first2 = items[0];
+    return compact({
+      rule: "undefined-reference",
+      check: "output",
+      severity: "error",
+      message: `Reference to ${code2(label)} is undefined${items.length > 1 ? ` (used ${items.length} times)` : ""}`,
+      location: location(first2.file, first2.line, first2.page),
+      detail: `There is no ${code2(`\\label{${label}}`)}, so the PDF shows ?? where it is referenced.`,
+      fix: `Add ${code2(`\\label{${label}}`)} after the caption or heading it should point to, or fix the spelling in ${code2(`\\ref{${label}}`)}.`,
+      evidence: evidence(items.map((w) => w.raw)),
+      data: { label, count: items.length, occurrences: occurrences(items) }
+    });
+  });
+}
+function staleState(parsed, w) {
+  const noBbl = w.get("no-file").some((x) => extension(String(x.data.file)) === "bbl");
+  const stale = parsed.rerunNeeded.biber || parsed.rerunNeeded.bibtex;
+  return {
+    bibliography: noBbl ? "missing" : stale ? "stale" : void 0,
+    bibTool: parsed.rerunNeeded.bibtex && !parsed.rerunNeeded.biber ? "BibTeX" : "Biber",
+    references: parsed.rerunNeeded.latex
+  };
+}
+function bibliographyProblem(state, citations, raw) {
+  const keys = [...new Set(citations.map((c) => String(c.data.key)))];
+  const tool = state.bibTool;
+  const command = tool === "Biber" ? "`biber main`" : "`bibtex main`";
+  const missing = state.bibliography === "missing";
+  const suffix = keys.length > 0 ? ` (${plural(keys.length, "citation")} ${keys.length === 1 ? "shows" : "show"} as [?])` : "";
+  return compact({
+    rule: missing ? "bibliography-missing" : "bibliography-stale",
+    check: "output",
+    severity: missing || keys.length > 0 ? "error" : "warning",
+    message: missing ? `The bibliography has not been built: ${tool} was not run${suffix}` : `The bibliography is out of date: ${tool} needs to run again${suffix}`,
+    detail: missing ? `There is no .bbl file yet, so every citation is undefined and the bibliography is empty. This is expected after a single LaTeX run.` : `The citations changed since ${tool} last ran.`,
+    fix: `Build with \`latexmk\` (it runs ${tool} and LaTeX as often as needed), or run ${command} and then LaTeX twice.`,
+    related: keys.length > 0 ? keys.length : void 0,
+    evidence: evidence(raw),
+    data: keys.length > 0 ? { tool, keys } : { tool }
+  });
+}
+function rerunProblem(references2, raw) {
+  const labels = [...new Set(references2.map((r) => String(r.data.label)))];
+  return compact({
+    rule: "rerun-needed",
+    check: "output",
+    severity: labels.length > 0 ? "error" : "warning",
+    message: labels.length > 0 ? `Cross-references are out of date: rerun LaTeX (${plural(labels.length, "reference")} ${labels.length === 1 ? "shows" : "show"} as ??)` : "Cross-references may be out of date: rerun LaTeX",
+    detail: "Labels changed during this run, so page numbers and references in the PDF may be wrong until LaTeX runs again.",
+    fix: "Build with `latexmk`, which reruns LaTeX until references settle, or run LaTeX once more.",
+    related: labels.length > 0 ? labels.length : void 0,
+    evidence: evidence(raw),
+    data: labels.length > 0 ? { labels } : void 0
+  });
+}
+function duplicateLabels(list2) {
+  return [...groupBy(list2, "label")].map(([label, items]) => {
+    const first2 = items[0];
+    return compact({
+      rule: "duplicate-label",
+      check: "output",
+      severity: "warning",
+      message: `Label ${code2(label)} is defined more than once`,
+      // LaTeX notices duplicates while reading the .aux file, which says nothing about the source.
+      location: extension(first2.file ?? "") === "aux" ? void 0 : location(first2.file, first2.line, first2.page),
+      detail: `References to ${code2(label)} point to whichever definition LaTeX saw last, which may be the wrong one.`,
+      fix: `Search for ${code2(`\\label{${label}}`)} and give each one a unique name.`,
+      evidence: evidence(items.map((w) => w.raw)),
+      data: { label }
+    });
+  });
+}
+function boxText(raw) {
+  const dump = raw.split("\n").slice(1).join("");
+  return dump.replace(/\\[A-Z0-9]+\/[\w/.-]+(?:\(\d+\))?\/\d+(?:\.\d+)?\s?/g, "").replace(/\[\]/g, " ").replace(/\$/g, "").replace(/(\w)-(\w)/g, "$1$2").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+function overlapsError(box, errors) {
+  const lines = box.data.lines;
+  if (!lines) return false;
+  return errors.some(
+    (e) => e.file === box.file && e.line !== void 0 && e.line >= lines[0] && e.line <= lines[1]
+  );
+}
+function overfullBoxes(list2, thresholdPt, errors) {
+  const significant2 = list2.filter(
+    (w) => Number(w.data.amountPt ?? 0) > thresholdPt && !overlapsError(w, errors)
+  );
+  const byFile = /* @__PURE__ */ new Map();
+  for (const w of significant2) {
+    const key = w.file ?? "";
+    const group = byFile.get(key);
+    if (group) group.push(w);
+    else byFile.set(key, [w]);
+  }
+  return [...byFile.values()].map((items) => {
+    const worst = items.reduce(
+      (a, b) => Number(b.data.amountPt) > Number(a.data.amountPt) ? b : a
+    );
+    const amount = Number(worst.data.amountPt);
+    const lines = worst.data.lines;
+    const vertical = worst.data.box === "vbox";
+    const others = items.length - 1;
+    const text2 = vertical ? "" : boxText(worst.raw);
+    const where = lines ? lines[0] === lines[1] ? `line ${lines[0]}` : `lines ${lines[0]}\u2013${lines[1]}` : "";
+    return compact({
+      rule: "overfull-box",
+      check: "output",
+      severity: "warning",
+      message: vertical ? `Content is ${amount.toFixed(1)}pt too tall for the page${where ? ` (${where})` : ""}` : `Text sticks ${amount.toFixed(1)}pt into the margin${where ? ` (${where})` : ""}${others > 0 ? `; ${plural(others, "more overfull box")} in this file` : ""}`,
+      location: location(worst.file, worst.line, worst.page),
+      detail: vertical ? "A page or box holds more material than fits vertically." : `TeX could not break the line without exceeding the text width${text2 ? `: ${code2(text2)}` : ""}. Long URLs, code, file names and unhyphenated words are the usual cause.`,
+      fix: vertical ? "Shrink the float or table, allow it to break across pages, or move material." : "Rephrase or allow a break: use `\\url{}`/`\\path{}` for URLs and identifiers, `\\-` to suggest hyphenation, or load `microtype` for finer spacing. Wide tables and figures: scale them to `\\linewidth`.",
+      evidence: evidence([worst.raw]),
+      data: compact({ amountPt: amount, box: worst.data.box, lines, others, thresholdPt })
+    });
+  });
+}
+function fontSubstitutions(list2) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const w of list2) {
+    const key = `${w.data.from}\u2192${w.data.to}`;
+    const group = groups.get(key);
+    if (group) group.push(w);
+    else groups.set(key, [w]);
+  }
+  return [...groups.values()].map((items) => {
+    const first2 = items[0];
+    const from = String(first2.data.from);
+    const to = String(first2.data.to);
+    const shape = from.split("/").slice(2).join("/");
+    return compact({
+      rule: "font-substitution",
+      check: "output",
+      severity: "warning",
+      message: `Font shape ${code2(from)} is not available; ${code2(to)} was used instead`,
+      location: location(first2.file, first2.line, first2.page),
+      detail: `The font has no ${code2(shape)} variant (for example bold small caps), so the PDF shows a different style than the source asks for.`,
+      fix: "Use a font family that has this shape (with pdfLaTeX, `\\usepackage[T1]{fontenc}` gives Computer Modern bold small caps), or avoid combining these styles.",
+      evidence: evidence(items.map((w) => w.raw)),
+      data: { from, to, count: items.length }
+    });
+  });
+}
+function missingGlyphs(list2) {
+  const byFont = /* @__PURE__ */ new Map();
+  for (const w of list2) {
+    const font = String(w.data.font);
+    const group = byFont.get(font);
+    if (group) group.push(w);
+    else byFont.set(font, [w]);
+  }
+  return [...byFont].map(([font, items]) => {
+    const chars2 = [...new Set(items.map((w) => String(w.data.char)))];
+    const first2 = items[0];
+    const fontName = /^\[?([^\]:]+)/.exec(font)?.[1] ?? font;
+    return compact({
+      rule: "missing-glyph",
+      check: "output",
+      severity: "error",
+      message: `${plural(chars2.length, "character")} missing from the font ${code2(fontName)}: ${chars2.slice(0, 12).join(" ")}`,
+      location: location(first2.file, first2.line, first2.page),
+      detail: "The font has no glyph for these characters, so they are silently left out of the PDF.",
+      fix: "Switch to a font that covers them (for CJK text: `\\usepackage{xeCJK}` or `luatexja`, or `\\setmainfont{Noto Serif CJK SC}`), or use a fallback font for these characters.",
+      evidence: evidence(items.slice(0, 5).map((w) => w.raw)),
+      data: { font, chars: chars2, count: items.length }
+    });
+  });
+}
+function pdfStringTokens(list2) {
+  const first2 = list2[0];
+  if (!first2) return [];
+  const tokens = [...new Set(list2.map((w) => String(w.data.token)))];
+  return [
+    compact({
+      rule: "pdf-string-token",
+      check: "output",
+      severity: "info",
+      message: `Math or commands in a heading were dropped from the PDF bookmarks (${tokens.map(code2).join(", ")})`,
+      location: location(first2.file, first2.line, first2.page),
+      detail: "hyperref turns headings into PDF bookmarks, which are plain text; it removed what it could not convert.",
+      fix: "Give a plain-text alternative: `\\section{\\texorpdfstring{$\\alpha < 1$}{alpha < 1}}`.",
+      related: list2.length > 1 ? list2.length - 1 : void 0,
+      evidence: evidence(list2.slice(0, 4).map((w) => w.raw)),
+      data: { tokens }
+    })
+  ];
+}
+function simpleWarnings(w) {
+  const problems = [];
+  for (const float of w.get("float-too-large")) {
+    problems.push(
+      compact({
+        rule: "float-too-large",
+        check: "output",
+        severity: "warning",
+        message: `A figure or table is ${Number(float.data.amountPt).toFixed(1)}pt taller than the page`,
+        location: location(float.file, float.line),
+        detail: "The float does not fit on a page, so it runs into the bottom margin.",
+        fix: "Scale it down (`height=0.8\\textheight`), split a long table (`longtable`), or shrink its font.",
+        evidence: float.raw
+      })
+    );
+  }
+  for (const font of w.get("font-feature")) {
+    problems.push(
+      compact({
+        rule: "font-feature-missing",
+        check: "output",
+        severity: "warning",
+        message: `fontspec: ${font.message}`,
+        location: location(font.file, font.line),
+        detail: "The selected font lacks a requested feature or script, so text may look different than intended.",
+        fix: "Choose a font that supports the feature/script, or remove the option from `\\setmainfont`.",
+        evidence: font.raw
+      })
+    );
+  }
+  return problems;
+}
+function missingIncludes(w) {
+  return w.get("no-file").filter((x) => extension(String(x.data.file)) === "tex").map(
+    (x) => compact({
+      rule: "missing-file",
+      check: "output",
+      severity: "error",
+      message: `File ${code2(String(x.data.file))} not found; its content is missing from the PDF`,
+      location: location(x.file),
+      detail: "`\\include` skips files it cannot find, so the build continues without that part.",
+      fix: "Check the path and spelling in `\\include{\u2026}` (relative to the main file, case-sensitive).",
+      evidence: x.raw,
+      data: { file: x.data.file }
+    })
+  );
+}
+function warningProblems(parsed, buildFailed2, thresholdPt) {
+  const w = indexWarnings(parsed.warnings);
+  const state = staleState(parsed, w);
+  const problems = [];
+  const notInBib = new Set(w.get("bib-entry-not-found").map((x) => String(x.data.key)));
+  let citations = w.get("undefined-citation");
+  if (state.bibliography) {
+    const raw = [...w.get("no-file"), ...w.get("rerun-biber"), ...w.get("rerun-bibtex")].filter((x) => x.kind !== "no-file" || extension(String(x.data.file)) === "bbl").map((x) => x.raw);
+    if (!buildFailed2) problems.push(bibliographyProblem(state, citations, raw));
+    citations = citations.filter((c) => notInBib.has(String(c.data.key)));
+  }
+  problems.push(...undefinedCitations(citations, notInBib));
+  let references2 = w.get("undefined-reference");
+  if (state.references) {
+    const raw = [...w.get("labels-changed"), ...w.get("rerun-latex")].map((x) => x.raw);
+    if (!buildFailed2) problems.push(rerunProblem(references2, raw));
+    references2 = [];
+  }
+  problems.push(...undefinedReferences(references2));
+  const anyUndefined = w.get("undefined-citation").length + w.get("undefined-reference").length > 0;
+  const summary = w.get("undefined-references-summary")[0];
+  if (summary && !anyUndefined && !state.bibliography && !state.references) {
+    problems.push({
+      rule: "undefined-reference",
+      check: "output",
+      severity: "error",
+      message: "Some references or citations are undefined",
+      detail: "LaTeX reported undefined references without naming them.",
+      fix: "Rebuild with `latexmk`; if the warning stays, check `\\ref`/`\\cite` keys against labels and the .bib file.",
+      evidence: summary.raw
+    });
+  }
+  if (!state.bibliography) {
+    for (const empty of w.get("empty-bibliography")) {
+      problems.push(
+        compact({
+          rule: "empty-bibliography",
+          check: "output",
+          severity: "warning",
+          message: "The bibliography is empty",
+          location: location(empty.file, empty.line),
+          detail: "`\\printbibliography` printed nothing: there are no citations, or no cited key was found in the .bib files.",
+          fix: "Cite sources with `\\cite{\u2026}`, check `\\addbibresource{\u2026}` points at the right .bib file, or use `\\nocite{*}` to list everything.",
+          evidence: empty.raw
+        })
+      );
+    }
+  }
+  problems.push(...duplicateLabels(w.get("duplicate-label")));
+  problems.push(...overfullBoxes(w.get("overfull"), thresholdPt, parsed.errors));
+  problems.push(...fontSubstitutions(w.get("font-substitution")));
+  const glyphs = w.get("missing-glyph").filter((x) => !(buildFailed2 && x.data.font === "nullfont"));
+  problems.push(...missingGlyphs(glyphs));
+  problems.push(...pdfStringTokens(w.get("pdf-string-token")));
+  problems.push(...simpleWarnings(w));
+  problems.push(...missingIncludes(w));
+  return problems;
+}
+function packagesOf(parsed) {
+  return new Set(
+    parsed.files.filter((f) => extension(f) === "sty").map((f) => f.replace(/^.*\//, "").replace(/\.sty$/, ""))
+  );
+}
+function buildSummary(problems, parsed) {
+  const errors = problems.filter((p) => p.severity === "error").length;
+  const pdf = parsed.outputFile ? `${parsed.outputFile.name}, ${plural(parsed.outputFile.pages, "page")}` : "no PDF produced";
+  if (errors === 0) return `Build succeeded (${pdf})`;
+  return `${plural(errors, "error")} (${pdf})`;
+}
+function outputSummary(problems) {
+  if (problems.length === 0) return "No problems found in the output";
+  const counts = /* @__PURE__ */ new Map();
+  for (const p of problems) counts.set(p.rule, (counts.get(p.rule) ?? 0) + 1);
+  return [...counts].map(([rule, n]) => `${n} \xD7 ${rule}`).join(", ");
+}
+function skipped(check2, reason) {
+  return { check: check2, status: "skipped", problems: [], skippedReason: reason };
+}
+function analyzeLog(text2, opts = {}) {
+  const parsed = parseLog(text2, { root: opts.root });
+  if (text2.trim() === "") {
+    return {
+      build: skipped("build", "The log file is empty"),
+      output: skipped("output", "The log file is empty"),
+      parsed
+    };
+  }
+  const threshold = opts.overfullThresholdPt ?? DEFAULT_OVERFULL_PT;
+  const fromErrors = errorProblems(parsed, { packages: packagesOf(parsed) });
+  const buildProblems = [
+    ...fromErrors.filter((p) => p.check === "build"),
+    ...fatalWithoutError(parsed, fromErrors)
+  ];
+  const buildFailed2 = buildProblems.length > 0;
+  const outputProblems = [
+    ...fromErrors.filter((p) => p.check === "output"),
+    ...warningProblems(parsed, buildFailed2, threshold)
+  ];
+  const build2 = {
+    check: "build",
+    status: statusOf(buildProblems),
+    problems: buildProblems,
+    summary: buildSummary(buildProblems, parsed),
+    stats: {
+      errors: buildProblems.length,
+      texErrors: parsed.errors.length,
+      warnings: parsed.warnings.length,
+      ...parsed.outputFile ? { pages: parsed.outputFile.pages } : {}
+    }
+  };
+  const output = {
+    check: "output",
+    status: statusOf(outputProblems),
+    problems: outputProblems,
+    summary: outputSummary(outputProblems),
+    stats: {
+      errors: outputProblems.filter((p) => p.severity === "error").length,
+      warnings: outputProblems.filter((p) => p.severity === "warning").length
+    }
+  };
+  return { build: build2, output, parsed };
+}
+var CASCADE_LINES, MAX_EVIDENCE_LINES, DEFAULT_OVERFULL_PT, code2, plural, CONSEQUENCE_RULES;
+var init_analyze = __esm({
+  "../packages/core/src/log/analyze.ts"() {
+    "use strict";
+    init_types();
+    init_explain();
+    init_parse2();
+    init_paths();
+    CASCADE_LINES = 3;
+    MAX_EVIDENCE_LINES = 40;
+    DEFAULT_OVERFULL_PT = 10;
+    code2 = (text2) => `\`${text2}\``;
+    plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+    CONSEQUENCE_RULES = /* @__PURE__ */ new Set([
+      "missing-dollar",
+      "missing-brace",
+      "extra-brace",
+      "runaway-argument",
+      "environment-mismatch",
+      "misplaced-alignment-tab",
+      "double-script",
+      "illegal-parameter-number",
+      "tex-error"
+    ]);
+  }
+});
+
+// ../packages/core/src/log/bibliography.ts
+function bblEntries(text2) {
+  const out = [];
+  const re = /\\(?:bibitem\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}|entry\s*\{([^}]+)\})/g;
+  for (let m = re.exec(text2); m; m = re.exec(text2)) {
+    const key = (m[1] ?? m[2] ?? "").trim();
+    if (!key) continue;
+    out.push({ key, offset: m.index, line: text2.slice(0, m.index).split("\n").length });
+  }
+  return out;
+}
+function argumentSnippet(evidence2) {
+  const m = /^<argument> (.+)$/m.exec(evidence2 ?? "");
+  const text2 = m?.[1]?.replace(/[&_^#$%\\]+\s*$/, "").trim();
+  return text2 && text2.length >= 8 ? text2 : void 0;
+}
+function attributeBibliography(problems, src) {
+  if (!src.bbl) return problems;
+  const entries = bblEntries(src.bbl.text);
+  if (!entries.length) return problems;
+  let bibIndex;
+  const bibLocation = (key) => {
+    if (!bibIndex) {
+      bibIndex = /* @__PURE__ */ new Map();
+      for (const b of src.bibs) {
+        for (const e of parseBib(b.text)) {
+          if (!bibIndex.has(e.key)) bibIndex.set(e.key, { file: b.file, line: e.line });
+        }
+      }
+    }
+    return bibIndex.get(key);
+  };
+  return problems.map((p) => {
+    if (p.data?.bibKey) return p;
+    let key;
+    const loc = p.location;
+    if (loc?.file && loc.line && sameFile(loc.file, src.bbl?.path ?? "")) {
+      key = [...entries].reverse().find((e) => e.line <= loc.line)?.key;
+    } else {
+      const snippet2 = argumentSnippet(p.evidence);
+      const at = snippet2 ? src.bbl?.text.indexOf(snippet2) ?? -1 : -1;
+      if (at >= 0) key = [...entries].reverse().find((e) => e.offset <= at)?.key;
+    }
+    if (!key) return p;
+    const where = bibLocation(key);
+    return {
+      ...p,
+      message: `${p.message} in the bibliography entry \`${key}\``,
+      ...where ? { location: { file: where.file, line: where.line } } : {},
+      data: { ...p.data ?? {}, bibKey: key, ...loc ? { reportedAt: loc } : {} }
+    };
+  });
+}
+var sameFile;
+var init_bibliography = __esm({
+  "../packages/core/src/log/bibliography.ts"() {
+    "use strict";
+    init_parse();
+    sameFile = (a, b) => a.replace(/^\.\//, "") === b.replace(/^\.\//, "") || a.split("/").pop() === b.split("/").pop();
+  }
+});
+
+// ../packages/core/src/log/rules.ts
+var logRules;
+var init_rules = __esm({
+  "../packages/core/src/log/rules.ts"() {
+    "use strict";
+    logRules = [
+      // build
+      {
+        id: "undefined-control-sequence",
+        check: "build",
+        severity: "error",
+        title: "Unknown command",
+        summary: "The document uses a command that no loaded package defines: a typo, a missing package, or a command from another citation package.",
+        fix: "Fix the spelling or load the package that defines the command.",
+        corpus: "undefined-control-sequence"
+      },
+      {
+        id: "missing-dollar",
+        check: "build",
+        severity: "error",
+        title: "Math symbol outside math mode",
+        summary: "A `_`, `^` or math command appears in running text, or a formula is not closed, so TeX inserted a `$`.",
+        fix: "Escape `_` as `\\_` in text, or put the formula inside `$\u2026$`.",
+        corpus: "underscore-in-text"
+      },
+      {
+        id: "missing-brace",
+        check: "build",
+        severity: "error",
+        title: "Missing brace",
+        summary: "A `{` group is still open where TeX needs it closed, for example at the end of a formula.",
+        fix: "Close every `{` before the formula or environment ends.",
+        corpus: "missing-brace-inserted"
+      },
+      {
+        id: "extra-brace",
+        check: "build",
+        severity: "error",
+        title: "Extra closing brace",
+        summary: "A `}` closes nothing: there are more closing braces than opening ones.",
+        fix: "Delete the extra `}` or add the missing `{`.",
+        corpus: "too-many-braces"
+      },
+      {
+        id: "runaway-argument",
+        check: "build",
+        severity: "error",
+        title: "Unclosed command argument",
+        summary: "The argument of a command is never closed, so TeX read to the end of the paragraph or file.",
+        fix: "Add the missing `}` after the argument.",
+        corpus: "unclosed-brace"
+      },
+      {
+        id: "missing-package",
+        check: "build",
+        severity: "error",
+        title: "Package or class not installed",
+        summary: "A `\\usepackage` or `\\documentclass` names a file that is not in the TeX installation.",
+        fix: "Check the spelling, install it with `tlmgr install <name>`, or build in the Overfull Docker image.",
+        corpus: "missing-package"
+      },
+      {
+        id: "missing-file",
+        check: "build",
+        severity: "error",
+        title: "Input file not found",
+        summary: "An `\\input` or `\\include` points to a file that does not exist.",
+        fix: "Fix the path; it is relative to the main file and case-sensitive.",
+        corpus: "missing-input-file"
+      },
+      {
+        id: "option-clash",
+        check: "build",
+        severity: "error",
+        title: "Package loaded twice with different options",
+        summary: "A package was loaded again with options it was not first loaded with.",
+        fix: "Load it once with all options, or use `\\PassOptionsToPackage` before `\\documentclass`.",
+        corpus: "option-clash"
+      },
+      {
+        id: "unknown-graphics-extension",
+        check: "build",
+        severity: "error",
+        title: "Unsupported image format",
+        summary: "`\\includegraphics` was given a format such as SVG or GIF that the engine cannot embed.",
+        fix: "Convert the image to PDF, PNG or JPEG.",
+        corpus: "unknown-graphics-extension"
+      },
+      {
+        id: "environment-undefined",
+        check: "build",
+        severity: "error",
+        title: "Unknown environment",
+        summary: "A `\\begin{\u2026}` names an environment that is not defined (theorem environments must be declared).",
+        fix: "Load the package that defines it, declare it with `\\newtheorem`, or fix the spelling.",
+        corpus: "environment-undefined"
+      },
+      {
+        id: "environment-mismatch",
+        check: "build",
+        severity: "error",
+        title: "Environment closed with the wrong \\end",
+        summary: "A `\\begin{a}` is closed by `\\end{b}`.",
+        fix: "Make each `\\end{\u2026}` match the innermost open `\\begin{\u2026}`.",
+        corpus: "environment-mismatch"
+      },
+      {
+        id: "lonely-item",
+        check: "build",
+        severity: "error",
+        title: "\\item outside a list",
+        summary: "`\\item` is used outside `itemize`, `enumerate` or `description`.",
+        fix: "Wrap the items in a list environment.",
+        corpus: "lonely-item"
+      },
+      {
+        id: "missing-item",
+        check: "build",
+        severity: "error",
+        title: "Missing \\item",
+        summary: "LaTeX expected `\\item`, typically because text appears in a list before the first item.",
+        fix: "Start each entry with `\\item` and move other text out of the list.",
+        corpus: "missing-item"
+      },
+      {
+        id: "no-line-to-end",
+        check: "build",
+        severity: "error",
+        title: "Line break with no line to end",
+        summary: "`\\\\` is used after a blank line or at the start of a paragraph.",
+        fix: "Remove the `\\\\`; use a blank line or `\\vspace` for spacing."
+      },
+      {
+        id: "missing-begin-document",
+        check: "build",
+        severity: "error",
+        title: "Text in the preamble",
+        summary: "Typeset text appears before `\\begin{document}`.",
+        fix: "Move the text after `\\begin{document}` or comment it out.",
+        corpus: "missing-begin-document"
+      },
+      {
+        id: "preamble-only",
+        check: "build",
+        severity: "error",
+        title: "Preamble command in the document body",
+        summary: "A command such as `\\usepackage` is used after `\\begin{document}`.",
+        fix: "Move it above `\\begin{document}`.",
+        corpus: "usepackage-after-begin-document"
+      },
+      {
+        id: "unicode-character",
+        check: "build",
+        severity: "error",
+        title: "Unicode character pdfLaTeX cannot typeset",
+        summary: "The source contains a character pdfLaTeX does not know, or is not saved as UTF-8.",
+        fix: "Compile with LuaLaTeX, or replace the character with a LaTeX command.",
+        corpus: "inputenc-unicode"
+      },
+      {
+        id: "font-not-found",
+        check: "build",
+        severity: "error",
+        title: "Font not installed",
+        summary: "A font requested with fontspec (or a font package) is not available on this machine.",
+        fix: "Use a font shipped with TeX Live, or add the font files to the project and load them by file name.",
+        corpus: "fontspec-font-not-found"
+      },
+      {
+        id: "biblatex-error",
+        check: "build",
+        severity: "error",
+        title: "biblatex error",
+        summary: "biblatex stopped: BibTeX commands used with biblatex, an incompatible package, or a backend/version mismatch.",
+        fix: "Use biblatex options instead of BibTeX commands; delete the .bbl and rebuild on mismatches.",
+        corpus: "biblatex-bibliographystyle"
+      },
+      {
+        id: "illegal-parameter-number",
+        check: "build",
+        severity: "error",
+        title: "Misused # character",
+        summary: "A macro definition uses `#n` beyond its declared arguments, or a literal `#` appears in text.",
+        fix: "Declare enough arguments, or write `\\#` for a hash sign.",
+        corpus: "illegal-parameter-number"
+      },
+      {
+        id: "double-script",
+        check: "build",
+        severity: "error",
+        title: "Double subscript or superscript",
+        summary: "A symbol has two subscripts (or superscripts), such as `w_i_j`.",
+        fix: "Group them in braces: `w_{ij}`.",
+        corpus: "double-subscript"
+      },
+      {
+        id: "misplaced-alignment-tab",
+        check: "build",
+        severity: "error",
+        title: "Unescaped & in text",
+        summary: "`&` separates table columns and cannot appear in running text or a .bib field unescaped.",
+        fix: "Write `\\&`.",
+        corpus: "ampersand-in-text"
+      },
+      {
+        id: "undefined-color",
+        check: "build",
+        severity: "error",
+        title: "Undefined color",
+        summary: "A color name is used that xcolor does not know.",
+        fix: "Define it with `\\definecolor`, or load xcolor with `dvipsnames`/`svgnames`.",
+        corpus: "undefined-color"
+      },
+      {
+        id: "not-in-outer-par-mode",
+        check: "build",
+        severity: "error",
+        title: "Float inside a box",
+        summary: "A figure, table or margin note is placed inside a minipage, parbox or another float.",
+        fix: "Move the float out, or use `\\captionof` inside a minipage.",
+        corpus: "figure-in-minipage"
+      },
+      {
+        id: "dimension-too-large",
+        check: "build",
+        severity: "error",
+        title: "Length too large",
+        summary: "A length exceeds TeX\u2019s maximum of about 16383pt (5.75 m).",
+        fix: "Fix the length or rescale plot data.",
+        corpus: "dimension-too-large"
+      },
+      {
+        id: "tex-capacity-exceeded",
+        check: "build",
+        severity: "error",
+        title: "TeX ran out of capacity",
+        summary: "Usually infinite recursion (a command that calls itself); otherwise a very large figure.",
+        fix: "Check recent `\\newcommand`/`\\renewcommand` definitions; for big figures use LuaLaTeX or externalize them.",
+        corpus: "infinite-recursion"
+      },
+      {
+        id: "tikz-error",
+        check: "build",
+        severity: "error",
+        title: "TikZ/PGF error",
+        summary: "TikZ stopped on an unknown option, a missing semicolon, or an undefined node.",
+        fix: "Fix the option spelling, end paths with `;`, or load the needed TikZ library.",
+        corpus: "tikz-unknown-key"
+      },
+      {
+        id: "hyperref-error",
+        check: "build",
+        severity: "error",
+        title: "hyperref error",
+        summary: "hyperref reported an error, typically a driver or option conflict.",
+        fix: "Load hyperref last and set options with `\\hypersetup`."
+      },
+      {
+        id: "command-already-defined",
+        check: "build",
+        severity: "error",
+        title: "Command already defined",
+        summary: "`\\newcommand` tried to define a name that already exists.",
+        fix: "Choose another name, or use `\\renewcommand` deliberately."
+      },
+      {
+        id: "unknown-package-option",
+        check: "build",
+        severity: "error",
+        title: "Unknown package option",
+        summary: "A package or class was given an option it does not support.",
+        fix: "Check the option against the package documentation."
+      },
+      {
+        id: "tex-error",
+        check: "build",
+        severity: "error",
+        title: "TeX error",
+        summary: "TeX reported an error Overfull has no specific explanation for; the original message is shown.",
+        fix: "Read the message and fix the first error in the log first."
+      },
+      // output
+      {
+        id: "undefined-citation",
+        check: "output",
+        severity: "error",
+        title: "Undefined citation",
+        summary: "A cited key has no bibliography entry, so the PDF shows the key or [?].",
+        fix: "Fix the key or add the entry to the .bib file, then rebuild; or remove the `\\cite` if the source is not known.",
+        corpus: "biblatex-undefined-citation"
+      },
+      {
+        id: "undefined-reference",
+        check: "output",
+        severity: "error",
+        title: "Undefined reference",
+        summary: "A `\\ref` points to a label that does not exist, so the PDF shows ??.",
+        fix: "Add the `\\label` or fix the spelling in `\\ref`.",
+        corpus: "undefined-reference"
+      },
+      {
+        id: "bibliography-missing",
+        check: "output",
+        severity: "error",
+        title: "Bibliography not built",
+        summary: "Biber or BibTeX was never run, so all citations are undefined and the bibliography is empty.",
+        fix: "Build with `latexmk`, or run biber/bibtex and then LaTeX twice.",
+        corpus: "biblatex-rerun-biber"
+      },
+      {
+        id: "bibliography-stale",
+        check: "output",
+        severity: "warning",
+        title: "Bibliography out of date",
+        summary: "Citations changed since Biber or BibTeX last ran.",
+        fix: "Build with `latexmk`, or rerun biber/bibtex and LaTeX."
+      },
+      {
+        id: "rerun-needed",
+        check: "output",
+        severity: "warning",
+        title: "LaTeX needs another run",
+        summary: "Labels changed during the run; references and page numbers may be wrong until LaTeX runs again.",
+        fix: "Build with `latexmk`, which reruns LaTeX as needed.",
+        corpus: "labels-changed"
+      },
+      {
+        id: "empty-bibliography",
+        check: "output",
+        severity: "warning",
+        title: "Empty bibliography",
+        summary: "The bibliography printed no entries.",
+        fix: "Cite sources, check `\\addbibresource`, or use `\\nocite{*}`.",
+        corpus: "empty-bibliography"
+      },
+      {
+        id: "missing-figure",
+        check: "output",
+        severity: "error",
+        title: "Figure file not found",
+        summary: "An `\\includegraphics` file does not exist, so the PDF has an empty box.",
+        fix: "Fix the path and file name (case-sensitive).",
+        corpus: "missing-figure"
+      },
+      {
+        id: "duplicate-label",
+        check: "output",
+        severity: "warning",
+        title: "Label defined twice",
+        summary: "Two `\\label`s share a name, so references may point to the wrong place.",
+        fix: "Give each label a unique name.",
+        corpus: "duplicate-label"
+      },
+      {
+        id: "overfull-box",
+        check: "output",
+        severity: "warning",
+        title: "Text in the margin",
+        summary: "A line is wider than the text block by more than the threshold (default 10pt). The worst box per file is reported.",
+        fix: "Rephrase, use `\\url`/`\\path` for long identifiers, or scale wide material to `\\linewidth`.",
+        corpus: "overfull-hbox"
+      },
+      {
+        id: "font-substitution",
+        check: "output",
+        severity: "warning",
+        title: "Font shape substituted",
+        summary: "The font lacks a requested shape (e.g. bold small caps) and another one was used.",
+        fix: "Use a font family that has the shape, or avoid the combination.",
+        corpus: "font-shape-substitution"
+      },
+      {
+        id: "missing-glyph",
+        check: "output",
+        severity: "error",
+        title: "Characters missing from the font",
+        summary: "The font has no glyph for some characters, which are silently dropped from the PDF.",
+        fix: "Use a font that covers the characters (e.g. a CJK font with xeCJK or luatexja).",
+        corpus: "missing-glyph"
+      },
+      {
+        id: "pdf-string-token",
+        check: "output",
+        severity: "info",
+        title: "Heading simplified in PDF bookmarks",
+        summary: "hyperref removed math or commands from a heading when making the PDF bookmark.",
+        fix: "Use `\\texorpdfstring{TeX}{plain text}` in the heading.",
+        corpus: "math-in-pdf-bookmark"
+      },
+      {
+        id: "float-too-large",
+        check: "output",
+        severity: "warning",
+        title: "Float taller than the page",
+        summary: "A figure or table does not fit on a page.",
+        fix: "Scale it down or split it."
+      },
+      {
+        id: "font-feature-missing",
+        check: "output",
+        severity: "warning",
+        title: "Font lacks a requested feature",
+        summary: "fontspec could not apply a requested OpenType feature or script.",
+        fix: "Pick a font that supports it or drop the option."
+      }
+    ];
+  }
+});
+
+// ../packages/core/src/log/index.ts
+var init_log = __esm({
+  "../packages/core/src/log/index.ts"() {
+    "use strict";
+    init_analyze();
+    init_bibliography();
+    init_rules();
+  }
+});
+
+// ../packages/core/src/venue/tex.ts
+function stripComments(content) {
+  return content.split("\n").map((line) => {
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === "\\") {
+        i++;
+        continue;
+      }
+      if (line[i] === "%") return line.slice(0, i);
+    }
+    return line;
+  }).join("\n");
+}
+function readGroup(s, open) {
+  if (s[open] !== "{") return null;
+  let depth = 0;
+  for (let i = open; i < s.length; i++) {
+    const c = s[i];
+    if (c === "\\") {
+      i++;
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return { value: s.slice(open + 1, i), end: i + 1 };
+    }
+  }
+  return null;
+}
+function lineCounter(s) {
+  let pos = 0;
+  let line = 1;
+  return (index) => {
+    if (index < pos) {
+      pos = 0;
+      line = 1;
+    }
+    for (; pos < index; pos++) if (s.charCodeAt(pos) === 10) line++;
+    return line;
+  };
+}
+function braceMatches(s) {
+  const close = new Int32Array(s.length).fill(-1);
+  const stack = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 92) {
+      i++;
+    } else if (c === 123) {
+      stack.push(i);
+    } else if (c === 125) {
+      const open = stack.pop();
+      if (open !== void 0) close[open] = i;
+    }
+  }
+  return close;
+}
+function findCommands(files, names) {
+  const out = [];
+  const re = new RegExp(`\\\\(${names.join("|")})\\*?(?![A-Za-z@])`, "g");
+  for (const f of files) {
+    const src = stripComments(f.content);
+    const lineAt = lineCounter(src);
+    let braces;
+    re.lastIndex = 0;
+    for (let m = re.exec(src); m; m = re.exec(src)) {
+      let i = m.index + m[0].length;
+      while (src[i] === " " || src[i] === "\n") i++;
+      let optional;
+      if (src[i] === "[") {
+        let close = src.slice(i, i + MAX_OPTIONAL).indexOf("]");
+        if (close < 0) continue;
+        close += i;
+        optional = src.slice(i + 1, close);
+        i = close + 1;
+        while (src[i] === " " || src[i] === "\n") i++;
+      }
+      if (src[i] !== "{") continue;
+      braces ??= braceMatches(src);
+      const end = braces[i] ?? -1;
+      if (end < 0) continue;
+      const use = {
+        file: f.path,
+        line: lineAt(m.index),
+        name: m[1],
+        arg: src.slice(i + 1, end)
+      };
+      if (optional !== void 0) use.optional = optional;
+      out.push(use);
+    }
+  }
+  return out;
+}
+function grepTex(files, re) {
+  const out = [];
+  const flags = re.flags.includes("g") ? re.flags : `${re.flags}g`;
+  const g = new RegExp(re.source, flags);
+  for (const f of files) {
+    const src = stripComments(f.content);
+    const lineAt = lineCounter(src);
+    g.lastIndex = 0;
+    for (let m = g.exec(src); m; m = g.exec(src)) {
+      out.push({ file: f.path, line: lineAt(m.index), match: m[0] });
+      if (m[0].length === 0) g.lastIndex++;
+    }
+  }
+  return out;
+}
+function citeLocations(files, keys) {
+  const wanted = keys ? new Set(keys) : void 0;
+  const out = /* @__PURE__ */ new Map();
+  for (const f of files) {
+    const src = stripComments(f.content);
+    const lineAt = lineCounter(src);
+    CITE_COMMAND.lastIndex = 0;
+    for (let m = CITE_COMMAND.exec(src); m; m = CITE_COMMAND.exec(src)) {
+      let i = m.index + m[0].length;
+      for (let opt = 0; opt < 2; opt++) {
+        while (src[i] === " " || src[i] === "\n") i++;
+        if (src[i] !== "[") break;
+        const close2 = src.slice(i, i + MAX_OPTIONAL).indexOf("]");
+        if (close2 < 0) break;
+        i += close2 + 1;
+      }
+      while (src[i] === " " || src[i] === "\n") i++;
+      if (src[i] !== "{") continue;
+      const close = src.slice(i, i + MAX_OPTIONAL).indexOf("}");
+      if (close < 0) continue;
+      const body = src.slice(i + 1, i + close);
+      if (body.includes("{")) continue;
+      for (const raw of body.split(",")) {
+        const key = raw.trim();
+        if (!key || out.has(key) || wanted && !wanted.has(key)) continue;
+        out.set(key, { file: f.path, line: lineAt(m.index) });
+      }
+    }
+  }
+  return out;
+}
+var MAX_OPTIONAL, CITE_COMMAND;
+var init_tex2 = __esm({
+  "../packages/core/src/venue/tex.ts"() {
+    "use strict";
+    MAX_OPTIONAL = 4096;
+    CITE_COMMAND = /\\([A-Za-z]{0,12}cite[A-Za-z]{0,8})\*?(?![A-Za-z@])/g;
+  }
+});
+
+// ../packages/core/src/pdf/rules.ts
+function veraPdfClauseInfo(clause) {
+  const c = clause.trim();
+  return veraPdfClauses.filter((i) => c === i.clause || c.startsWith(`${i.clause}.`)).sort((a, b) => b.clause.length - a.clause.length)[0];
+}
+var pdfRules, veraPdfClauses;
+var init_rules2 = __esm({
+  "../packages/core/src/pdf/rules.ts"() {
+    "use strict";
+    pdfRules = [
+      {
+        id: "pdf-unresolved-reference",
+        check: "output",
+        severity: "error",
+        title: "Unresolved reference in the PDF",
+        summary: 'The PDF shows "??" where a figure, table, section or equation number belongs.',
+        fix: "Make sure every `\\ref` has a matching `\\label` (same spelling), then rebuild with latexmk."
+      },
+      {
+        id: "pdf-unresolved-citation",
+        check: "output",
+        severity: "error",
+        title: "Unresolved citation in the PDF",
+        summary: 'The PDF shows "[?]" where a citation number belongs.',
+        fix: "Add the cited key to the .bib file or fix its spelling, then rebuild so biber/bibtex runs."
+      },
+      {
+        id: "pdf-not-tagged",
+        check: "accessibility",
+        severity: "error",
+        title: "PDF is not tagged",
+        summary: "The PDF has no structure tags, so screen readers cannot tell headings, paragraphs, lists and figures apart.",
+        fix: "Add `\\DocumentMetadata{lang=en, pdfstandard=ua-2, pdfversion=2.0, tagging=on}` as the first line of main.tex and compile with LuaLaTeX. An untagged PDF also fails most veraPDF clauses; they are folded into this problem."
+      },
+      {
+        id: "pdf-missing-language",
+        check: "accessibility",
+        severity: "error",
+        title: "Document language not set",
+        summary: "The PDF does not declare its language, so assistive technology may read it with the wrong voice.",
+        fix: "Set `lang=` in `\\DocumentMetadata{...}` (for example `lang=en-US`)."
+      },
+      {
+        id: "pdf-missing-title",
+        check: "accessibility",
+        severity: "error",
+        title: "Document title missing or not displayed",
+        summary: "The PDF has no title in its metadata, or viewers are not told to show it instead of the file name (DisplayDocTitle).",
+        fix: "Set `\\hypersetup{pdftitle={...}, pdfdisplaydoctitle=true}` (or `title=` in `\\DocumentMetadata`)."
+      },
+      {
+        id: "figure-missing-alt",
+        check: "accessibility",
+        severity: "error",
+        title: "Figure without alternative text",
+        summary: "A tagged figure has no alt text, so its content is invisible to screen-reader users.",
+        fix: "Describe what the figure shows: `\\includegraphics[alt={...}]{file}`, or `\\begin{tikzpicture}[alt={...}]` for TikZ; use `artifact` instead of `alt` for purely decorative images."
+      },
+      {
+        id: "font-not-embedded",
+        check: "accessibility",
+        severity: "error",
+        title: "Font not embedded",
+        summary: "A font is referenced but not embedded, so the PDF may render differently elsewhere and fails PDF/UA and most venue checks.",
+        fix: "Use OpenType or Type 1 fonts (LuaLaTeX with fontspec embeds them); re-export figures with fonts embedded."
+      },
+      {
+        id: "pdfua-not-claimed",
+        check: "accessibility",
+        severity: "info",
+        title: "PDF/UA conformance not claimed",
+        summary: "The XMP metadata does not claim PDF/UA, so validators and archives will not treat it as accessible.",
+        fix: "Add `pdfstandard=ua-2` to `\\DocumentMetadata{...}`."
+      },
+      {
+        id: "verapdf-not-run",
+        check: "accessibility",
+        severity: "warning",
+        title: "veraPDF validation not run",
+        summary: "veraPDF was not available, so only Overfull\u2019s own accessibility checks ran (no full PDF/UA validation). A warning when the profile requires accessibility (thesis, paper) and the CLI could have run it (Docker is available); otherwise, including in the browser and the GitHub Action, a note.",
+        fix: "Install veraPDF (https://verapdf.org) and put `verapdf` on PATH, run `overfull check --engine docker`, or run the check in the Overfull Docker image."
+      },
+      {
+        id: "verapdf-error",
+        check: "accessibility",
+        severity: "warning",
+        title: "veraPDF could not validate the PDF",
+        summary: "veraPDF ran but did not produce a validation result.",
+        fix: "Run `verapdf --flavour ua2 <file.pdf>` by hand to see the error; the PDF may be damaged."
+      },
+      {
+        id: "verapdf",
+        check: "accessibility",
+        severity: "error",
+        title: "PDF/UA requirement failed (veraPDF)",
+        summary: "veraPDF found a PDF/UA violation. Rule ids are `verapdf-<clause>`, e.g. `verapdf-8-2-5-26` for clause 8.2.5.26 of ISO 14289.",
+        fix: "Read the clause description in the message; most failures come from untagged content, missing alt text or metadata."
+      }
+    ];
+    veraPdfClauses = [
+      {
+        clause: "8.2.2",
+        title: "Content is neither tagged nor marked as an artifact",
+        summary: "Every piece of page content must belong to the structure tree or be marked as an artifact (page numbers, running headers, decorative rules). Untagged content is invisible or confusing to screen readers. Usually caused by packages or drawing code that tagging does not yet support, or by a PDF built without tagging.",
+        fix: "Build with `\\DocumentMetadata{\u2026 tagging=on}` and LuaLaTeX; update TeX Live (tagging support improves every year). Wrap decorative material in `\\tagmcbegin{artifact}`\u2026`\\tagmcend` or use the package\u2019s `artifact` option; include images with `alt=` or `artifact`."
+      },
+      {
+        clause: "8.2.5",
+        title: "Structure element used where the standard does not allow it",
+        summary: "The structure tree breaks a nesting rule of the PDF 2.0 namespace (for example a `Caption` outside a `Figure`/`Table`, or a list item outside `L`). Usually caused by a package or class that tags its output in its own way.",
+        fix: "Update TeX Live and the class; remove manual `\\tagstructbegin` code or packages known to break tagging (check https://latex3.github.io/tagging-project/tagging-status/). The evidence lists the offending structure elements."
+      },
+      {
+        clause: "7.1",
+        title: "Tagging and general PDF/UA requirements",
+        summary: "The PDF is not tagged, marks content inconsistently, or lacks basic PDF/UA properties (MarkInfo, DisplayDocTitle, the PDF/UA identification in XMP).",
+        fix: "Add `\\DocumentMetadata{lang=en, pdfstandard=ua-2, pdfversion=2.0, tagging=on}` as the first line of main.tex, set `\\hypersetup{pdftitle={\u2026}, pdfdisplaydoctitle=true}`, and build with LuaLaTeX."
+      },
+      {
+        clause: "7.18",
+        title: "Annotation or link not accessible",
+        summary: "Links and other annotations must be tagged (inside a `Link` structure element) and carry a text description (`Contents`). hyperref links from an untagged or partly tagged build fail this.",
+        fix: "Build with tagging on (`\\DocumentMetadata{\u2026 tagging=on}`) so hyperref tags its links; avoid packages that draw their own link annotations."
+      },
+      {
+        clause: "7.21",
+        title: "Font problem (embedding, encoding or Unicode mapping)",
+        summary: "A font is not embedded, has no Unicode mapping (ToUnicode), or its widths disagree with the embedded program. Screen readers then cannot extract the text. Common with Type 3 bitmap fonts and figures exported with non-embedded fonts.",
+        fix: "Compile with LuaLaTeX and OpenType fonts (fontspec); re-export PDF/EPS figures with fonts embedded (or as outlines). Avoid bitmap (Type 3) fonts."
+      },
+      {
+        clause: "7.3",
+        title: "Figure without alternative text",
+        summary: "A `Figure` structure element has no `Alt` (or `ActualText`) description.",
+        fix: "Give every figure alt text: `\\includegraphics[alt={\u2026}]{file}`, `\\begin{tikzpicture}[alt={\u2026}]`; use `artifact` for purely decorative images."
+      }
+    ];
+  }
+});
+
+// ../packages/core/src/pdf/accessibility.ts
+function hasAltKey(options) {
+  return options !== void 0 && /(?:^|[,\s])(?:alt\s*=|artifact\b)/.test(options);
+}
+function figureAltSourceProblems(texFiles, severity) {
+  const problems = [];
+  for (const use of findCommands(texFiles, ["includegraphics"])) {
+    if (hasAltKey(use.optional)) continue;
+    problems.push({
+      rule: "figure-missing-alt",
+      check: "accessibility",
+      severity,
+      message: `\`\\includegraphics{${use.arg.trim()}}\` has no alt text`,
+      location: { file: use.file, line: use.line },
+      fix: FIGURE_ALT_FIX,
+      data: { kind: "includegraphics", file: use.arg.trim() }
+    });
+  }
+  const begin = /\\begin\s*\{tikzpicture\}/g;
+  for (const f of texFiles) {
+    const src = stripComments(f.content);
+    const lineAt = lineCounter(src);
+    begin.lastIndex = 0;
+    for (let m = begin.exec(src); m; m = begin.exec(src)) {
+      let i = m.index + m[0].length;
+      while (src[i] === " " || src[i] === "\n") i++;
+      let options;
+      if (src[i] === "[") {
+        const close = src.slice(i, i + 4096).indexOf("]");
+        if (close > 0) options = src.slice(i + 1, i + close);
+      }
+      if (hasAltKey(options)) continue;
+      problems.push({
+        rule: "figure-missing-alt",
+        check: "accessibility",
+        severity,
+        message: "`tikzpicture` has no alt text",
+        location: { file: f.path, line: lineAt(m.index) },
+        fix: FIGURE_ALT_FIX,
+        data: { kind: "tikzpicture" }
+      });
+    }
+  }
+  return problems;
+}
+function veraPdfRuleId(clause) {
+  const slug = clause.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return slug ? `verapdf-${slug}` : "verapdf";
+}
+function plural2(n, one, many = `${one}s`) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+function isMissingAlt(alt) {
+  if (!alt?.trim()) return true;
+  return /^[\w./\\-]+\.(pdf|png|jpe?g|eps|svg|gif|tiff?|webp|bmp)$/i.test(alt.trim());
+}
+function figureProblems(facts, sev) {
+  const byPage = /* @__PURE__ */ new Map();
+  for (const f of facts.figures) {
+    if (!isMissingAlt(f.alt)) continue;
+    const e = byPage.get(f.page) ?? { count: 0, placeholder: 0 };
+    e.count++;
+    if (f.alt) e.placeholder++;
+    byPage.set(f.page, e);
+  }
+  return [...byPage.entries()].map(([page, { count, placeholder }]) => ({
+    rule: "figure-missing-alt",
+    check: "accessibility",
+    severity: sev,
+    message: `${plural2(count, "figure")} without alt text${placeholder ? " (LaTeX used the file name)" : ""}`,
+    location: { page },
+    fix: `On this page: ${FIGURE_ALT_FIX}`,
+    data: { count }
+  }));
+}
+function fontProblems(facts, sev) {
+  const missing = (facts.fonts ?? []).filter((f) => !f.embedded);
+  if (missing.length === 0) return [];
+  const names = [...new Set(missing.map((f) => f.name || "(unnamed)"))];
+  return [
+    {
+      rule: "font-not-embedded",
+      check: "accessibility",
+      severity: sev,
+      message: `${plural2(names.length, "font")} not embedded: ${names.slice(0, 5).join(", ")}${names.length > 5 ? ", \u2026" : ""}`,
+      fix: "Embed all fonts: compile with LuaLaTeX and re-export figures (PDF/EPS) with fonts embedded",
+      data: { fonts: names }
+    }
+  ];
+}
+function pagesText(pages2) {
+  if (!pages2.length) return "";
+  const shown = pages2.slice(0, 8).join(", ");
+  return ` on ${pages2.length === 1 ? "page" : "pages"} ${shown}${pages2.length > 8 ? ", \u2026" : ""}`;
+}
+function veraPdfProblems(v, sev) {
+  if (v.error) {
+    return [
+      {
+        rule: "verapdf-error",
+        check: "accessibility",
+        severity: "warning",
+        message: `veraPDF could not validate the PDF: ${v.error}`,
+        fix: "Run `verapdf --flavour ua2 <file.pdf>` by hand to see the full error"
+      }
+    ];
+  }
+  const groups = /* @__PURE__ */ new Map();
+  for (const f of v.failures) {
+    const rule = veraPdfRuleId(f.clause);
+    const prev = groups.get(rule);
+    if (prev) {
+      prev.count += f.failedChecks;
+      if (f.testNumber !== void 0) prev.tests.push(f.testNumber);
+      for (const p of f.pages ?? []) prev.pages.add(p);
+      if (f.contexts.length && !prev.problem.evidence)
+        prev.problem.evidence = f.contexts.join("\n");
+      continue;
+    }
+    const desc = f.description.replace(/\s+/g, " ").trim();
+    const info3 = veraPdfClauseInfo(f.clause);
+    const problem3 = {
+      rule,
+      check: "accessibility",
+      severity: sev,
+      message: "",
+      detail: info3 ? `${desc}. ${info3.summary}` : desc,
+      fix: info3 ? `${info3.fix} (\`overfull explain ${rule}\`)` : "See `overfull explain verapdf`; the clause names the PDF/UA requirement that failed"
+    };
+    if (f.contexts.length) problem3.evidence = f.contexts.join("\n");
+    groups.set(rule, {
+      problem: problem3,
+      spec: f.specification,
+      clause: f.clause,
+      desc,
+      count: f.failedChecks,
+      tests: f.testNumber === void 0 ? [] : [f.testNumber],
+      pages: new Set(f.pages ?? [])
+    });
+  }
+  if (!v.compliant && groups.size === 0) {
+    return [
+      {
+        rule: "verapdf",
+        check: "accessibility",
+        severity: "warning",
+        message: "veraPDF reported the file non-compliant but listed no failed rules",
+        fix: "Run `verapdf --flavour ua2 --format text <file.pdf>` by hand to see why validation failed",
+        data: { compliant: false }
+      }
+    ];
+  }
+  return [...groups.values()].map((g) => {
+    const pages2 = [...g.pages].sort((a, b) => a - b);
+    const p = g.problem;
+    p.message = `${g.spec} \xA7${g.clause}: ${g.desc} (${plural2(g.count, "failed check")}${pagesText(pages2)})`;
+    if (pages2.length) p.location = { page: pages2[0] };
+    p.data = {
+      specification: g.spec,
+      clause: g.clause,
+      count: g.count,
+      tests: g.tests,
+      ...pages2.length ? { pages: pages2 } : {}
+    };
+    return p;
+  });
+}
+function groupVeraPdf(problems, vera, buildFailed2) {
+  const clauses = vera.filter((p) => p.rule.startsWith("verapdf-") && p.rule !== "verapdf-error");
+  const untagged = problems.find((p) => p.rule === "pdf-not-tagged");
+  if (untagged && clauses.length) {
+    const failedChecks = clauses.reduce((n, p) => n + Number(p.data?.count ?? 1), 0);
+    untagged.related = (untagged.related ?? 0) + clauses.length;
+    untagged.message = `${untagged.message}; this also causes ${plural2(clauses.length, "veraPDF failure")} (${plural2(failedChecks, "failed check")})`;
+    untagged.evidence = clauses.map((p) => p.message).join("\n");
+    untagged.data = {
+      ...untagged.data ?? {},
+      verapdf: clauses.map((p) => ({ rule: p.rule, ...p.data ?? {} }))
+    };
+    return vera.filter((p) => !clauses.includes(p));
+  }
+  if (buildFailed2) {
+    return vera.map(
+      (p) => clauses.includes(p) ? {
+        ...p,
+        severity: "info",
+        message: `${p.message} \u2014 fix build errors first; a broken build produces these`,
+        fix: `Fix build errors first; a broken build produces these. ${p.fix ?? ""}`.trim()
+      } : p
+    );
+  }
+  return vera;
+}
+function accessibilityCheck(facts, opts = {}) {
+  const level = opts.level ?? "required";
+  if (level === "off") {
+    return {
+      check: "accessibility",
+      status: "skipped",
+      problems: [],
+      skippedReason: "Accessibility is off for this venue profile"
+    };
+  }
+  const sev = level === "required" ? "error" : "warning";
+  const problems = [];
+  if (!facts.tagged) {
+    problems.push({
+      rule: "pdf-not-tagged",
+      check: "accessibility",
+      severity: sev,
+      message: "PDF is not tagged (no structure for screen readers)",
+      fix: `Add \`${DOCUMENT_METADATA_LINE}\` as the first line of main.tex and build with LuaLaTeX`
+    });
+  }
+  if (!facts.language) {
+    problems.push({
+      rule: "pdf-missing-language",
+      check: "accessibility",
+      severity: sev,
+      message: "Document language is not set",
+      fix: "Set `lang=en-US` (or your language) in `\\DocumentMetadata{...}`"
+    });
+  }
+  if (!facts.title) {
+    problems.push({
+      rule: "pdf-missing-title",
+      check: "accessibility",
+      severity: sev,
+      message: "PDF has no title in its metadata",
+      fix: "Set `\\hypersetup{pdftitle={...}, pdfdisplaydoctitle=true}`"
+    });
+  } else if (facts.displayDocTitle === false) {
+    problems.push({
+      rule: "pdf-missing-title",
+      check: "accessibility",
+      severity: sev,
+      message: "Viewers will show the file name instead of the title (DisplayDocTitle is off)",
+      fix: "Set `\\hypersetup{pdfdisplaydoctitle=true}`",
+      data: { title: facts.title }
+    });
+  }
+  const fromSource = opts.texFiles?.length ? figureAltSourceProblems(opts.texFiles, sev) : [];
+  problems.push(...fromSource.length ? fromSource : figureProblems(facts, sev));
+  problems.push(...fontProblems(facts, sev));
+  if (facts.pdfua === void 0) {
+    problems.push({
+      rule: "pdfua-not-claimed",
+      check: "accessibility",
+      severity: "info",
+      message: "PDF does not claim PDF/UA conformance",
+      fix: "Add `pdfstandard=ua-2` to `\\DocumentMetadata{...}`"
+    });
+  }
+  if (opts.verapdf === null) {
+    const nr = opts.verapdfNotRun ?? {};
+    problems.push({
+      rule: "verapdf-not-run",
+      check: "accessibility",
+      severity: level === "required" && nr.couldRun ? "warning" : "info",
+      message: nr.message ?? "veraPDF not found, full PDF/UA validation skipped",
+      fix: nr.fix ?? "Install veraPDF (https://verapdf.org) and put `verapdf` on PATH, or run `overfull check --engine docker` (uses the Overfull image), or run the check inside the Overfull Docker image"
+    });
+  } else if (opts.verapdf) {
+    problems.push(
+      ...groupVeraPdf(problems, veraPdfProblems(opts.verapdf, sev), opts.buildFailed === true)
+    );
+  }
+  const counted = problems.filter((p) => p.severity !== "info");
+  const stats = {
+    figures: facts.figures.length,
+    figuresWithAlt: facts.figures.filter((f) => !isMissingAlt(f.alt)).length
+  };
+  if (opts.verapdf && !opts.verapdf.error) stats.verapdfFailedRules = opts.verapdf.failures.length;
+  let summary;
+  if (counted.length === 0) {
+    summary = opts.verapdf && !opts.verapdf.error && opts.verapdf.compliant ? "Tagged, PDF/UA valid (veraPDF)" : "Tagged, language and title set";
+  } else {
+    summary = `${plural2(counted.length, "accessibility problem")}`;
+  }
+  return { check: "accessibility", status: statusOf(problems), problems, summary, stats };
+}
+var DOCUMENT_METADATA_LINE, FIGURE_ALT_FIX;
+var init_accessibility = __esm({
+  "../packages/core/src/pdf/accessibility.ts"() {
+    "use strict";
+    init_types();
+    init_tex2();
+    init_rules2();
+    DOCUMENT_METADATA_LINE = "\\DocumentMetadata{lang=en, pdfstandard=ua-2, pdfversion=2.0, tagging=on}";
+    FIGURE_ALT_FIX = "Describe what the figure shows: `\\includegraphics[alt={...}]{file}`, or `\\begin{tikzpicture}[alt={...}]` for TikZ; use `artifact` instead of `alt` for purely decorative images";
+  }
+});
+
+// ../packages/core/src/pdf/extract.ts
+function pick(source, key) {
+  if (source instanceof Map) return source.get(key);
+  if (source && typeof source === "object") return source[key];
+  return void 0;
+}
+function str(v) {
+  if (typeof v !== "string") return void 0;
+  const t = v.trim();
+  return t ? t : void 0;
+}
+function dedupeRepeat(s) {
+  if (!s) return s;
+  for (let parts = 2; parts <= 4; parts++) {
+    if (s.length % parts !== 0) continue;
+    const unit = s.slice(0, s.length / parts);
+    if (unit.repeat(parts) === s) return unit;
+  }
+  return s;
+}
+function readInfo(info3) {
+  const out = {};
+  const map = [
+    ["title", "Title"],
+    ["author", "Author"],
+    ["subject", "Subject"],
+    ["keywords", "Keywords"],
+    ["creator", "Creator"],
+    ["producer", "Producer"],
+    ["pdfVersion", "PDFFormatVersion"]
+  ];
+  for (const [k, src] of map) {
+    const v = str(pick(info3, src));
+    if (v) out[k] = v;
+  }
+  return out;
+}
+function readXmp(md) {
+  if (!md) return {};
+  const out = {};
+  const title = dedupeRepeat(str(md.get("dc:title")));
+  if (title) out.title = title;
+  const lang = md.get("dc:language");
+  const langStr = Array.isArray(lang) ? str(lang[0]) : str(lang);
+  if (langStr) out.language = langStr;
+  const creators = md.get("dc:creator");
+  if (Array.isArray(creators)) {
+    const list2 = creators.filter((c) => typeof c === "string" && c.trim() !== "");
+    if (list2.length) out.creators = list2;
+  }
+  const part = Number.parseInt(String(md.get("pdfuaid:part") ?? ""), 10);
+  if (Number.isFinite(part)) out.pdfuaPart = part;
+  return out;
+}
+function pageText(items) {
+  let text2 = "";
+  for (const item of items) {
+    const s = pick(item, "str");
+    if (typeof s !== "string") continue;
+    text2 += s;
+    if (pick(item, "hasEOL") === true) text2 += "\n";
+  }
+  return text2;
+}
+function textBoxOf(items, view) {
+  const [x0 = 0, , , y1 = 0] = view;
+  let left = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (const item of items) {
+    const s = pick(item, "str");
+    const t = pick(item, "transform");
+    const width = pick(item, "width");
+    if (typeof s !== "string" || !s.trim() || !Array.isArray(t) || typeof width !== "number")
+      continue;
+    if (/^\s*\d{1,5}\s*$/.test(s)) continue;
+    const [, , , d = 0, e = 0, f = 0] = t;
+    const height = Math.abs(
+      typeof pick(item, "height") === "number" ? pick(item, "height") : d
+    );
+    if (![e, f, width, height].every(Number.isFinite) || width <= 0) continue;
+    left = Math.min(left, e - x0);
+    right = Math.max(right, e - x0 + width);
+    top = Math.min(top, y1 - (f + height));
+    bottom = Math.max(bottom, y1 - f);
+  }
+  if (!Number.isFinite(left)) return void 0;
+  const mm = (v) => Math.round(v * PT_TO_MM * 10) / 10;
+  return { leftMm: mm(left), rightMm: mm(right), topMm: mm(top), bottomMm: mm(bottom) };
+}
+function collectFigures(node, page, out) {
+  if (!node || typeof node !== "object") return;
+  const n = node;
+  if (n.role === "Figure") {
+    const alt = str(n.alt);
+    out.push(alt ? { page, alt } : { page });
+  }
+  if (Array.isArray(n.children)) for (const c of n.children) collectFigures(c, page, out);
+}
+async function extractPdfFacts(data, pdfjs) {
+  const task = pdfjs.getDocument({
+    data: data.slice(),
+    isEvalSupported: false,
+    useSystemFonts: false,
+    disableFontFace: true,
+    verbosity: 0
+  });
+  const doc = await task.promise;
+  try {
+    const { info: info3, metadata } = await doc.getMetadata();
+    const pdfInfo = readInfo(info3);
+    const xmp = readXmp(metadata);
+    const markInfo = await doc.getMarkInfo().catch(() => null);
+    const prefs = doc.getViewerPreferences ? await doc.getViewerPreferences().catch(() => null) : void 0;
+    const pages2 = [];
+    const figures = [];
+    let hasStructTree = false;
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const [x0 = 0, y0 = 0, x1 = 0, y1 = 0] = page.view;
+      let w = Math.abs(x1 - x0) * PT_TO_MM;
+      let h = Math.abs(y1 - y0) * PT_TO_MM;
+      if ((page.rotate ?? 0) % 180 !== 0) [w, h] = [h, w];
+      const content = await page.getTextContent();
+      const box = (page.rotate ?? 0) % 360 === 0 ? textBoxOf(content.items, page.view) : void 0;
+      pages2.push({
+        number: i,
+        text: pageText(content.items),
+        widthMm: Math.round(w * 10) / 10,
+        heightMm: Math.round(h * 10) / 10,
+        ...box ? { textBox: box } : {}
+      });
+      const tree = await page.getStructTree().catch(() => null);
+      if (tree) {
+        hasStructTree = true;
+        collectFigures(tree, i, figures);
+      }
+      page.cleanup?.();
+    }
+    const language = str(pick(info3, "Language")) ?? xmp.language;
+    const title = pdfInfo.title ?? xmp.title;
+    const display = pick(prefs, "DisplayDocTitle");
+    const facts = {
+      pageCount: doc.numPages,
+      pages: pages2,
+      info: pdfInfo,
+      xmp,
+      tagged: pick(markInfo, "Marked") === true,
+      hasStructTree,
+      figures
+    };
+    if (language) facts.language = language;
+    if (title) facts.title = title;
+    if (typeof display === "boolean") facts.displayDocTitle = display;
+    else if (prefs === null) facts.displayDocTitle = false;
+    if (xmp.pdfuaPart !== void 0) facts.pdfua = xmp.pdfuaPart;
+    return facts;
+  } finally {
+    await (task.destroy ? task.destroy() : doc.destroy?.());
+  }
+}
+var PT_TO_MM;
+var init_extract = __esm({
+  "../packages/core/src/pdf/extract.ts"() {
+    "use strict";
+    PT_TO_MM = 25.4 / 72;
+  }
+});
+
+// ../packages/core/src/pdf/fonts.ts
+function parsePdffonts(text2) {
+  const lines = text2.split(/\r?\n/);
+  const sepIndex = lines.findIndex((l) => /^-{4,}( -+)+\s*$/.test(l));
+  if (sepIndex < 0) return [];
+  const sep4 = lines[sepIndex] ?? "";
+  const starts = [];
+  const re = /-+/g;
+  for (let m = re.exec(sep4); m; m = re.exec(sep4)) starts.push(m.index);
+  const typeStart = starts[1] ?? 37;
+  const encStart = starts[2] ?? 55;
+  const fonts = [];
+  for (const line of lines.slice(sepIndex + 1)) {
+    if (!line.trim()) continue;
+    const tokens = line.trim().split(/\s+/);
+    const n = tokens.length;
+    if (n < 6) continue;
+    const flag = (i) => tokens[n - i] === "yes";
+    const overflow = line.length > typeStart && line[typeStart - 1] !== " ";
+    const name = overflow ? tokens[0] ?? "" : line.slice(0, typeStart).trim();
+    const type = overflow ? "" : line.slice(typeStart, encStart).trim();
+    fonts.push({ name, type, embedded: flag(5), subset: flag(4), unicode: flag(3) });
+  }
+  return fonts;
+}
+var init_fonts = __esm({
+  "../packages/core/src/pdf/fonts.ts"() {
+    "use strict";
+  }
+});
+
+// ../packages/core/src/pdf/output.ts
+function proseHits(text2) {
+  const hits = [];
+  BARE_QQ.lastIndex = 0;
+  for (let m = BARE_QQ.exec(text2); m; m = BARE_QQ.exec(text2)) {
+    const i = m.index;
+    const prev = text2[i - 1] ?? " ";
+    const next = text2[i + 2] ?? " ";
+    if (!/[\s\u00a0~([]/.test(prev) || !/[\s\u00a0.,;:)\]]/.test(next)) continue;
+    const before = text2.slice(Math.max(0, i - 12), i);
+    const after = text2.slice(i + 2, i + 18);
+    if (PROSE_BEFORE.test(before) || PROSE_AFTER.test(after)) hits.push({ index: i, length: 2 });
+  }
+  return hits;
+}
+function snippet(text2, index, length) {
+  const start = Math.max(0, index - 30);
+  const end = Math.min(text2.length, index + length + 30);
+  return text2.slice(start, end).replace(/\s+/g, " ").trim();
+}
+function findAll(text2, re) {
+  const hits = [];
+  re.lastIndex = 0;
+  for (let m = re.exec(text2); m; m = re.exec(text2)) {
+    hits.push({ index: m.index, length: m[0].length });
+    if (m[0].length === 0) re.lastIndex++;
+  }
+  return hits;
+}
+function refHits(text2) {
+  const ctx = findAll(text2, CONTEXT_REF);
+  const covered = (i) => ctx.some((h) => i >= h.index && i < h.index + h.length);
+  const alone = findAll(text2, STANDALONE_REF).filter((h) => !covered(h.index + h.length - 1));
+  const seen = (i) => covered(i + 1) || alone.some((h) => i >= h.index && i < h.index + h.length);
+  const prose = proseHits(text2).filter((h) => !seen(h.index));
+  return [...ctx, ...alone, ...prose].sort((a, b) => a.index - b.index);
+}
+function pdfOutputProblems(facts) {
+  const problems = [];
+  for (const page of facts.pages) {
+    const refs = refHits(page.text);
+    if (refs.length > 0) {
+      const first2 = refs[0];
+      problems.push({
+        rule: "pdf-unresolved-reference",
+        check: "output",
+        severity: "error",
+        message: refs.length === 1 ? `"??" printed instead of a reference number` : `"??" printed instead of a reference number (${refs.length} times)`,
+        location: { page: page.number },
+        fix: "Check the label exists and is spelled the same in `\\label` and `\\ref`, then rebuild (latexmk runs LaTeX until references settle)",
+        evidence: snippet(page.text, first2.index, first2.length),
+        data: { count: refs.length }
+      });
+    }
+    const cites = findAll(page.text, UNRESOLVED_CITE);
+    if (cites.length > 0) {
+      const first2 = cites[0];
+      problems.push({
+        rule: "pdf-unresolved-citation",
+        check: "output",
+        severity: "error",
+        message: cites.length === 1 ? `"[?]" printed instead of a citation` : `"[?]" printed instead of a citation (${cites.length} times)`,
+        location: { page: page.number },
+        fix: "Add the missing key to the .bib file (or fix its spelling) and rerun biber/bibtex via latexmk",
+        evidence: snippet(page.text, first2.index, first2.length),
+        data: { count: cites.length }
+      });
+    }
+  }
+  return problems;
+}
+var REF_WORDS, CONTEXT_REF, STANDALONE_REF, BARE_QQ, PROSE_BEFORE, PROSE_AFTER, UNRESOLVED_CITE;
+var init_output = __esm({
+  "../packages/core/src/pdf/output.ts"() {
+    "use strict";
+    REF_WORDS = [
+      "Figure",
+      "Figures",
+      "Fig\\.",
+      "Figs\\.",
+      "Table",
+      "Tables",
+      "Tab\\.",
+      "Section",
+      "Sections",
+      "Sec\\.",
+      "Secs\\.",
+      "Chapter",
+      "Chapters",
+      "Ch\\.",
+      "Appendix",
+      "Appendices",
+      "App\\.",
+      "Equation",
+      "Equations",
+      "Eq\\.",
+      "Eqs\\.",
+      "Algorithm",
+      "Alg\\.",
+      "Listing",
+      "Theorem",
+      "Thm\\.",
+      "Lemma",
+      "Definition",
+      "Def\\.",
+      "Corollary",
+      "Proposition",
+      "Prop\\.",
+      "Example",
+      "Remark",
+      "Line",
+      "Lines",
+      "Page",
+      "Pages",
+      "p\\.",
+      "pp\\.",
+      "Part",
+      "Step",
+      "Footnote",
+      "\xA7"
+    ];
+    CONTEXT_REF = new RegExp(
+      `(?<!\\p{L})(?:${REF_WORDS.join("|")})[\\s\\u00a0~]*\\(?\\?\\?\\)?`,
+      "giu"
+    );
+    STANDALONE_REF = /(?:\(\?\?\))|(?:(?<=^|[\s ([])\?\?(?=[.,;:)\]]|\s*$))/gm;
+    BARE_QQ = /(?<!\?)\?\?(?!\?)/g;
+    PROSE_BEFORE = /(?:^|[^\p{L}\p{N}_])(?:see|in|of|from|by|and|or|to|cf\.|with|on|under|at|than|like|as|per|also)[\s\u00a0~]{1,3}$/iu;
+    PROSE_AFTER = /^[\s\u00a0]{1,3}(?:and|or|shows?|for|to|in|is|are|was|were|we|that|which|with|of|on|gives?|illustrates?|lists?|summari[sz]es?|presents?|describes?|compares?|reports?|depicts?)(?![\p{L}\p{N}_])/iu;
+    UNRESOLVED_CITE = /\[\?(?:\s*[,;]\s*\?)*\]/g;
+  }
+});
+
+// ../packages/core/src/pdf/verapdf.ts
+function isObj(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function num(v) {
+  const n = typeof v === "number" ? v : Number.parseInt(String(v ?? ""), 10);
+  return Number.isFinite(n) ? n : void 0;
+}
+function text(v) {
+  return typeof v === "string" ? v.trim() : "";
+}
+function asArray(v) {
+  if (Array.isArray(v)) return v;
+  return v === void 0 || v === null ? [] : [v];
+}
+function decodeXml(s) {
+  return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d))).replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(Number.parseInt(h, 16))).replace(/&amp;/g, "&").trim();
+}
+function attrs(tag2) {
+  const out = {};
+  const re = /([\w:-]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
+  for (let m = re.exec(tag2); m; m = re.exec(tag2)) {
+    out[m[1]] = decodeXml(m[3] ?? m[4] ?? "");
+  }
+  return out;
+}
+function childText(xml, name) {
+  const m = new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`).exec(xml);
+  return m ? decodeXml(m[1] ?? "") : "";
+}
+function contextPage(context) {
+  const m = /\bpages\[(\d+)\]/.exec(context);
+  return m ? Number(m[1]) + 1 : void 0;
+}
+function pagesOf(contexts) {
+  const pages2 = contexts.map(contextPage).filter((p) => p !== void 0);
+  return [...new Set(pages2)].sort((a, b) => a - b);
+}
+function withPages(f, all) {
+  const pages2 = pagesOf(all);
+  if (pages2.length) f.pages = pages2;
+  return f;
+}
+function mergeByClause(failures) {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const f of failures) {
+    const key = `${f.specification}|${f.clause}|${f.testNumber ?? ""}`;
+    const prev = byKey.get(key);
+    if (prev) {
+      prev.failedChecks += f.failedChecks;
+      prev.contexts = [...prev.contexts, ...f.contexts].slice(0, MAX_CONTEXTS);
+      const pages2 = [.../* @__PURE__ */ new Set([...prev.pages ?? [], ...f.pages ?? []])].sort((a, b) => a - b);
+      if (pages2.length) prev.pages = pages2;
+    } else byKey.set(key, { ...f });
+  }
+  return [...byKey.values()];
+}
+function parseXml(xml) {
+  const vr = /<validationReport\b([^>]*)>([\s\S]*?)<\/validationReport>/.exec(xml);
+  if (!vr) {
+    const exception = childText(xml, "exceptionMessage") || childText(xml, "message");
+    return {
+      compliant: false,
+      failures: [],
+      error: exception || "No <validationReport> element found in veraPDF output"
+    };
+  }
+  const head = attrs(vr[1] ?? "");
+  const body = vr[2] ?? "";
+  const details = /<details\b([^>]*)>/.exec(body);
+  const d = attrs(details?.[1] ?? "");
+  const failures = [];
+  const ruleRe = /<rule\b([^>]*?)(?:\/>|>([\s\S]*?)<\/rule>)/g;
+  for (let m = ruleRe.exec(body); m; m = ruleRe.exec(body)) {
+    const a = attrs(m[1] ?? "");
+    if (a.status && a.status !== "failed") continue;
+    const inner = m[2] ?? "";
+    const all = [];
+    const checkRe = /<check\b[^>]*status="failed"[^>]*>([\s\S]*?)<\/check>/g;
+    for (let c = checkRe.exec(inner); c; c = checkRe.exec(inner)) {
+      const ctx = childText(c[1] ?? "", "context");
+      if (ctx) all.push(ctx);
+    }
+    const contexts = all.slice(0, MAX_CONTEXTS);
+    const failure = withPages(
+      {
+        specification: a.specification ?? "",
+        clause: a.clause ?? "",
+        description: childText(inner, "description"),
+        failedChecks: num(a.failedChecks) ?? Math.max(1, all.length),
+        contexts
+      },
+      all
+    );
+    const tn = num(a.testNumber);
+    if (tn !== void 0) failure.testNumber = tn;
+    failures.push(failure);
+  }
+  const compliantAttr = head.isCompliant ?? head.compliant;
+  const result = {
+    compliant: compliantAttr === "true" || compliantAttr === void 0 && failures.length === 0,
+    failures: mergeByClause(failures)
+  };
+  if (head.profileName) result.profile = head.profileName;
+  if (head.statement) result.statement = head.statement;
+  const pr = num(d.passedRules);
+  const fr = num(d.failedRules);
+  const fc = num(d.failedChecks);
+  if (pr !== void 0) result.passedRules = pr;
+  if (fr !== void 0) result.failedRules = fr;
+  if (fc !== void 0) result.failedChecks = fc;
+  return result;
+}
+function findValidation(root) {
+  if (!isObj(root)) return void 0;
+  const report = isObj(root.report) ? root.report : root;
+  for (const job of asArray(report.jobs)) {
+    if (!isObj(job)) continue;
+    const vr = asArray(job.validationResult ?? job.validationReport)[0];
+    if (isObj(vr)) return vr;
+    if (isObj(job.taskException) || job.taskException) return { taskException: job.taskException };
+  }
+  if (isObj(report.validationResult)) return report.validationResult;
+  if (isObj(report.details)) return report;
+  return void 0;
+}
+function parseJson(data) {
+  const vr = findValidation(data);
+  if (!vr) return { compliant: false, failures: [], error: "No validation result in veraPDF JSON" };
+  if (vr.taskException) {
+    const ex = vr.taskException;
+    const msg = isObj(ex) ? text(ex.exceptionMessage) || text(ex.message) : String(ex);
+    return { compliant: false, failures: [], error: msg || "veraPDF could not validate the file" };
+  }
+  const details = isObj(vr.details) ? vr.details : {};
+  const failures = [];
+  for (const r of asArray(details.ruleSummaries ?? details.rules)) {
+    if (!isObj(r)) continue;
+    const status = text(r.ruleStatus || r.status).toLowerCase();
+    if (status && status !== "failed") continue;
+    const all = asArray(r.checks).filter(isObj).filter((c) => text(c.status).toLowerCase() !== "passed").map((c) => text(c.context)).filter(Boolean);
+    const contexts = all.slice(0, MAX_CONTEXTS);
+    const failure = withPages(
+      {
+        specification: text(r.specification),
+        clause: text(r.clause),
+        description: text(r.description),
+        failedChecks: num(r.failedChecks) ?? Math.max(1, all.length),
+        contexts
+      },
+      all
+    );
+    const tn = num(r.testNumber);
+    if (tn !== void 0) failure.testNumber = tn;
+    failures.push(failure);
+  }
+  const compliant = typeof vr.compliant === "boolean" ? vr.compliant : typeof vr.isCompliant === "boolean" ? vr.isCompliant : failures.length === 0;
+  const result = { compliant, failures: mergeByClause(failures) };
+  const profile = text(vr.profileName);
+  const statement = text(vr.statement);
+  if (profile) result.profile = profile;
+  if (statement) result.statement = statement;
+  const pr = num(details.passedRules);
+  const fr = num(details.failedRules);
+  const fc = num(details.failedChecks);
+  if (pr !== void 0) result.passedRules = pr;
+  if (fr !== void 0) result.failedRules = fr;
+  if (fc !== void 0) result.failedChecks = fc;
+  return result;
+}
+function parseVeraPdfReport(xmlOrJson) {
+  const trimmed = xmlOrJson.replace(/^﻿/, "").trim();
+  if (!trimmed) return { compliant: false, failures: [], error: "veraPDF produced no output" };
+  const jsonStart = trimmed.search(/^[{[]/m);
+  if (!trimmed.startsWith("<") && jsonStart >= 0) {
+    try {
+      return parseJson(JSON.parse(trimmed.slice(jsonStart)));
+    } catch {
+      return { compliant: false, failures: [], error: "veraPDF output is not valid JSON" };
+    }
+  }
+  const xmlStart = trimmed.indexOf("<");
+  if (xmlStart >= 0) return parseXml(trimmed.slice(xmlStart));
+  return { compliant: false, failures: [], error: trimmed.split("\n")[0] ?? "Unreadable output" };
+}
+var MAX_CONTEXTS;
+var init_verapdf = __esm({
+  "../packages/core/src/pdf/verapdf.ts"() {
+    "use strict";
+    MAX_CONTEXTS = 3;
+  }
+});
+
+// ../packages/core/src/pdf/index.ts
+var init_pdf = __esm({
+  "../packages/core/src/pdf/index.ts"() {
+    "use strict";
+    init_accessibility();
+    init_extract();
+    init_fonts();
+    init_output();
+    init_rules2();
+    init_verapdf();
+  }
+});
+
+// ../packages/core/src/refs/normalize.ts
+function stripTags(s) {
+  let out = s;
+  for (let prev = ""; prev !== out; ) {
+    prev = out;
+    out = out.replace(/<[^<>]*>/g, "");
+  }
+  return out;
+}
+function stripMarkup(s) {
+  const decoded = s.replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(Number.parseInt(h, 16))).replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d))).replace(/&([a-z]+);/gi, (m, name) => ENTITIES[name.toLowerCase()] ?? m);
+  return stripTags(decoded).replace(/\s+/g, " ").trim();
+}
+function foldText(plain2) {
+  return plain2.toLowerCase().replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `).replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c).normalize("NFKD").replace(/[̀-ͯ]/g, "");
+}
+function titleWords(title, isTex = true) {
+  const plain2 = isTex ? texToPlain(title) : stripMarkup(title);
+  return foldText(plain2).replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+}
+function normalizeTitle(title, isTex = true) {
+  return titleWords(title, isTex).join(" ");
+}
+function dice(a, b) {
+  if (!a.length || !b.length) return 0;
+  const counts = /* @__PURE__ */ new Map();
+  for (const w of a) counts.set(w, (counts.get(w) ?? 0) + 1);
+  let shared = 0;
+  for (const w of b) {
+    const n = counts.get(w) ?? 0;
+    if (n > 0) {
+      shared++;
+      counts.set(w, n - 1);
+    }
+  }
+  return 2 * shared / (a.length + b.length);
+}
+function mainTitle(plain2) {
+  const m = /^(.+?)(?:\s*[:?!.]\s+|\s+[-–—]+\s+|\s*—\s*)\S/.exec(plain2);
+  return m ? m[1] : plain2;
+}
+function titleSimilarity(bibTitle, recordTitle) {
+  const a = titleWords(bibTitle, true);
+  const b = titleWords(recordTitle, false);
+  if (!a.length || !b.length) return 0;
+  if (a.join(" ") === b.join(" ")) return 1;
+  let score = dice(a, b);
+  const aMain = titleWords(mainTitle(texToPlain(bibTitle)), false);
+  const bMain = titleWords(mainTitle(stripMarkup(recordTitle)), false);
+  const subtitleMatch = aMain.length >= 2 && aMain.join(" ") === b.join(" ") && aMain.length < a.length || bMain.length >= 2 && bMain.join(" ") === a.join(" ") && bMain.length < b.length;
+  if (subtitleMatch) score = Math.max(score, 0.92);
+  return score;
+}
+function foldName(name) {
+  return foldText(stripMarkup(name)).replace(/[^a-z\s-]+/g, "").replace(/[\s-]+/g, " ").trim();
+}
+function significant(name) {
+  return name.split(" ").filter((w) => w.length > 1 && !PARTICLES.has(w));
+}
+function namesMatch(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const sa = significant(a);
+  const sb = significant(b);
+  if (!sa.length || !sb.length) return false;
+  const [small, large] = sa.length <= sb.length ? [sa, sb] : [sb, sa];
+  return small.every((w) => large.includes(w));
+}
+var GREEK_NAMES, FOLD, ENTITIES, PARTICLES;
+var init_normalize = __esm({
+  "../packages/core/src/refs/normalize.ts"() {
+    "use strict";
+    init_tex();
+    GREEK_NAMES = {
+      \u03B1: "alpha",
+      \u03B2: "beta",
+      \u03B3: "gamma",
+      \u03B4: "delta",
+      \u03B5: "epsilon",
+      \u03B6: "zeta",
+      \u03B7: "eta",
+      \u03B8: "theta",
+      \u03D1: "theta",
+      \u03B9: "iota",
+      \u03BA: "kappa",
+      \u03BB: "lambda",
+      \u03BC: "mu",
+      \u03BD: "nu",
+      \u03BE: "xi",
+      \u03C0: "pi",
+      \u03C1: "rho",
+      \u03C3: "sigma",
+      \u03C2: "sigma",
+      \u03C4: "tau",
+      \u03C5: "upsilon",
+      \u03C6: "phi",
+      \u03D5: "phi",
+      \u03C7: "chi",
+      \u03C8: "psi",
+      \u03C9: "omega"
+    };
+    FOLD = {
+      \u00DF: "ss",
+      \u00F8: "o",
+      \u00E6: "ae",
+      \u0153: "oe",
+      \u0142: "l",
+      \u00F0: "d",
+      \u00FE: "th",
+      \u0131: "i",
+      \u014B: "ng"
+    };
+    ENTITIES = {
+      amp: "&",
+      lt: "<",
+      gt: ">",
+      quot: '"',
+      apos: "'",
+      nbsp: " "
+    };
+    PARTICLES = /* @__PURE__ */ new Set([
+      "van",
+      "von",
+      "der",
+      "den",
+      "de",
+      "del",
+      "della",
+      "di",
+      "da",
+      "du",
+      "dos",
+      "la",
+      "le",
+      "ten",
+      "ter",
+      "jr",
+      "sr"
+    ]);
+  }
+});
+
+// ../packages/core/src/refs/cache.ts
+function doiCacheKey(doi) {
+  return `doi:${doi.toLowerCase()}`;
+}
+function arxivCacheKey(id) {
+  return `arxiv:${id.replace(/v\d+$/, "")}`;
+}
+function titleCacheKey(title, year, isTex = true) {
+  return `title:${normalizeTitle(title, isTex)}|${year ?? ""}`;
+}
+function cacheMaxAge(option) {
+  if (typeof option === "number") return { negative: option, positive: option };
+  return { ...DEFAULT_CACHE_MAX_AGE_DAYS, ...option ?? {} };
+}
+function isFresh(cachedAt, negative, maxAge, now = Date.now()) {
+  if (typeof cachedAt !== "number" || !Number.isFinite(cachedAt)) return !negative;
+  const days = negative ? maxAge.negative : maxAge.positive;
+  return now - cachedAt <= days * DAY_MS;
+}
+async function cached(cache2, key, compute, opts) {
+  if (cache2 && !opts.refresh) {
+    const hit = await cache2.get(key);
+    if (hit !== void 0 && hit !== null && typeof hit === "object") {
+      const { cachedAt, ...value2 } = hit;
+      if (isFresh(cachedAt, opts.isNegative(value2), opts.maxAge)) return value2;
+    }
+  }
+  const value = await compute();
+  if (cache2) await cache2.set(key, { ...value, cachedAt: Date.now() });
+  return value;
+}
+var DAY_MS, DEFAULT_CACHE_MAX_AGE_DAYS;
+var init_cache = __esm({
+  "../packages/core/src/refs/cache.ts"() {
+    "use strict";
+    init_normalize();
+    DAY_MS = 24 * 60 * 60 * 1e3;
+    DEFAULT_CACHE_MAX_AGE_DAYS = { negative: 1, positive: 30 };
+  }
+});
+
+// ../packages/core/src/refs/sha256.ts
+function sha256Hex(text2) {
+  const msg = new TextEncoder().encode(text2);
+  const bitLen = msg.length * 8;
+  const total = msg.length + 9 + 63 >> 6 << 6;
+  const buf = new Uint8Array(total);
+  buf.set(msg);
+  buf[msg.length] = 128;
+  const view = new DataView(buf.buffer);
+  view.setUint32(total - 8, Math.floor(bitLen / 4294967296));
+  view.setUint32(total - 4, bitLen >>> 0);
+  const h = new Uint32Array([
+    1779033703,
+    3144134277,
+    1013904242,
+    2773480762,
+    1359893119,
+    2600822924,
+    528734635,
+    1541459225
+  ]);
+  const w = new Uint32Array(64);
+  for (let off = 0; off < total; off += 64) {
+    for (let i = 0; i < 16; i++) w[i] = view.getUint32(off + i * 4);
+    for (let i = 16; i < 64; i++) {
+      const a2 = w[i - 15];
+      const b2 = w[i - 2];
+      const s0 = rotr(a2, 7) ^ rotr(a2, 18) ^ a2 >>> 3;
+      const s1 = rotr(b2, 17) ^ rotr(b2, 19) ^ b2 >>> 10;
+      w[i] = w[i - 16] + s0 + w[i - 7] + s1 >>> 0;
+    }
+    let [a, b, c, d, e, f, g, hh] = h;
+    for (let i = 0; i < 64; i++) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const ch2 = e & f ^ ~e & g;
+      const t1 = hh + S1 + ch2 + K[i] + w[i] >>> 0;
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const maj2 = a & b ^ a & c ^ b & c;
+      const t2 = S0 + maj2 >>> 0;
+      hh = g;
+      g = f;
+      f = e;
+      e = d + t1 >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = t1 + t2 >>> 0;
+    }
+    h[0] = h[0] + a >>> 0;
+    h[1] = h[1] + b >>> 0;
+    h[2] = h[2] + c >>> 0;
+    h[3] = h[3] + d >>> 0;
+    h[4] = h[4] + e >>> 0;
+    h[5] = h[5] + f >>> 0;
+    h[6] = h[6] + g >>> 0;
+    h[7] = h[7] + hh >>> 0;
+  }
+  return [...h].map((x) => x.toString(16).padStart(8, "0")).join("");
+}
+var K, rotr;
+var init_sha256 = __esm({
+  "../packages/core/src/refs/sha256.ts"() {
+    "use strict";
+    K = new Uint32Array([
+      1116352408,
+      1899447441,
+      3049323471,
+      3921009573,
+      961987163,
+      1508970993,
+      2453635748,
+      2870763221,
+      3624381080,
+      310598401,
+      607225278,
+      1426881987,
+      1925078388,
+      2162078206,
+      2614888103,
+      3248222580,
+      3835390401,
+      4022224774,
+      264347078,
+      604807628,
+      770255983,
+      1249150122,
+      1555081692,
+      1996064986,
+      2554220882,
+      2821834349,
+      2952996808,
+      3210313671,
+      3336571891,
+      3584528711,
+      113926993,
+      338241895,
+      666307205,
+      773529912,
+      1294757372,
+      1396182291,
+      1695183700,
+      1986661051,
+      2177026350,
+      2456956037,
+      2730485921,
+      2820302411,
+      3259730800,
+      3345764771,
+      3516065817,
+      3600352804,
+      4094571909,
+      275423344,
+      430227734,
+      506948616,
+      659060556,
+      883997877,
+      958139571,
+      1322822218,
+      1537002063,
+      1747873779,
+      1955562222,
+      2024104815,
+      2227730452,
+      2361852424,
+      2428436474,
+      2756734187,
+      3204031479,
+      3329325298
+    ]);
+    rotr = (x, n) => x >>> n | x << 32 - n;
+  }
+});
+
+// ../packages/core/src/refs/entry.ts
+function provenanceCanonical(entry) {
+  const f = entry.fields;
+  const ws = (v) => (v ?? "").replace(/\s+/g, " ").trim();
+  return [
+    entry.type.toLowerCase(),
+    entry.key,
+    normalizeTitle(f.title ?? "", true),
+    ws(f.author),
+    ws(f.year ?? f.date),
+    ws(f.doi).toLowerCase(),
+    ws(f.eprint).toLowerCase()
+  ].join("");
+}
+function provenanceHash(entry) {
+  return sha256Hex(provenanceCanonical(entry)).slice(0, 12);
+}
+function provenanceOf(entry) {
+  const value = entry.fields[PROVENANCE_FIELD]?.replace(/\s+/g, " ").trim();
+  const m = value ? /^cite\s+\S+\s+\d{4}-\d{2}-\d{2}\s+([0-9a-f]{12})$/i.exec(value) : null;
+  if (!m || m[1].toLowerCase() !== provenanceHash(entry)) return void 0;
+  return value;
+}
+function isAuthorProvided(entry) {
+  return /overfull\s*:\s*author-provided/i.test(
+    `${entry.fields.note ?? ""} ${entry.fields.annote ?? ""}`
+  );
+}
+var DANGEROUS_MACROS, PROVENANCE_FIELD;
+var init_entry = __esm({
+  "../packages/core/src/refs/entry.ts"() {
+    "use strict";
+    init_normalize();
+    init_sha256();
+    DANGEROUS_MACROS = new Set(
+      [
+        "input",
+        "include",
+        "includeonly",
+        "inputiffileexists",
+        "iffileexists",
+        "endinput",
+        "write",
+        "immediate",
+        "openout",
+        "openin",
+        "read",
+        "readline",
+        "closeout",
+        "closein",
+        "catcode",
+        "def",
+        "edef",
+        "gdef",
+        "xdef",
+        "let",
+        "futurelet",
+        "newcommand",
+        "renewcommand",
+        "providecommand",
+        "declarerobustcommand",
+        "csname",
+        "endcsname",
+        "expandafter",
+        "scantokens",
+        "everyeof",
+        "everypar",
+        "everyjob",
+        "output",
+        "shipout",
+        "special",
+        "directlua",
+        "latelua",
+        "luaexec",
+        "luadirect",
+        "usepackage",
+        "requirepackage",
+        "documentclass",
+        "shellescape",
+        "pdfshellescape",
+        "outer",
+        "uppercase",
+        "lowercase",
+        "detokenize",
+        "unexpanded",
+        "begingroup",
+        "aftergroup",
+        "afterassignment",
+        "globaldefs"
+      ].map((m) => m.toLowerCase())
+    );
+    PROVENANCE_FIELD = "x-overfull";
+  }
+});
+
+// ../packages/core/src/refs/http.ts
+function sleep(ms, signal) {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve5, reject) => {
+    const timer = setTimeout(resolve5, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        reject(signal.reason ?? new Error("aborted"));
+      },
+      { once: true }
+    );
+  });
+}
+function retryAfterMs(header, fallback) {
+  if (header === null) return fallback;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.min(Math.max(0, seconds * 1e3), MAX_RETRY_AFTER_MS);
+  const date = Date.parse(header);
+  if (Number.isFinite(date)) return Math.min(Math.max(0, date - Date.now()), MAX_RETRY_AFTER_MS);
+  return fallback;
+}
+async function getJson(client, url, accept = "application/json", headers) {
+  const res = await client.get(url, accept, headers);
+  if (res.status === 404 || res.status === 410) return { status: res.status, data: null };
+  const host = new URL(url).host;
+  if (res.status < 200 || res.status >= 300) {
+    throw new SourceUnavailableError(host, `${host} answered HTTP ${res.status}`);
+  }
+  try {
+    return { status: res.status, data: JSON.parse(res.body) };
+  } catch {
+    const reason = `${host} returned a non-JSON page (HTTP ${res.status}); it may be blocking automated requests`;
+    client.markDown(host, reason);
+    throw new SourceUnavailableError(host, reason);
+  }
+}
+var SourceUnavailableError, MAX_RETRY_AFTER_MS, BREAKER_THRESHOLD, FIRST_BYTE_TIMEOUT_MS, HttpClient;
+var init_http = __esm({
+  "../packages/core/src/refs/http.ts"() {
+    "use strict";
+    SourceUnavailableError = class extends Error {
+      host;
+      constructor(host, message) {
+        super(message);
+        this.host = host;
+        this.name = "SourceUnavailableError";
+      }
+    };
+    MAX_RETRY_AFTER_MS = 3e4;
+    BREAKER_THRESHOLD = 2;
+    FIRST_BYTE_TIMEOUT_MS = 4e3;
+    HttpClient = class {
+      fetchFn;
+      timeoutMs;
+      retryDelayMs;
+      signal;
+      intervals;
+      nextSlot = /* @__PURE__ */ new Map();
+      down = /* @__PURE__ */ new Map();
+      failures = /* @__PURE__ */ new Map();
+      /** Hosts that have answered at least once this run. */
+      healthy = /* @__PURE__ */ new Set();
+      /** The single in-flight probe request of a host that is unproven or failing. */
+      probing = /* @__PURE__ */ new Map();
+      firstByteMs;
+      constructor(opts) {
+        const f = opts.fetch ?? globalThis.fetch;
+        if (!f) throw new Error("no fetch available; pass opts.fetch");
+        this.fetchFn = (input2, init) => f.call(globalThis, input2, init);
+        this.timeoutMs = opts.timeoutMs ?? 1e4;
+        this.firstByteMs = Math.min(FIRST_BYTE_TIMEOUT_MS, this.timeoutMs);
+        this.retryDelayMs = opts.retryDelayMs ?? 1e3;
+        this.signal = opts.signal;
+        this.intervals = {
+          "export.arxiv.org": opts.arxivIntervalMs ?? 3e3,
+          // Semantic Scholar's key allows 1 request per second; keyless requests share a pool.
+          ...opts.semanticScholarKey ? { "api.semanticscholar.org": 1100 } : {}
+        };
+      }
+      /** Marks a host as unusable for the rest of this run (e.g. a bot challenge). */
+      markDown(host, reason) {
+        this.down.set(host, reason);
+      }
+      /**
+       * GET with the given Accept header. Resolves for any final HTTP status
+       * (callers decide what 404 means); throws SourceUnavailableError when no
+       * definitive answer was obtained.
+       */
+      async get(url, accept, headers) {
+        const host = new URL(url).host;
+        const release = await this.acquire(host);
+        try {
+          return await this.getOnce(url, accept, host, headers);
+        } finally {
+          release();
+        }
+      }
+      async getOnce(url, accept, host, headers) {
+        let res = await this.attempt(url, accept, host, headers);
+        if (res.status === 429 && /daily|budget|quota|per day|credits/i.test(res.body)) {
+          const reason = `${host} answered HTTP 429: daily request budget used up`;
+          this.markDown(host, reason);
+          throw new SourceUnavailableError(host, reason);
+        }
+        if (res.status >= 500) this.recordFailure(host, `${host} answered HTTP ${res.status}`);
+        if (res.status === 429 || res.status >= 500) {
+          const downReason = this.down.get(host);
+          if (downReason) throw new SourceUnavailableError(host, downReason);
+          await sleep(retryAfterMs(res.retryAfter, this.retryDelayMs), this.signal);
+          res = await this.attempt(url, accept, host, headers);
+        }
+        if (res.status === 429 || res.status >= 500) {
+          const reason = `${host} answered HTTP ${res.status}`;
+          if (res.status === 429 || !this.down.has(host)) this.recordFailure(host, reason);
+          throw new SourceUnavailableError(host, this.down.get(host) ?? reason);
+        }
+        this.failures.delete(host);
+        this.healthy.add(host);
+        return { status: res.status, body: res.body, contentType: res.contentType };
+      }
+      /**
+       * Throws when the host is down. A host that has not answered yet, or is failing,
+       * lets one request through at a time; the others wait for its outcome.
+       */
+      async acquire(host) {
+        for (; ; ) {
+          const downReason = this.down.get(host);
+          if (downReason) throw new SourceUnavailableError(host, downReason);
+          if (this.signal?.aborted) throw this.signal.reason ?? new Error("aborted");
+          const unproven = !this.healthy.has(host) || (this.failures.get(host) ?? 0) > 0;
+          if (!unproven) return () => {
+          };
+          const other = this.probing.get(host);
+          if (!other) break;
+          await other;
+        }
+        let done;
+        const gate = new Promise((resolve5) => {
+          done = resolve5;
+        });
+        this.probing.set(host, gate);
+        return () => {
+          this.probing.delete(host);
+          done();
+        };
+      }
+      /** Consecutive failures take a host out for the rest of the run. */
+      recordFailure(host, reason) {
+        const n = (this.failures.get(host) ?? 0) + 1;
+        this.failures.set(host, n);
+        if (n >= BREAKER_THRESHOLD && !this.down.has(host))
+          this.markDown(host, `${reason} (repeatedly; skipped for the rest of this run)`);
+      }
+      async throttle(host) {
+        const interval = this.intervals[host] ?? 0;
+        if (interval <= 0) return;
+        const now = Date.now();
+        const slot = Math.max(now, this.nextSlot.get(host) ?? 0);
+        this.nextSlot.set(host, slot + interval);
+        await sleep(slot - now, this.signal);
+      }
+      async attempt(url, accept, host, headers) {
+        if (this.signal?.aborted) throw this.signal.reason ?? new Error("aborted");
+        await this.throttle(host);
+        const controller = new AbortController();
+        const onAbort = () => controller.abort(this.signal?.reason);
+        this.signal?.addEventListener("abort", onAbort, { once: true });
+        let timedOutAfter = this.firstByteMs;
+        const firstByte = setTimeout(() => controller.abort(new Error("timeout")), this.firstByteMs);
+        const total = setTimeout(() => {
+          timedOutAfter = this.timeoutMs;
+          controller.abort(new Error("timeout"));
+        }, this.timeoutMs);
+        try {
+          const res = await this.fetchFn(url, {
+            headers: { Accept: accept, ...headers ?? {} },
+            redirect: "follow",
+            signal: controller.signal
+          });
+          clearTimeout(firstByte);
+          const body = await res.text();
+          return {
+            status: res.status,
+            body,
+            contentType: res.headers.get("content-type") ?? "",
+            retryAfter: res.headers.get("retry-after")
+          };
+        } catch (err) {
+          if (this.signal?.aborted) throw this.signal.reason ?? err;
+          const timedOut = controller.signal.aborted;
+          const why2 = timedOut ? `timed out after ${timedOutAfter} ms` : `network error (${err.message})`;
+          const reason = `${host}: ${why2}`;
+          this.recordFailure(host, reason);
+          throw new SourceUnavailableError(host, reason);
+        } finally {
+          clearTimeout(firstByte);
+          clearTimeout(total);
+          this.signal?.removeEventListener("abort", onAbort);
+        }
+      }
+    };
+  }
+});
+
+// ../packages/core/src/refs/sources/acl.ts
+function stripSuffixes(value) {
+  let s = value;
+  for (const mark of ["?", "#"]) {
+    const at = s.indexOf(mark);
+    if (at >= 0) s = s.slice(0, at);
+  }
+  if (s.endsWith("/")) s = s.slice(0, -1);
+  for (const ext of [".pdf", ".bib", ".xml"]) {
+    if (s.toLowerCase().endsWith(ext)) {
+      s = s.slice(0, -ext.length);
+      break;
+    }
+  }
+  return s.endsWith("/") ? s.slice(0, -1) : s;
+}
+function parseAclId(input2) {
+  if (input2.length > 512) return null;
+  const s = input2.trim().replace(/^(?:https?:\/\/)?(?:www\.)?(?:aclanthology\.org|aclweb\.org\/anthology)\//i, "").replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)?10\.18653\/v1\//i, "").replace(/^ACL:\s*/i, "");
+  const id = stripSuffixes(s);
+  if (!ID.test(id)) return null;
+  return OLD_ONLY.test(id) ? id.toUpperCase() : id;
+}
+function aclBibUrl(id) {
+  return `https://aclanthology.org/${id}.bib`;
+}
+function parseAclBib(bib) {
+  const entry = parseBib(bib)[0];
+  const f = entry?.fields;
+  if (!entry || !f?.title) return null;
+  const authors = parseNames(f.author).filter((n) => !n.corporate).map((n) => n.given ? { given: n.given, family: n.family } : { family: n.family });
+  const year = Number(/\b(\d{4})\b/.exec(f.year ?? "")?.[1]);
+  const record = {
+    source: "acl",
+    title: texToPlain(f.title).replace(/\s+/g, " ").trim(),
+    authors,
+    years: Number.isInteger(year) ? [year] : []
+  };
+  const venue2 = f.booktitle ?? f.journal;
+  if (venue2) record.venue = texToPlain(venue2).replace(/\s+/g, " ").trim();
+  if (f.doi) record.doi = f.doi.toLowerCase();
+  if (f.url) record.url = f.url;
+  const type = TYPES[entry.type.toLowerCase()];
+  if (type) record.type = type;
+  return record;
+}
+async function aclById(client, id) {
+  const res = await client.get(aclBibUrl(id), "text/plain");
+  if (res.status === 404 || res.status === 410) return null;
+  if (res.status !== 200 || !/^\s*@/.test(res.body)) {
+    throw new SourceUnavailableError(
+      "aclanthology.org",
+      `aclanthology.org answered HTTP ${res.status} without BibTeX`
+    );
+  }
+  return parseAclBib(res.body);
+}
+var NEW_ID, OLD_ID, ID, OLD_ONLY, TYPES;
+var init_acl = __esm({
+  "../packages/core/src/refs/sources/acl.ts"() {
+    "use strict";
+    init_names();
+    init_parse();
+    init_tex();
+    init_http();
+    NEW_ID = String.raw`\d{4}\.[a-z0-9]+(?:-[a-z0-9]+)+\.\d+`;
+    OLD_ID = String.raw`[A-Za-z]\d{2}-\d{4}`;
+    ID = new RegExp(`^(?:${NEW_ID}|${OLD_ID})$`);
+    OLD_ONLY = new RegExp(`^${OLD_ID}$`);
+    TYPES = {
+      inproceedings: "proceedings-article",
+      article: "journal-article",
+      book: "book",
+      incollection: "book-chapter",
+      phdthesis: "dissertation"
+    };
+  }
+});
+
+// ../packages/core/src/refs/sources/arxiv.ts
+function parseArxivId(input2) {
+  const s = input2.trim().replace(/^(?:https?:\/\/)?(?:www\.|export\.)?arxiv\.org\/(?:abs|pdf)\//i, "").replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/)?10\.48550\/arxiv\./i, "").replace(/^arxiv:\s*/i, "").replace(/\.pdf$/i, "");
+  const m = NEW_ID2.exec(s) ?? OLD_ID2.exec(s);
+  return m ? m[1] : null;
+}
+function xmlText(s) {
+  return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(Number.parseInt(h, 16))).replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d))).replace(/&(amp|lt|gt|quot|apos);/g, (_m, e) => XML_ENTITIES[e]).replace(/\s+/g, " ").trim();
+}
+function tag(xml, name) {
+  const m = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`).exec(xml);
+  return m ? xmlText(m[1]) : void 0;
+}
+function yearFrom(date) {
+  const y = Number(date?.slice(0, 4));
+  return Number.isInteger(y) && y > 1990 ? y : void 0;
+}
+function parseArxivFeed(xml) {
+  const records = [];
+  for (const m of xml.matchAll(/<entry\b[^>]*>([\s\S]*?)<\/entry>/g)) {
+    const entry = m[1];
+    const idUrl = tag(entry, "id") ?? "";
+    const title = tag(entry, "title");
+    if (!title || idUrl.includes("/api/errors")) continue;
+    const arxivId = parseArxivId(idUrl.replace(/^https?:\/\/arxiv\.org\/abs\//, ""));
+    const authors = [...entry.matchAll(/<author\b[^>]*>([\s\S]*?)<\/author>/g)].map((a) => parseNames(tag(a[1], "name") ?? "")[0]).filter((n) => n !== void 0).map((n) => n.given ? { given: n.given, family: n.family } : { family: n.family });
+    const years = [yearFrom(tag(entry, "published")), yearFrom(tag(entry, "updated"))].filter(
+      (y) => y !== void 0
+    );
+    const record = {
+      source: "arxiv",
+      title,
+      authors,
+      years: [...new Set(years)],
+      type: "arxiv"
+    };
+    if (arxivId) {
+      record.arxivId = arxivId;
+      record.url = `https://arxiv.org/abs/${arxivId}`;
+    }
+    const doi = tag(entry, "arxiv:doi");
+    if (doi) record.doi = doi.toLowerCase();
+    const journal = tag(entry, "arxiv:journal_ref");
+    if (journal) record.venue = journal;
+    records.push(record);
+  }
+  return records;
+}
+async function query(client, url) {
+  const res = await client.get(url, "application/atom+xml");
+  if (res.status !== 200 || !res.body.includes("<feed")) {
+    throw new SourceUnavailableError(
+      "export.arxiv.org",
+      `export.arxiv.org answered HTTP ${res.status} without an Atom feed`
+    );
+  }
+  return parseArxivFeed(res.body);
+}
+function arxivIdUrl(id) {
+  return `${API}?id_list=${encodeURIComponent(id)}&max_results=1`;
+}
+function arxivTitleUrl(title) {
+  const phrase = normalizeTitle(title, false);
+  const params = new URLSearchParams({ search_query: `ti:"${phrase}"`, max_results: "5" });
+  return `${API}?${params}`;
+}
+async function arxivById(client, id) {
+  const [record] = await query(client, arxivIdUrl(id));
+  return record ?? null;
+}
+async function arxivByIds(client, ids) {
+  const found = /* @__PURE__ */ new Map();
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const chunk = ids.slice(i, i + BATCH);
+    const url = `${API}?id_list=${chunk.map(encodeURIComponent).join(",")}&max_results=${chunk.length}`;
+    for (const record of await query(client, url)) {
+      if (record.arxivId) found.set(bare(record.arxivId), record);
+    }
+  }
+  return found;
+}
+async function arxivSearch(client, title) {
+  return query(client, arxivTitleUrl(title));
+}
+var API, NEW_ID2, OLD_ID2, XML_ENTITIES, BATCH, bare;
+var init_arxiv = __esm({
+  "../packages/core/src/refs/sources/arxiv.ts"() {
+    "use strict";
+    init_names();
+    init_http();
+    init_normalize();
+    API = "https://export.arxiv.org/api/query";
+    NEW_ID2 = /^(\d{4}\.\d{4,5})(v\d+)?$/;
+    OLD_ID2 = /^([a-z-]+(?:\.[A-Z]{2})?\/\d{7})(v\d+)?$/;
+    XML_ENTITIES = {
+      amp: "&",
+      lt: "<",
+      gt: ">",
+      quot: '"',
+      apos: "'"
+    };
+    BATCH = 50;
+    bare = (id) => id.replace(/v\d+$/, "").toLowerCase();
+  }
+});
+
+// ../packages/core/src/refs/sources/csl.ts
+function first(v) {
+  const s = Array.isArray(v) ? v[0] : v;
+  return s?.trim() || void 0;
+}
+function yearOf(d) {
+  const y = Number(d?.["date-parts"]?.[0]?.[0]);
+  return Number.isInteger(y) && y > 0 ? y : void 0;
+}
+function fromCsl(item, source) {
+  const main3 = first(item.title);
+  if (!main3) return null;
+  const sub = first(item.subtitle);
+  const title = sub && !main3.toLowerCase().includes(sub.toLowerCase()) ? `${main3}: ${sub}` : main3;
+  const years = [item.issued, item["published-print"], item["published-online"], item.published].map(yearOf).filter((y) => y !== void 0);
+  const authors = (item.author ?? []).map((a) => ({
+    family: (a.family ?? a.name ?? a.literal ?? "").trim(),
+    ...a.given ? { given: a.given.trim() } : {}
+  })).filter((a) => a.family);
+  const record = { source, title, authors, years: [...new Set(years)] };
+  const venue2 = first(item["container-title"]);
+  if (venue2) record.venue = venue2;
+  if (item.DOI) record.doi = item.DOI.toLowerCase();
+  if (item.URL) record.url = item.URL;
+  if (item.type) record.type = item.type;
+  if (typeof item["is-referenced-by-count"] === "number") {
+    record.citations = item["is-referenced-by-count"];
+  }
+  return record;
+}
+var init_csl = __esm({
+  "../packages/core/src/refs/sources/csl.ts"() {
+    "use strict";
+  }
+});
+
+// ../packages/core/src/refs/sources/doi.ts
+function parseDoi(input2) {
+  const m = /^\s*(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)?(10\.\d{4,9}\/\S+?)\s*$/i.exec(input2);
+  if (!m) return null;
+  let doi = m[1];
+  try {
+    doi = decodeURIComponent(doi);
+  } catch {
+  }
+  return trimTrailingPunctuation(doi).toLowerCase();
+}
+function trimTrailingPunctuation(s) {
+  let end = s.length;
+  while (end > 0 && ".,;".includes(s[end - 1])) end--;
+  return s.slice(0, end);
+}
+function doiUrl(doi) {
+  return `https://doi.org/${encodeURIComponent(doi).replace(/%2F/gi, "/")}`;
+}
+async function resolveDoi(client, doi) {
+  const res = await client.get(doiUrl(doi), CSL);
+  if (res.status === 404 || res.status === 410) return { kind: "missing" };
+  if (res.status === 406 || res.status === 204) return { kind: "no-metadata" };
+  if (res.status < 200 || res.status >= 300) {
+    throw new SourceUnavailableError("doi.org", `doi.org answered HTTP ${res.status}`);
+  }
+  let item;
+  try {
+    item = JSON.parse(res.body);
+  } catch {
+    return { kind: "no-metadata" };
+  }
+  const record = fromCsl(item, "doi.org");
+  if (!record) return { kind: "no-metadata" };
+  if (!record.doi) record.doi = doi;
+  return { kind: "found", record };
+}
+var CSL;
+var init_doi = __esm({
+  "../packages/core/src/refs/sources/doi.ts"() {
+    "use strict";
+    init_http();
+    init_csl();
+    CSL = "application/vnd.citationstyles.csl+json";
+  }
+});
+
+// ../packages/core/src/refs/sources/europepmc.ts
+function parsePmid(input2) {
+  if (input2.length > MAX_ID_INPUT) return null;
+  const s = input2.trim();
+  const m = PMID_PREFIX.exec(s) ?? PMID_URL.exec(s);
+  return m ? m[1] : null;
+}
+function parsePmcid(input2) {
+  if (input2.length > MAX_ID_INPUT) return null;
+  const s = input2.trim();
+  const m = PMCID_BARE.exec(s) ?? PMCID_URL.exec(s);
+  return m ? m[1].toUpperCase() : null;
+}
+function searchUrl(query3) {
+  const params = new URLSearchParams({
+    query: query3,
+    format: "json",
+    resultType: "core",
+    pageSize: "5"
+  });
+  return `https://www.ebi.ac.uk/europepmc/webservices/rest/search?${params}`;
+}
+function europepmcTitleUrl(title) {
+  const words2 = title.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  return searchUrl(`TITLE:"${words2}"`);
+}
+function authorsOf(r) {
+  const list2 = r.authorList?.author ?? [];
+  const named = list2.map((a) => {
+    if (a.lastName) return { family: a.lastName, ...a.firstName ? { given: a.firstName } : {} };
+    return { family: (a.collectiveName ?? a.fullName ?? "").trim() };
+  }).filter((a) => a.family);
+  if (named.length) return named;
+  return (r.authorString ?? "").replace(/\.$/, "").split(",").map((part) => {
+    const s = part.trim();
+    const at = s.lastIndexOf(" ");
+    return at > 0 && /^[A-Z]{1,4}$/.test(s.slice(at + 1)) ? s.slice(0, at).trim() : s;
+  }).filter(Boolean).map((family) => ({ family }));
+}
+function fromEuropePmc(r) {
+  const trimmed = r.title?.trim();
+  const title = trimmed?.endsWith(".") ? trimmed.slice(0, -1).trimEnd() : trimmed;
+  if (!title) return null;
+  const years = [
+    Number(r.pubYear),
+    r.journalInfo?.yearOfPublication,
+    Number(r.firstPublicationDate?.slice(0, 4)),
+    r.bookOrReportDetails?.yearOfPublication
+  ].filter((y) => typeof y === "number" && Number.isInteger(y) && y > 0);
+  const record = {
+    source: "europepmc",
+    title,
+    authors: authorsOf(r),
+    years: [...new Set(years)]
+  };
+  const venue2 = r.journalInfo?.journal?.title ?? r.journalInfo?.journal?.medlineAbbreviation;
+  if (venue2) record.venue = venue2;
+  if (r.doi) record.doi = r.doi.toLowerCase();
+  if (r.source && r.id) record.url = `https://europepmc.org/article/${r.source}/${r.id}`;
+  if (r.source === "PPR") record.type = "preprint";
+  else if (r.journalInfo) record.type = "journal-article";
+  else if (r.bookOrReportDetails) record.type = "book";
+  return record;
+}
+async function query2(client, url) {
+  const { data } = await getJson(client, url);
+  return (data?.resultList?.result ?? []).map(fromEuropePmc).filter((r) => r !== null);
+}
+async function europepmcByPmid(client, pmid) {
+  return (await query2(client, europepmcPmidUrl(pmid)))[0] ?? null;
+}
+async function europepmcByPmcid(client, pmcid) {
+  return (await query2(client, europepmcPmcidUrl(pmcid)))[0] ?? null;
+}
+async function europepmcSearch(client, title) {
+  return query2(client, europepmcTitleUrl(title));
+}
+var PMID_PREFIX, PMID_URL, PMCID_BARE, PMCID_URL, MAX_ID_INPUT, europepmcPmidUrl, europepmcPmcidUrl;
+var init_europepmc = __esm({
+  "../packages/core/src/refs/sources/europepmc.ts"() {
+    "use strict";
+    init_http();
+    PMID_PREFIX = /^\s*PMID[\s:]+(\d{1,9})\s*$/i;
+    PMID_URL = /^(?:https?:\/\/)?(?:www\.)?(?:pubmed\.ncbi\.nlm\.nih\.gov|ncbi\.nlm\.nih\.gov\/pubmed)\/(\d{1,9})\/?$/i;
+    PMCID_BARE = /^(PMC\d{1,9})\/?$/i;
+    PMCID_URL = /^(?:https?:\/\/)?(?:(?:www\.)?ncbi\.nlm\.nih\.gov\/pmc\/articles|pmc\.ncbi\.nlm\.nih\.gov\/articles|europepmc\.org\/(?:article\/PMC|articles))\/(PMC\d{1,9})\/?$/i;
+    MAX_ID_INPUT = 512;
+    europepmcPmidUrl = (pmid) => searchUrl(`EXT_ID:${pmid} AND SRC:MED`);
+    europepmcPmcidUrl = (pmcid) => searchUrl(`PMCID:${pmcid}`);
+  }
+});
+
+// ../packages/core/src/refs/kind.ts
+function parseOpenReviewId(value) {
+  let url;
+  try {
+    url = new URL(unwrapUrl(value));
+  } catch {
+    return null;
+  }
+  if (url.hostname !== "openreview.net" && url.hostname !== "www.openreview.net") return null;
+  if (url.pathname !== "/forum" && url.pathname !== "/pdf") return null;
+  const id = url.searchParams.get("id");
+  return id && /^[A-Za-z0-9_-]{5,40}$/.test(id) ? id : null;
+}
+function unwrapUrl(value) {
+  const v = value.trim().slice(0, 600);
+  return v.startsWith("\\url{") && v.endsWith("}") ? v.slice(5, -1).trim() : v;
+}
+function otherIdentifiers(entry, doi) {
+  const f = entry.fields;
+  const ids = {};
+  const archive = (f.eprinttype ?? f.archiveprefix ?? "").toLowerCase();
+  const acl = [f.url, f.howpublished, doi ?? void 0].map((v) => v ? parseAclId(unwrapUrl(v)) : null).find((v) => Boolean(v));
+  if (acl) ids.aclId = acl;
+  const pmid = [f.pmid, archive === "pubmed" || archive === "pmid" ? f.eprint : void 0, f.url].map((v) => v ? parsePmid(/^\d+$/.test(v.trim()) ? `PMID:${v.trim()}` : v.trim()) : null).find((v) => Boolean(v));
+  if (pmid) ids.pmid = pmid;
+  const pmcid = [f.pmcid, archive === "pmc" || archive === "pmcid" ? f.eprint : void 0, f.url].map((v) => v ? parsePmcid(v.trim()) : null).find((v) => Boolean(v));
+  if (pmcid) ids.pmcid = pmcid;
+  const openreview = [f.url, f.howpublished, f.note].map((v) => v ? parseOpenReviewId(v) : null).find((v) => Boolean(v));
+  if (openreview) ids.openreviewId = openreview;
+  return ids;
+}
+function identifiersOf(entry) {
+  const f = entry.fields;
+  const ids = {};
+  const doi = (f.doi ? parseDoi(f.doi) : null) ?? [f.url, f.howpublished].map((v) => {
+    const m = /https?:\/\/(?:dx\.)?doi\.org\/(10\.\d{4,9}\/[^\s{}]+)/i.exec(v ?? "");
+    return m ? parseDoi(m[1]) : null;
+  }).find((d) => Boolean(d)) ?? null;
+  const archive = (f.archiveprefix ?? f.eprinttype ?? "").toLowerCase();
+  const candidates = [
+    archive === "arxiv" || !archive && f.eprint ? f.eprint : void 0,
+    doi?.startsWith("10.48550/") ? doi : void 0,
+    ...[f.journal, f.journaltitle, f.url, f.note, f.howpublished].map(
+      (v) => /arxiv[.:/\s]*(?:abs\/|org\/abs\/)?\s*([a-z-]+(?:\.[A-Z]{2})?\/\d{7}|\d{4}\.\d{4,5})(v\d+)?/i.exec(
+        v ?? ""
+      )?.[1]
+    )
+  ];
+  for (const c of candidates) {
+    const id = c ? parseArxivId(c) : null;
+    if (id) {
+      ids.arxivId = id;
+      break;
+    }
+  }
+  if (doi && !doi.startsWith("10.48550/")) ids.doi = doi;
+  return { ...ids, ...otherIdentifiers(entry, doi) };
+}
+function isStandard(entry) {
+  if (!STANDARD_TYPES.has(entry.type)) return false;
+  const f = entry.fields;
+  if (entry.type !== "standard" && (f.journal || f.journaltitle || f.booktitle)) return false;
+  const body = [f.institution, f.organization, f.publisher].map(plain);
+  if (body.some((b) => STANDARDS_BODY.test(b))) return true;
+  const ids = [f.number, f.title, f.howpublished, f.series].map(plain);
+  if (ids.some((v) => STANDARD_ID.test(v))) return true;
+  return [f.url, f.howpublished].map(plain).some((u) => STANDARD_URL.test(u));
+}
+function isWebOnly(entry) {
+  const f = entry.fields;
+  const hasVenue = f.journal || f.journaltitle || f.booktitle || f.publisher || f.school || f.institution;
+  return !!(f.url || f.howpublished?.includes("\\url")) && !f.author && !hasVenue;
+}
+function entryKind(entry, ids) {
+  if (ids.doi || ids.arxivId || ids.aclId || ids.pmid || ids.pmcid)
+    return SCHOLARLY.has(entry.type) ? "scholarly" : "maybe-indexed";
+  if (NOT_INDEXED.has(entry.type) || isStandard(entry) || isWebOnly(entry)) return "not-indexed";
+  if (SCHOLARLY.has(entry.type)) return "scholarly";
+  return "maybe-indexed";
+}
+function notIndexedReason(entry) {
+  if (isStandard(entry)) return "standards and RFCs are not in scholarly indexes";
+  if (["software", "codefragment", "softwareversion", "softwaremodule"].includes(entry.type)) {
+    return "software is not in scholarly indexes";
+  }
+  if (entry.type === "dataset" || entry.type === "data") return "datasets are not reliably indexed";
+  if (entry.type === "patent") return "patents are not in scholarly indexes";
+  if (entry.type === "manual") return "manuals are not in scholarly indexes";
+  return "web pages are not in scholarly indexes";
+}
+var SCHOLARLY, NOT_INDEXED, STANDARD_TYPES, STANDARDS_BODY, STANDARD_ID, STANDARD_URL, plain;
+var init_kind = __esm({
+  "../packages/core/src/refs/kind.ts"() {
+    "use strict";
+    init_acl();
+    init_arxiv();
+    init_doi();
+    init_europepmc();
+    SCHOLARLY = /* @__PURE__ */ new Set(["article", "inproceedings", "conference", "incollection"]);
+    NOT_INDEXED = /* @__PURE__ */ new Set([
+      "online",
+      "www",
+      "webpage",
+      "electronic",
+      "software",
+      "codefragment",
+      "softwareversion",
+      "softwaremodule",
+      "dataset",
+      "data",
+      "standard",
+      "manual",
+      "patent",
+      "artwork",
+      "audio",
+      "video",
+      "image",
+      "movie",
+      "music",
+      "performance",
+      "legislation",
+      "legal",
+      "jurisdiction"
+    ]);
+    STANDARD_TYPES = /* @__PURE__ */ new Set(["techreport", "report", "standard", "manual", "misc"]);
+    STANDARDS_BODY = /^(?:the\s+)?(?:ISO|IEC|ISO\/IEC|IETF|Internet Engineering Task Force|RFC Editor|W3C|World Wide Web Consortium|ANSI|American National Standards Institute|NIST|National Institute of Standards and Technology|ETSI|European Telecommunications Standards Institute|ITU|ITU-T|ITU-R|International Telecommunication Union|International Organization for Standardization|International Electrotechnical Commission|DIN|BSI|British Standards Institution|CEN|CENELEC|Ecma International|ECMA|Unicode Consortium|The Unicode Consortium|OASIS|IEEE Standards Association|IEEE-SA|3GPP|WHATWG|Khronos Group)\b/i;
+    STANDARD_ID = /^(?:RFC\s*-?\s*\d+|BCP\s*\d+|ISO(?:\/IEC)?(?:\/IEEE)?\s+\d{3,}|IEC\s+\d{3,}|IEEE\s+Std\b|IEEE\s+\d{3,}(?:\.\d+)?-\d{4}|ANSI\s+[A-Z]|NIST\s+(?:SP|FIPS|IR)\b|FIPS\s*(?:PUB\s*)?\d+|ITU-[TR]\s+[A-Z]\.\d+|ETSI\s+(?:TS|EN|ES|TR)\b|ECMA-\d+|3GPP\s+TS\b|W3C\s+Recommendation\b)/i;
+    STANDARD_URL = /^https?:\/\/(?:www\.)?(?:rfc-editor\.org|datatracker\.ietf\.org|tools\.ietf\.org|iso\.org|w3\.org\/TR|nvlpubs\.nist\.gov|etsi\.org\/deliver|itu\.int\/rec)\b/i;
+    plain = (v) => (v ?? "").replace(/[{}]/g, "").replace(/\\url/g, "").trim();
+  }
+});
+
+// ../packages/core/src/refs/match.ts
+function bibYear(entry) {
+  const m = /\b(1[5-9]\d\d|20\d\d)\b/.exec(entry.fields.year ?? entry.fields.date ?? "");
+  return m ? Number(m[1]) : void 0;
+}
+function bibFacts(entry) {
+  const people = parseNames(entry.fields.author ?? entry.fields.editor);
+  const facts = {
+    surnames: people.filter((p) => !p.corporate).map((p) => foldName(p.family)),
+    firstIsPersonal: people.length > 0 && !people[0]?.corporate
+  };
+  if (entry.fields.title) facts.title = entry.fields.title;
+  const authorText2 = entry.fields.author ?? entry.fields.editor;
+  if (authorText2) facts.authorText = authorText2;
+  const year = bibYear(entry);
+  if (year !== void 0) facts.year = year;
+  return facts;
+}
+function recordNameMatches(surname, a) {
+  return namesMatch(surname, foldName(a.family)) || !!a.given && namesMatch(surname, foldName(a.given));
+}
+function authorOverlap(facts, record) {
+  if (!facts.surnames.length || !record.authors.length) return null;
+  const matched = facts.surnames.filter((s) => record.authors.some((a) => recordNameMatches(s, a)));
+  return matched.length / Math.min(facts.surnames.length, record.authors.length);
+}
+function firstAuthorOk(facts, record) {
+  const first2 = facts.surnames[0];
+  if (!facts.firstIsPersonal || !first2 || !record.authors.length) return null;
+  return record.authors.slice(0, 2).some((a) => recordNameMatches(first2, a));
+}
+function yearDiff(facts, record) {
+  if (facts.year === void 0 || !record.years.length) return null;
+  return Math.min(...record.years.map((y) => Math.abs(y - facts.year)));
+}
+function recordAuthorText(record, max = 3) {
+  const names = record.authors.slice(0, max).map((a) => a.given ? `${a.given} ${a.family}` : a.family);
+  return names.join(", ") + (record.authors.length > max ? ", \u2026" : "");
+}
+function closestYear(facts, record) {
+  if (facts.year === void 0) return record.years[0];
+  return [...record.years].sort(
+    (a, b) => Math.abs(a - facts.year) - Math.abs(b - facts.year)
+  )[0];
+}
+function differencesFor(facts, record, s) {
+  const diffs = [];
+  if (s.titleScore < STRONG_TITLE && facts.title) {
+    diffs.push({ field: "title", bib: facts.title, record: stripMarkup(record.title) });
+  }
+  if (s.overlap === 0 || s.firstOk === false) {
+    diffs.push({ field: "author", bib: facts.authorText ?? "", record: recordAuthorText(record) });
+  }
+  if (s.years !== null && s.years > 1) {
+    diffs.push({
+      field: "year",
+      bib: String(facts.year),
+      record: String(closestYear(facts, record))
+    });
+  }
+  return diffs;
+}
+function verdictFor(s, identified) {
+  const authorsConflict = s.overlap === 0 || s.firstOk === false;
+  const yearConflict = s.years !== null && s.years > 1;
+  if (s.titleScore >= STRONG_TITLE) {
+    if (!identified && authorsConflict && yearConflict)
+      return { verdict: "none", differentWork: false };
+    return {
+      verdict: authorsConflict || yearConflict ? "mismatch" : "verified",
+      differentWork: false
+    };
+  }
+  const sameAuthors = s.overlap !== null && s.overlap > 0 && s.firstOk !== false;
+  if (s.titleScore >= SIMILAR_TITLE && sameAuthors && !yearConflict) {
+    return { verdict: "mismatch", differentWork: false };
+  }
+  if (!identified) return { verdict: "none", differentWork: false };
+  const differentWork = s.titleScore < DIFFERENT_WORK_TITLE || !sameAuthors;
+  return { verdict: "mismatch", differentWork };
+}
+function isLaterRedeposit(facts, record, identified) {
+  if (identified || facts.year === void 0 || !record.years.length) return false;
+  return REDEPOSIT_TYPES.has(record.type ?? "") && Math.min(...record.years) > facts.year + 1;
+}
+function assess(facts, record, identified) {
+  if (isLaterRedeposit(facts, record, identified)) {
+    return {
+      record,
+      verdict: "none",
+      titleScore: 0,
+      authorOverlap: null,
+      yearDiff: null,
+      differences: [],
+      differentWork: false,
+      score: 0
+    };
+  }
+  const signals = {
+    titleScore: facts.title ? titleSimilarity(facts.title, record.title) : identified ? 1 : 0,
+    overlap: authorOverlap(facts, record),
+    firstOk: firstAuthorOk(facts, record),
+    years: yearDiff(facts, record)
+  };
+  const { verdict, differentWork } = verdictFor(signals, identified);
+  let differences = [];
+  if (verdict === "mismatch") differences = differencesFor(facts, record, signals);
+  else if (verdict === "verified" && signals.years === 1) {
+    differences = [
+      { field: "year", bib: String(facts.year), record: String(closestYear(facts, record)) }
+    ];
+  }
+  const score = signals.titleScore + 0.3 * (signals.overlap ?? 0.5) - 0.05 * Math.min(signals.years ?? 0, 10) + (record.doi ? 0.01 : 0);
+  return {
+    record,
+    verdict,
+    titleScore: signals.titleScore,
+    authorOverlap: signals.overlap,
+    yearDiff: signals.years,
+    differences,
+    differentWork,
+    score
+  };
+}
+function bestAssessment(list2) {
+  const rank = (a) => a.verdict === "verified" ? 2 : a.verdict === "mismatch" ? 1 : 0;
+  return [...list2].filter((a) => a.verdict !== "none").sort((a, b) => rank(b) - rank(a) || b.score - a.score)[0];
+}
+var STRONG_TITLE, SIMILAR_TITLE, DIFFERENT_WORK_TITLE, REDEPOSIT_TYPES;
+var init_match = __esm({
+  "../packages/core/src/refs/match.ts"() {
+    "use strict";
+    init_names();
+    init_normalize();
+    STRONG_TITLE = 0.9;
+    SIMILAR_TITLE = 0.75;
+    DIFFERENT_WORK_TITLE = 0.6;
+    REDEPOSIT_TYPES = /* @__PURE__ */ new Set(["posted-content", "preprint", "other", "component", "dataset"]);
+  }
+});
+
+// ../packages/core/src/refs/extra.ts
+function locationOf(r, entry) {
+  return r?.location ?? (entry?.line ? { line: entry.line, ...entry.file ? { file: entry.file } : {} } : void 0);
+}
+function retractedProblems(results, byKey) {
+  const problems = [];
+  for (const r of results) {
+    const n = r.retraction;
+    if (!n) continue;
+    const entry = byKey.get(r.key);
+    const location2 = locationOf(r, entry);
+    const word = n.kind === "withdrawal" ? "withdrawn" : "retracted";
+    const who = n.assertedBy ? ASSERTED_BY[n.assertedBy] ?? n.assertedBy : void 0;
+    const notice = n.noticeDoi ? `https://doi.org/${n.noticeDoi}` : void 0;
+    problems.push({
+      rule: "reference-retracted",
+      check: "references",
+      severity: "error",
+      message: `\`${r.key}\` is recorded as ${word} (DOI ${n.doi})`,
+      ...location2 ? { location: location2 } : {},
+      detail: [
+        `CrossRef lists a ${n.kind} for ${n.doi}${n.date ? `, dated ${n.date}` : ""}${who ? `, asserted by ${who}` : ""}.`,
+        notice ? `Notice: ${notice}` : void 0
+      ].filter(Boolean).join(" "),
+      fix: `Read the notice${notice ? ` (${notice})` : ""}. Do not cite the work as sound evidence: replace it with a work that stands, or cite it only to say it was ${word}, together with the notice.`,
+      ...entry?.raw ? { evidence: entry.raw } : {},
+      data: {
+        key: r.key,
+        doi: n.doi,
+        kind: n.kind,
+        ...n.noticeDoi ? { noticeDoi: n.noticeDoi } : {},
+        ...n.date ? { date: n.date } : {},
+        ...n.assertedBy ? { assertedBy: n.assertedBy } : {}
+      }
+    });
+  }
+  return problems;
+}
+function publishedVersionProblems(results, byKey) {
+  const problems = [];
+  for (const r of results) {
+    const entry = byKey.get(r.key);
+    const doi = r.matched?.doi;
+    if (r.source !== "arxiv" || !entry || !doi || doi.startsWith("10.48550/")) continue;
+    if (r.status !== "verified" && r.status !== "mismatch") continue;
+    if (identifiersOf(entry).doi || entry.fields.doi) continue;
+    const location2 = locationOf(r, entry);
+    problems.push({
+      rule: "reference-published-version",
+      check: "references",
+      severity: "info",
+      message: `\`${r.key}\` is an arXiv preprint whose arXiv record names a published version (DOI ${doi})`,
+      ...location2 ? { location: location2 } : {},
+      detail: "The arXiv record of this paper gives a DOI for the published article. If you read the published version, cite that; if you read the preprint, keep this entry.",
+      fix: `Run \`overfull cite ${doi}\`, use the key it prints in \`\\cite{}\`, and remove this entry if nothing else cites it.`,
+      ...entry.raw ? { evidence: entry.raw } : {},
+      data: { key: r.key, doi, ...r.matched?.title ? { title: r.matched.title } : {} }
+    });
+  }
+  return problems;
+}
+function duplicateKeys(entry) {
+  const ids = identifiersOf(entry);
+  const keys = [];
+  if (ids.doi) keys.push({ kind: "doi", value: ids.doi.toLowerCase() });
+  if (ids.arxivId) keys.push({ kind: "arxiv", value: ids.arxivId.toLowerCase() });
+  const year = bibYear(entry);
+  const title = normalizeTitle(entry.fields.title ?? "", true);
+  if (year !== void 0 && title.length >= 12)
+    keys.push({ kind: "title", value: `${title}|${year}` });
+  return keys;
+}
+function duplicateProblems(entries) {
+  const first2 = /* @__PURE__ */ new Map();
+  const problems = [];
+  for (const entry of entries) {
+    let reported = false;
+    for (const k of duplicateKeys(entry)) {
+      const id = `${k.kind}:${k.value}`;
+      const earlier = first2.get(id);
+      if (!earlier) {
+        first2.set(id, entry);
+        continue;
+      }
+      if (reported || earlier === entry) continue;
+      reported = true;
+      const location2 = locationOf(void 0, entry);
+      problems.push({
+        rule: "reference-duplicate",
+        check: "references",
+        severity: "warning",
+        message: `\`${entry.key}\` and \`${earlier.key}\` are the same work (${WHAT[k.kind]})`,
+        ...location2 ? { location: location2 } : {},
+        detail: `Both entries have ${WHAT[k.kind]}${k.kind === "title" ? "" : `: ${k.value}`}. \`${earlier.key}\` comes first${earlier.line ? ` (line ${earlier.line}${earlier.file ? ` of ${earlier.file}` : ""})` : ""}.`,
+        fix: `Keep one entry, use its key in every \`\\cite{}\`, and delete the other. If they are two different works (for example two editions), give them different titles or years.`,
+        ...entry.raw ? { evidence: entry.raw } : {},
+        data: { key: entry.key, duplicateOf: earlier.key, by: k.kind }
+      });
+    }
+  }
+  return problems;
+}
+function uncitedProblems(entries, cited) {
+  const used = new Set(cited);
+  return entries.filter((e) => !used.has(e.key)).map((entry) => {
+    const location2 = locationOf(void 0, entry);
+    return {
+      rule: "reference-uncited",
+      check: "references",
+      severity: "info",
+      message: `\`${entry.key}\` is in the bibliography but no \`\\cite\` uses it`,
+      ...location2 ? { location: location2 } : {},
+      fix: "Cite it where it belongs, or remove the entry if you do not need it.",
+      data: { key: entry.key }
+    };
+  });
+}
+var ASSERTED_BY, WHAT;
+var init_extra = __esm({
+  "../packages/core/src/refs/extra.ts"() {
+    "use strict";
+    init_kind();
+    init_match();
+    init_normalize();
+    ASSERTED_BY = {
+      "retraction-watch": "Retraction Watch",
+      publisher: "the publisher"
+    };
+    WHAT = {
+      doi: "the same DOI",
+      arxiv: "the same arXiv id",
+      title: "the same title and year"
+    };
+  }
+});
+
+// ../packages/core/src/refs/retraction.ts
+function dateOf(u) {
+  const [y, m, d] = u.updated?.["date-parts"]?.[0] ?? [];
+  if (!y) return void 0;
+  return [y, m, d].filter((n) => typeof n === "number").map((n, i) => String(n).padStart(i === 0 ? 4 : 2, "0")).join("-");
+}
+function retractionOf(work) {
+  const updates = work["updated-by"] ?? [];
+  const pick2 = updates.find((u) => u.type === "retraction") ?? updates.find((u) => u.type === "withdrawal");
+  if (!pick2 || !work.DOI) return void 0;
+  const notice = {
+    kind: pick2.type === "withdrawal" ? "withdrawal" : "retraction",
+    doi: work.DOI.toLowerCase()
+  };
+  if (pick2.DOI) notice.noticeDoi = pick2.DOI.toLowerCase();
+  const date = dateOf(pick2);
+  if (date) notice.date = date;
+  if (pick2.source) notice.assertedBy = pick2.source;
+  return notice;
+}
+function crossrefUpdatesUrl(dois, mailto) {
+  const params = new URLSearchParams({
+    filter: dois.map((d) => `doi:${d}`).join(","),
+    select: "DOI,updated-by",
+    rows: String(dois.length)
+  });
+  if (mailto) params.set("mailto", mailto);
+  return `https://api.crossref.org/works?${params}`;
+}
+async function findRetractions(client, ctx, dois) {
+  const { cache: cache2 } = ctx.opts;
+  const found = /* @__PURE__ */ new Map();
+  const maxAge = { ...cacheMaxAge(ctx.opts.cacheMaxAgeDays) };
+  maxAge.negative = Math.min(maxAge.negative, 1);
+  maxAge.positive = Math.min(maxAge.positive, 1);
+  const todo = [];
+  for (const doi of [...new Set(dois)]) {
+    if (doi.includes(",")) continue;
+    const hit = cache2 && !ctx.opts.refresh ? await cache2.get(`retraction:${doi}`) : null;
+    if (hit && typeof hit === "object" && isFresh(hit.cachedAt, false, maxAge)) {
+      if (hit.notice) found.set(doi, hit.notice);
+    } else todo.push(doi);
+  }
+  for (let i = 0; i < todo.length; i += BATCH2) {
+    const chunk = todo.slice(i, i + BATCH2);
+    const { data } = await getJson(
+      client,
+      crossrefUpdatesUrl(chunk, ctx.opts.mailto)
+    );
+    const items = data?.message?.items;
+    if (!Array.isArray(items)) continue;
+    const byDoi = /* @__PURE__ */ new Map();
+    for (const item of items) {
+      const notice = retractionOf(item);
+      if (notice) byDoi.set(notice.doi, notice);
+    }
+    for (const doi of chunk) {
+      const notice = byDoi.get(doi);
+      if (notice) found.set(doi, notice);
+      if (cache2)
+        await cache2.set(`retraction:${doi}`, {
+          ...notice ? { notice } : {},
+          cachedAt: Date.now()
+        });
+    }
+  }
+  return found;
+}
+async function attachRetractions(ctx, results) {
+  if (!ctx.opts.checkRetractions) return;
+  if (ctx.opts.sources && !ctx.opts.sources.includes("crossref")) return;
+  const candidates = [];
+  for (const r of results) {
+    const doi = r.matched?.doi?.toLowerCase();
+    if ((r.status === "verified" || r.status === "mismatch") && !r.wrongWork && doi) {
+      if (!doi.startsWith("10.48550/")) candidates.push({ r, doi });
+    }
+  }
+  if (!candidates.length) return;
+  try {
+    const found = await findRetractions(
+      ctx.client,
+      ctx,
+      candidates.map((c) => c.doi)
+    );
+    for (const { r, doi } of candidates) {
+      const notice = found.get(doi);
+      if (notice) r.retraction = notice;
+    }
+  } catch (err) {
+    if (ctx.opts.signal?.aborted) throw err;
+  }
+}
+var BATCH2;
+var init_retraction = __esm({
+  "../packages/core/src/refs/retraction.ts"() {
+    "use strict";
+    init_cache();
+    init_http();
+    BATCH2 = 40;
+  }
+});
+
+// ../packages/core/src/refs/sources/crossref.ts
+function crossrefSearchUrl(q, mailto) {
+  const text2 = [q.title, q.firstAuthor, q.year].filter(Boolean).join(" ");
+  const params = new URLSearchParams({ "query.bibliographic": text2, rows: "5", select: SELECT });
+  if (mailto) params.set("mailto", mailto);
+  return `https://api.crossref.org/works?${params}`;
+}
+async function crossrefSearch(client, q, mailto) {
+  const { data } = await getJson(
+    client,
+    crossrefSearchUrl(q, mailto)
+  );
+  return (data?.message?.items ?? []).map((item) => fromCsl(item, "crossref")).filter((r) => r !== null);
+}
+var SELECT;
+var init_crossref = __esm({
+  "../packages/core/src/refs/sources/crossref.ts"() {
+    "use strict";
+    init_http();
+    init_csl();
+    SELECT = [
+      "DOI",
+      "URL",
+      "type",
+      "title",
+      "subtitle",
+      "author",
+      "issued",
+      "published-print",
+      "published-online",
+      "container-title",
+      "is-referenced-by-count"
+    ].join(",");
+  }
+});
+
+// ../packages/core/src/refs/sources/dblp.ts
+function dblpSearchUrl(title) {
+  const params = new URLSearchParams({ q: title, format: "json", h: "5" });
+  return `https://dblp.org/search/publ/api?${params}`;
+}
+function dblpPerson(text2) {
+  const clean2 = text2.replace(/\s+\d{4}$/, "");
+  const [name] = parseNames(clean2);
+  if (!name) return { family: clean2 };
+  return name.given ? { given: name.given, family: name.family } : { family: name.family };
+}
+function fromDblp(info3) {
+  if (!info3.title) return null;
+  const authorField = info3.authors?.author;
+  const authors = (Array.isArray(authorField) ? authorField : authorField ? [authorField] : []).map((a) => dblpPerson(a.text ?? "")).filter((a) => a.family);
+  const year = Number(info3.year);
+  const record = {
+    source: "dblp",
+    title: info3.title.replace(/\.$/, ""),
+    authors,
+    years: Number.isInteger(year) ? [year] : []
+  };
+  const venue2 = Array.isArray(info3.venue) ? info3.venue[0] : info3.venue;
+  if (venue2) record.venue = venue2;
+  if (info3.doi) record.doi = info3.doi.toLowerCase();
+  const ee = Array.isArray(info3.ee) ? info3.ee[0] : info3.ee;
+  if (ee ?? info3.url) record.url = ee ?? info3.url;
+  if (info3.type) record.type = info3.type;
+  return record;
+}
+async function dblpSearch(client, title) {
+  const { data } = await getJson(client, dblpSearchUrl(title));
+  return (data?.result?.hits?.hit ?? []).map((h) => h.info ? fromDblp(h.info) : null).filter((r) => r !== null);
+}
+var init_dblp = __esm({
+  "../packages/core/src/refs/sources/dblp.ts"() {
+    "use strict";
+    init_names();
+    init_http();
+  }
+});
+
+// ../packages/core/src/refs/sources/openalex.ts
+function openalexSearchUrl(title, apiKey, mailto) {
+  const params = new URLSearchParams({ search: title, "per-page": "5" });
+  if (apiKey) params.set("api_key", apiKey);
+  if (mailto) params.set("mailto", mailto);
+  return `https://api.openalex.org/works?${params}`;
+}
+function fromOpenAlex(w) {
+  const title = w.display_name ?? w.title;
+  if (!title) return null;
+  const authors = (w.authorships ?? []).map((a) => parseNames(a.author?.display_name ?? "")[0]).filter((n) => n !== void 0).map((n) => n.given ? { given: n.given, family: n.family } : { family: n.family });
+  const record = {
+    source: "openalex",
+    title,
+    authors,
+    years: w.publication_year ? [w.publication_year] : []
+  };
+  const venue2 = w.primary_location?.source?.display_name;
+  if (venue2) record.venue = venue2;
+  if (w.doi) record.doi = w.doi.replace(/^https?:\/\/doi\.org\//i, "").toLowerCase();
+  const url = w.primary_location?.landing_page_url;
+  if (url) record.url = url;
+  if (w.type && (venue2 || w.type !== "article")) record.type = w.type;
+  if (typeof w.cited_by_count === "number") record.citations = w.cited_by_count;
+  return record;
+}
+async function openalexSearch(client, title, apiKey, mailto) {
+  const { data } = await getJson(
+    client,
+    openalexSearchUrl(title, apiKey, mailto)
+  );
+  return (data?.results ?? []).map(fromOpenAlex).filter((r) => r !== null);
+}
+var init_openalex = __esm({
+  "../packages/core/src/refs/sources/openalex.ts"() {
+    "use strict";
+    init_names();
+    init_http();
+  }
+});
+
+// ../packages/core/src/refs/sources/semanticscholar.ts
+function semanticScholarSearchUrl(title) {
+  const params = new URLSearchParams({ query: title, limit: "5", fields: FIELDS });
+  return `https://api.semanticscholar.org/graph/v1/paper/search?${params}`;
+}
+function fromSemanticScholar(p) {
+  const title = p.title?.trim();
+  if (!title) return null;
+  const authors = (p.authors ?? []).map((a) => parseNames(a.name ?? "")[0]).filter((n) => n !== void 0).map((n) => n.given ? { given: n.given, family: n.family } : { family: n.family });
+  const record = {
+    source: "semanticscholar",
+    title,
+    authors,
+    years: typeof p.year === "number" ? [p.year] : []
+  };
+  const arxivId = p.externalIds?.ArXiv;
+  const venue2 = (p.venue || p.journal?.name || "").trim();
+  const isPreprint = /^(arxiv|corr)\b/i.test(venue2);
+  if (venue2 && !isPreprint) record.venue = venue2;
+  const doi = p.externalIds?.DOI;
+  if (doi) record.doi = doi.toLowerCase();
+  if (arxivId) record.arxivId = arxivId.replace(/v\d+$/, "");
+  if (p.paperId) record.url = `https://www.semanticscholar.org/paper/${p.paperId}`;
+  const kind = (p.publicationTypes ?? []).map((t) => TYPES2[t]).find((t) => t !== void 0);
+  if (isPreprint && arxivId) record.type = "preprint";
+  else if (kind) record.type = kind;
+  if (typeof p.citationCount === "number") record.citations = p.citationCount;
+  return record;
+}
+async function semanticScholarSearch(client, title, apiKey) {
+  const { data } = await getJson(
+    client,
+    semanticScholarSearchUrl(title),
+    "application/json",
+    apiKey ? { "x-api-key": apiKey } : void 0
+  );
+  return (data?.data ?? []).map(fromSemanticScholar).filter((r) => r !== null);
+}
+var FIELDS, TYPES2;
+var init_semanticscholar = __esm({
+  "../packages/core/src/refs/sources/semanticscholar.ts"() {
+    "use strict";
+    init_names();
+    init_http();
+    FIELDS = "title,authors,year,venue,externalIds,publicationTypes,journal,citationCount";
+    TYPES2 = {
+      JournalArticle: "journal-article",
+      Conference: "proceedings-article",
+      Book: "book",
+      BookSection: "book-chapter"
+    };
+  }
+});
+
+// ../packages/core/src/refs/search.ts
+async function prefetchArxiv(ctx, ids) {
+  if (!sourceAllowed(ctx.opts, "arxiv")) return;
+  const wanted = [];
+  for (const id of new Set(ids)) {
+    const hit = ctx.opts.refresh ? void 0 : await ctx.opts.cache?.get(arxivCacheKey(id));
+    if (hit === void 0) wanted.push(id);
+  }
+  if (wanted.length < 2) return;
+  try {
+    ctx.arxivBatch = await arxivByIds(ctx.client, wanted);
+  } catch (err) {
+    if (ctx.opts.signal?.aborted) throw err;
+  }
+}
+function sourceAllowed(opts, source) {
+  return !opts.sources || opts.sources.includes(source);
+}
+function failureReason(err) {
+  return err instanceof SourceUnavailableError ? err.message : `unexpected error: ${String(err)}`;
+}
+function resolveDoiCached(ctx, doi) {
+  return cached(ctx.opts.cache, doiCacheKey(doi), () => resolveDoi(ctx.client, doi), {
+    isNegative: (v) => v.kind !== "found",
+    maxAge: cacheMaxAge(ctx.opts.cacheMaxAgeDays),
+    refresh: ctx.opts.refresh === true
+  });
+}
+async function arxivByIdCached(ctx, id) {
+  const value = await cached(
+    ctx.opts.cache,
+    arxivCacheKey(id),
+    async () => ({
+      record: ctx.arxivBatch?.get(id.replace(/v\d+$/, "").toLowerCase()) ?? await arxivById(ctx.client, id)
+    }),
+    {
+      isNegative: (v) => !v.record,
+      maxAge: cacheMaxAge(ctx.opts.cacheMaxAgeDays),
+      refresh: ctx.opts.refresh === true
+    }
+  );
+  return value.record;
+}
+async function aclByIdCached(ctx, id) {
+  const value = await cached(
+    ctx.opts.cache,
+    `acl:${id}`,
+    async () => ({ record: await aclById(ctx.client, id) }),
+    {
+      isNegative: (v) => !v.record,
+      maxAge: cacheMaxAge(ctx.opts.cacheMaxAgeDays),
+      refresh: ctx.opts.refresh === true
+    }
+  );
+  return value.record;
+}
+async function europepmcByIdCached(ctx, id) {
+  const key = "pmid" in id ? `pmid:${id.pmid}` : `pmcid:${id.pmcid}`;
+  const value = await cached(
+    ctx.opts.cache,
+    key,
+    async () => ({
+      record: "pmid" in id ? await europepmcByPmid(ctx.client, id.pmid) : await europepmcByPmcid(ctx.client, id.pmcid)
+    }),
+    {
+      isNegative: (v) => !v.record,
+      maxAge: cacheMaxAge(ctx.opts.cacheMaxAgeDays),
+      refresh: ctx.opts.refresh === true
+    }
+  );
+  return value.record;
+}
+function titleSources(ctx, q) {
+  const plain2 = q.isTex ? texToPlain(q.title) : q.title;
+  const { client, opts } = ctx;
+  const crossrefQuery = {
+    title: plain2,
+    ...q.firstAuthor ? { firstAuthor: q.firstAuthor } : {},
+    ...q.year ? { year: q.year } : {}
+  };
+  const list2 = [
+    ["crossref", () => crossrefSearch(client, crossrefQuery, opts.mailto)],
+    ["dblp", () => dblpSearch(client, plain2)],
+    ["arxiv", () => arxivSearch(client, plain2)]
+  ];
+  const key = opts.openalexKey;
+  if (key) list2.push(["openalex", () => openalexSearch(client, plain2, key, opts.mailto)]);
+  return list2.filter(([source]) => sourceAllowed(opts, source));
+}
+async function searchOne(ctx, cacheKey, source, run2) {
+  const cache2 = ctx.opts.cache;
+  const hit = cache2 && !ctx.opts.refresh ? await cache2.get(cacheKey) : void 0;
+  const cachedRecords = hit?.[source];
+  if (Array.isArray(cachedRecords) && isFresh(
+    hit?.cachedAt?.[source],
+    cachedRecords.length === 0,
+    cacheMaxAge(ctx.opts.cacheMaxAgeDays)
+  )) {
+    return cachedRecords;
+  }
+  const records = await run2();
+  if (cache2) {
+    const write = (writes.get(cache2) ?? Promise.resolve()).then(async () => {
+      const latest = await cache2.get(cacheKey) ?? {};
+      await cache2.set(cacheKey, {
+        ...latest,
+        [source]: records,
+        cachedAt: { ...latest.cachedAt ?? {}, [source]: Date.now() }
+      });
+    });
+    writes.set(
+      cache2,
+      write.catch(() => {
+      })
+    );
+    await write;
+  }
+  return records;
+}
+async function titleSearch(ctx, q, visit) {
+  const outcome = { searched: [], failures: [] };
+  const cacheKey = titleCacheKey(q.title, q.year, q.isTex) + (q.hinted && q.firstAuthor ? `|author:${q.firstAuthor.toLowerCase()}` : "");
+  const sources = titleSources(ctx, q);
+  const first2 = sources.filter(([s]) => s === "crossref" || s === "dblp");
+  const waves = [first2, sources.filter((entry) => !first2.includes(entry))];
+  for (const wave of waves) {
+    const pending = wave.map(([source, run2]) => {
+      if (ctx.deadline !== void 0 && Date.now() > ctx.deadline) {
+        const reason = `${source} not asked: lookup time budget used up`;
+        return Promise.resolve({ source, reason });
+      }
+      return searchOne(ctx, cacheKey, source, run2).then(
+        (records) => ({ source, records }),
+        (err) => ({ source, err })
+      );
+    });
+    for (const p of pending) {
+      const got = await p;
+      if ("records" in got) {
+        outcome.searched.push(got.source);
+        if (visit(got.records, got.source)) return outcome;
+      } else if ("reason" in got) {
+        outcome.failures.push({ source: got.source, reason: got.reason });
+      } else {
+        if (ctx.opts.signal?.aborted) throw got.err;
+        outcome.failures.push({ source: got.source, reason: failureReason(got.err) });
+      }
+    }
+  }
+  if ((ctx.deadline === void 0 || Date.now() <= ctx.deadline) && !ctx.opts.openalexKey && sourceAllowed(ctx.opts, "openalex") && !outcome.searched.includes("dblp")) {
+    const plain2 = q.isTex ? texToPlain(q.title) : q.title;
+    try {
+      const records = await searchOne(
+        ctx,
+        cacheKey,
+        "openalex",
+        () => openalexSearch(ctx.client, plain2, void 0, ctx.opts.mailto)
+      );
+      outcome.searched.push("openalex");
+      if (visit(records, "openalex")) return outcome;
+    } catch (err) {
+      if (ctx.opts.signal?.aborted) throw err;
+      outcome.failures.push({ source: "openalex", reason: failureReason(err) });
+    }
+  }
+  const plainTitle = q.isTex ? texToPlain(q.title) : q.title;
+  const fallbacks = [
+    [
+      "semanticscholar",
+      () => semanticScholarSearch(ctx.client, plainTitle, ctx.opts.semanticScholarKey)
+    ],
+    ["europepmc", () => europepmcSearch(ctx.client, plainTitle)]
+  ];
+  for (const [source, run2] of fallbacks) {
+    if (outcome.searched.length >= MAX_TITLE_ANSWERS) break;
+    if (ctx.deadline !== void 0 && Date.now() > ctx.deadline) break;
+    if (!sourceAllowed(ctx.opts, source)) continue;
+    try {
+      const records = await searchOne(ctx, cacheKey, source, run2);
+      outcome.searched.push(source);
+      if (visit(records, source)) return outcome;
+    } catch (err) {
+      if (ctx.opts.signal?.aborted) throw err;
+    }
+  }
+  return outcome;
+}
+var MAX_TITLE_ANSWERS, writes;
+var init_search = __esm({
+  "../packages/core/src/refs/search.ts"() {
+    "use strict";
+    init_tex();
+    init_cache();
+    init_http();
+    init_acl();
+    init_arxiv();
+    init_crossref();
+    init_dblp();
+    init_doi();
+    init_europepmc();
+    init_openalex();
+    init_semanticscholar();
+    MAX_TITLE_ANSWERS = 3;
+    writes = /* @__PURE__ */ new WeakMap();
+  }
+});
+
+// ../packages/core/src/refs/verify.ts
+function notFoundQuorum(searched) {
+  return searched.includes("crossref") && searched.some((s) => SECOND_OPINION.includes(s));
+}
+function sourceName(s) {
+  return SOURCE_NAMES[s];
+}
+function toMatched(r) {
+  const m = {
+    title: stripTags(r.title),
+    authors: r.authors.map((a) => a.given ? `${a.given} ${a.family}` : a.family)
+  };
+  const year = r.years.length ? Math.min(...r.years) : void 0;
+  if (year !== void 0) m.year = year;
+  if (r.venue) m.venue = r.venue;
+  if (r.doi) m.doi = r.doi;
+  if (r.url) m.url = r.url;
+  if (r.type) m.type = r.type;
+  return m;
+}
+function isSkipped(entry, ignore) {
+  if (ignore.has(entry.key)) return true;
+  return /overfull\s*:\s*skip/i.test(`${entry.fields.note ?? ""} ${entry.fields.annote ?? ""}`);
+}
+function fromAssessment(base, a, ev) {
+  const result = {
+    ...base,
+    status: a.verdict === "verified" ? "verified" : "mismatch",
+    source: a.record.source,
+    matched: toMatched(a.record),
+    searched: [...ev.searched]
+  };
+  if (a.differences.length) result.differences = a.differences;
+  const doiDiff = a.differences[0];
+  if (a.differentWork && doiDiff?.field === "doi" && a.record.source === "doi.org") {
+    result.wrongWork = { field: "doi", id: doiDiff.bib, title: toMatched(a.record).title };
+  }
+  if (a.differentWork && doiDiff?.field === "eprint" && a.record.source === "arxiv") {
+    result.wrongWork = { field: "eprint", id: doiDiff.bib, title: toMatched(a.record).title };
+  }
+  if (a.verdict === "verified" && a.yearDiff === 1) {
+    result.reason = "year differs by one (common between preprint, online and print versions)";
+  }
+  return result;
+}
+async function checkDoi(ctx, doi, facts, ev) {
+  ev.queries.push(doiCacheKey(doi));
+  try {
+    const res = await resolveDoiCached(ctx, doi);
+    ev.searched.add("doi.org");
+    if (res.kind === "missing") ev.doiMissing = true;
+    if (res.kind !== "found") return null;
+    return assessIdentified(facts, res.record, ev, "doi", doi, "resolves to");
+  } catch (err) {
+    return sourceFailed(ctx, ev, "doi.org", err);
+  }
+}
+function assessIdentified(facts, record, ev, field, id, verb) {
+  const a = assess(facts, record, true);
+  if (a.differentWork) {
+    a.differences = [
+      { field, bib: id, record: `${verb} \u201C${record.title}\u201D` },
+      ...a.differences.filter((d) => d.field !== "title")
+    ];
+  }
+  ev.assessments.push(a);
+  return a;
+}
+function sourceFailed(ctx, ev, source, err) {
+  if (ctx.opts.signal?.aborted) throw err;
+  ev.failures.push({ source, reason: failureReason(err) });
+  return null;
+}
+async function checkArxiv(ctx, id, facts, ev) {
+  ev.queries.push(arxivCacheKey(id));
+  try {
+    const record = await arxivByIdCached(ctx, id);
+    ev.searched.add("arxiv");
+    if (!record) {
+      ev.arxivMissing = true;
+      return null;
+    }
+    return assessIdentified(facts, record, ev, "eprint", id, "is");
+  } catch (err) {
+    return sourceFailed(ctx, ev, "arxiv", err);
+  }
+}
+async function checkOtherId(ctx, source, label, fetchRecord, facts, ev) {
+  ev.queries.push(label);
+  try {
+    const record = await fetchRecord();
+    ev.searched.add(source);
+    if (!record) return null;
+    const a = assess(facts, record, true);
+    ev.assessments.push(a);
+    return a;
+  } catch (err) {
+    return sourceFailed(ctx, ev, source, err);
+  }
+}
+async function checkOtherIds(ctx, ids, facts, ev) {
+  if (ids.aclId && sourceAllowed(ctx.opts, "acl")) {
+    const id = ids.aclId;
+    const a = await checkOtherId(ctx, "acl", `acl:${id}`, () => aclByIdCached(ctx, id), facts, ev);
+    if (a) return a;
+  }
+  if (sourceAllowed(ctx.opts, "europepmc")) {
+    if (ids.pmid) {
+      const pmid = ids.pmid;
+      const a = await checkOtherId(
+        ctx,
+        "europepmc",
+        `pmid:${pmid}`,
+        () => europepmcByIdCached(ctx, { pmid }),
+        facts,
+        ev
+      );
+      if (a) return a;
+    }
+    if (ids.pmcid) {
+      const pmcid = ids.pmcid;
+      return checkOtherId(
+        ctx,
+        "europepmc",
+        `pmcid:${pmcid}`,
+        () => europepmcByIdCached(ctx, { pmcid }),
+        facts,
+        ev
+      );
+    }
+  }
+  return null;
+}
+async function searchByTitle(ctx, facts, kind, ev) {
+  if (!facts.title) return;
+  ev.queries.push(titleCacheKey(facts.title, facts.year));
+  const firstAuthor = facts.firstIsPersonal ? facts.surnames[0] : void 0;
+  const outcome = await titleSearch(
+    ctx,
+    {
+      title: facts.title,
+      isTex: true,
+      ...firstAuthor ? { firstAuthor } : {},
+      ...facts.year ? { year: facts.year } : {}
+    },
+    (records) => {
+      const found = records.map((r) => assess(facts, r, false)).filter((a) => kind === "scholarly" || a.verdict !== "mismatch");
+      ev.assessments.push(...found);
+      return found.some((a) => a.verdict === "verified");
+    }
+  );
+  for (const s of outcome.searched) ev.searched.add(s);
+  ev.failures.push(...outcome.failures);
+}
+function sourcesText(sources) {
+  const names = sources.map(sourceName);
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
+function lastFailures(failures) {
+  const bySource = /* @__PURE__ */ new Map();
+  for (const f of failures) bySource.set(f.source, f);
+  return [...bySource.values()];
+}
+function failuresText(failures) {
+  return failures.map((f) => f.reason).join("; ");
+}
+function withBrokenIds(result, ids, ev) {
+  const broken = [];
+  if (ev.doiMissing && ids.doi) {
+    broken.push({ field: "doi", bib: ids.doi, record: "does not resolve" });
+  }
+  if (ev.arxivMissing && ids.arxivId) {
+    broken.push({ field: "eprint", bib: ids.arxivId, record: "does not resolve" });
+  }
+  if (!broken.length) return result;
+  const what = broken.map((d) => d.field === "doi" ? `DOI ${d.bib}` : `arXiv id ${d.bib}`);
+  const { reason: _reason, ...rest } = result;
+  return {
+    ...rest,
+    status: "mismatch",
+    differences: [...broken, ...result.differences ?? []],
+    reason: `the ${what.join(" and the ")} does not resolve, but a record with this title exists`
+  };
+}
+function noMatch(ctx, base, entry, kind, ids, ev) {
+  const searched = [...ev.searched];
+  const withSearched = { ...base, searched };
+  const opts = ctx.opts;
+  const skipped3 = ["crossref", "openalex", "dblp"].filter(
+    (s) => !sourceAllowed(opts, s)
+  );
+  const skippedNote = skipped3.length ? `(${sourcesText(skipped3).replace(/ or /, " and ")} ${skipped3.length === 1 ? "was" : "were"} not searched)` : "";
+  const titleNote = entry.fields.title ? " and no record has a similar title" : "";
+  if (ev.arxivMissing) {
+    return {
+      ...withSearched,
+      status: "not-found",
+      reason: `arXiv has no paper ${ids.arxivId}${titleNote}`
+    };
+  }
+  if (ev.doiMissing) {
+    if (kind === "scholarly") {
+      return {
+        ...withSearched,
+        status: "not-found",
+        reason: `the DOI ${ids.doi} does not exist${titleNote}`
+      };
+    }
+    return {
+      ...withSearched,
+      status: "mismatch",
+      differences: [
+        { field: "doi", bib: ids.doi, record: "does not resolve at doi.org" }
+      ],
+      reason: `the DOI ${ids.doi} does not exist`
+    };
+  }
+  if (kind !== "scholarly") {
+    const why2 = entry.type === "book" || entry.type === "inbook" ? "books are often not indexed" : entry.type.endsWith("thesis") ? "theses are often not indexed" : "this kind of entry is often not indexed";
+    const failed = ev.failures.length ? ` (lookup incomplete: ${failuresText(ev.failures)})` : "";
+    return {
+      ...withSearched,
+      ...ev.failures.length ? { failures: lastFailures(ev.failures) } : {},
+      status: "unverifiable",
+      reason: `no match found, but ${why2}${failed}`
+    };
+  }
+  if (!notFoundQuorum(searched)) {
+    if (skipped3.length && !ev.failures.length) {
+      return {
+        ...withSearched,
+        status: "unverifiable",
+        reason: `could not be checked here ${skippedNote}`
+      };
+    }
+    const failed = [...new Set(ev.failures.map((f) => f.source))];
+    return {
+      ...withSearched,
+      ...failed.length ? { failed, failures: lastFailures(ev.failures) } : {},
+      status: "error",
+      reason: `lookup incomplete: ${failuresText(ev.failures) || "too few indexes answered"}`
+    };
+  }
+  const sameTitle = ev.assessments.find((a) => a.titleScore >= STRONG_TITLE);
+  if (sameTitle) {
+    return {
+      ...withSearched,
+      status: "unverifiable",
+      reason: `other works share this title (such as \u201C${stripTags(sameTitle.record.title)}\u201D, ${sameTitle.record.years[0] ?? "year unknown"}), and the indexes did not single out this one; add its DOI or arXiv id to check it`
+    };
+  }
+  if (ids.openreviewId) {
+    return {
+      ...withSearched,
+      status: "unverifiable",
+      reason: `no index has it yet, and OpenReview (forum ${ids.openreviewId}) cannot be checked automatically; open the link to confirm`
+    };
+  }
+  return {
+    ...withSearched,
+    status: "not-found",
+    reason: `no record with a similar title in ${sourcesText(searched.filter((s) => s !== "doi.org"))}`
+  };
+}
+async function verifyEntry(entry, ctx, ignore) {
+  const base = { key: entry.key, status: "unverifiable" };
+  if (entry.line) base.location = { line: entry.line, ...entry.file ? { file: entry.file } : {} };
+  if (isSkipped(entry, ignore)) return { ...base, reason: "skipped by author" };
+  const ids = identifiersOf(entry);
+  const kind = entryKind(entry, ids);
+  if (kind === "not-indexed") return { ...base, reason: notIndexedReason(entry) };
+  const facts = bibFacts(entry);
+  if (!facts.title && !ids.doi && !ids.arxivId)
+    return { ...base, reason: "no title, DOI or arXiv id to look up" };
+  const ev = {
+    assessments: [],
+    searched: /* @__PURE__ */ new Set(),
+    failures: [],
+    doiMissing: false,
+    arxivMissing: false,
+    queries: []
+  };
+  const viaId = (ids.doi && sourceAllowed(ctx.opts, "doi.org") ? await checkDoi(ctx, ids.doi, facts, ev) : null) ?? (ids.arxivId && sourceAllowed(ctx.opts, "arxiv") ? await checkArxiv(ctx, ids.arxivId, facts, ev) : null) ?? await checkOtherIds(ctx, ids, facts, ev);
+  const withQuery = (r) => ({ ...r, query: ev.queries[0] ?? "" });
+  if (viaId) return withQuery(withBrokenIds(fromAssessment(base, viaId, ev), ids, ev));
+  await searchByTitle(ctx, facts, kind, ev);
+  const best = bestAssessment(ev.assessments);
+  if (best) return withQuery(withBrokenIds(fromAssessment(base, best, ev), ids, ev));
+  return withQuery(noMatch(ctx, base, entry, kind, ids, ev));
+}
+async function runPool(items, limit, worker) {
+  const results = new Array(items.length);
+  let next = 0;
+  const lanes = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await worker(items[i]);
+    }
+  });
+  await Promise.all(lanes);
+  return results;
+}
+async function verifyEntries(entries, opts = {}) {
+  if (opts.offline) {
+    const ignore2 = new Set(opts.ignore ?? []);
+    return entries.map((e) => {
+      const r = {
+        key: e.key,
+        status: "unverifiable",
+        reason: isSkipped(e, ignore2) ? "skipped by author" : "offline",
+        ...e.line ? { location: { line: e.line, ...e.file ? { file: e.file } : {} } } : {}
+      };
+      return opts.requireProvenance && isUnproven(e, r) ? { ...r, unproven: true } : r;
+    });
+  }
+  const ctx = { client: new HttpClient(opts), opts };
+  const ignore = new Set(opts.ignore ?? []);
+  await prefetchArxiv(
+    ctx,
+    entries.filter((e) => !isSkipped(e, ignore)).map((e) => identifiersOf(e).arxivId).filter((id) => id !== void 0)
+  );
+  let done = 0;
+  const results = await runPool(entries, opts.concurrency ?? 4, async (e) => {
+    const result = await verifyEntry(e, ctx, ignore);
+    opts.onProgress?.(++done, entries.length);
+    return opts.requireProvenance && isUnproven(e, result) ? { ...result, unproven: true } : result;
+  });
+  await attachRetractions(ctx, results);
+  return results;
+}
+function isUnproven(entry, result) {
+  if (result.status === "verified") return false;
+  if (result.reason === "skipped by author" || isAuthorProvided(entry)) return false;
+  return !hasValidProvenance(entry);
+}
+function hasValidProvenance(entry) {
+  const f = entry.fields;
+  const ids = identifiersOf(entry);
+  return Boolean(provenanceOf(entry) && (ids.doi || ids.arxivId || f.doi || f.eprint || f.url));
+}
+var SOURCE_NAMES, SECOND_OPINION;
+var init_verify = __esm({
+  "../packages/core/src/refs/verify.ts"() {
+    "use strict";
+    init_cache();
+    init_entry();
+    init_http();
+    init_kind();
+    init_match();
+    init_normalize();
+    init_retraction();
+    init_search();
+    SOURCE_NAMES = {
+      "doi.org": "doi.org",
+      crossref: "CrossRef",
+      dblp: "dblp",
+      arxiv: "arXiv",
+      openalex: "OpenAlex",
+      semanticscholar: "Semantic Scholar",
+      acl: "ACL Anthology",
+      europepmc: "Europe PMC"
+    };
+    SECOND_OPINION = ["openalex", "semanticscholar", "dblp"];
+  }
+});
+
+// ../packages/core/src/refs/check.ts
+function fieldList(r) {
+  return (r.differences ?? []).map((d) => d.field === "author" ? "authors" : d.field).join(", ");
+}
+function titleHint(r, entry) {
+  const title = entry?.fields.title ?? (r.wrongWork ? void 0 : r.matched?.title);
+  return title ? `overfull cite "${title.replace(/[{}]/g, "").replace(/"/g, "'")}"` : void 0;
+}
+function citeHint(r, entry) {
+  if (r.wrongWork) return titleHint(r, entry) ?? 'overfull cite "<title>"';
+  if (r.matched?.doi) return `overfull cite ${r.matched.doi}`;
+  const title = entry?.fields.title ?? r.matched?.title;
+  return title ? `overfull cite "${title.replace(/[{}]/g, "").replace(/"/g, "'")}"` : "overfull cite <doi>";
+}
+function searchedText(r) {
+  const names = (r.searched ?? []).map(sourceName);
+  if (!names.length) return "the indexes";
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
+}
+function failedText(r) {
+  const names = (r.failed ?? []).map(sourceName);
+  if (!names.length) return "A source";
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+function unprovenProblem(r, entry) {
+  const location2 = r.location ?? (entry?.line ? { line: entry.line, ...entry.file ? { file: entry.file } : {} } : void 0);
+  return {
+    rule: "reference-unproven",
+    check: "references",
+    severity: "error",
+    message: `\`${r.key}\` was not added with \`overfull cite\` and could not be verified`,
+    ...location2 ? { location: location2 } : {},
+    detail: `Status: ${r.status}${r.reason ? ` (${r.reason})` : ""}. The entry has no intact \`x-overfull = {cite \u2026 <hash>}\` marker (missing, hand-written, or the entry was edited after \`overfull cite\`) with a DOI, eprint or URL beside it, so nothing shows it came from real metadata.`,
+    fix: UNPROVEN_FIX,
+    ...entry?.raw ? { evidence: entry.raw } : {},
+    data: { key: r.key, status: r.status }
+  };
+}
+function notReverifiedProblem(r, entry) {
+  const location2 = r.location ?? (entry?.line ? { line: entry.line, ...entry.file ? { file: entry.file } : {} } : void 0);
+  return {
+    rule: "reference-not-reverified",
+    check: "references",
+    severity: "warning",
+    message: `\`${r.key}\` was added with \`overfull cite\` but could not be re-verified${r.reason === "offline" ? " (offline)" : r.reason ? `: ${r.reason}` : ""}`,
+    ...location2 ? { location: location2 } : {},
+    fix: "Run the check again with network access; the entry\u2019s DOI or arXiv id lets doi.org or arXiv confirm it.",
+    data: { key: r.key, status: r.status }
+  };
+}
+function authorProvidedProblem(r, entry) {
+  const location2 = r.location ?? (entry?.line ? { line: entry.line, ...entry.file ? { file: entry.file } : {} } : void 0);
+  return {
+    rule: "reference-unverifiable",
+    check: "references",
+    severity: "info",
+    message: `\`${r.key}\` is marked \`overfull: author-provided\` and was not verified${r.reason ? ` (${r.reason})` : ""}`,
+    ...location2 ? { location: location2 } : {},
+    fix: "The author vouches for this entry; check it by hand before submission.",
+    data: { key: r.key, status: r.status, authorProvided: true }
+  };
+}
+function failureLines(r) {
+  if (!r.failures?.length) return void 0;
+  return r.failures.map(
+    (f) => `${sourceName(f.source)}: ${f.reason.replace(/^[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:: | (?=answered|returned))/, "")}.`
+  ).join("\n");
+}
+function problemFor(r, entry, requireProvenance = false) {
+  if (r.status !== "verified" && r.status !== "mismatch" && entry && isAuthorProvided(entry))
+    return r.reason === "offline" || r.reason === "skipped by author" ? null : authorProvidedProblem(r, entry);
+  if (requireProvenance && entry && (r.reason === "offline" || r.status === "error") && hasValidProvenance(entry))
+    return notReverifiedProblem(r, entry);
+  const location2 = r.location ?? (entry?.line ? { line: entry.line, ...entry.file ? { file: entry.file } : {} } : void 0);
+  const data = { key: r.key, status: r.status };
+  if (r.source) data.source = r.source;
+  if (r.query) data.query = r.query;
+  if (r.differences) data.differences = r.differences;
+  if (r.matched) data.matched = r.matched;
+  const common = { check: "references", ...location2 ? { location: location2 } : {}, data };
+  const evidence2 = entry?.raw ? { evidence: entry.raw } : {};
+  switch (r.status) {
+    case "verified":
+      return null;
+    case "not-found":
+      return {
+        ...common,
+        ...evidence2,
+        rule: "reference-not-found",
+        severity: "error",
+        message: `\`${r.key}\` was not found in ${searchedText(r)}`,
+        detail: `Searched ${searchedText(r)}: ${r.reason ?? "no similar record"}. The reference may be mistyped or may not exist; Overfull cannot tell which.`,
+        fix: `Check the DOI and title against the publisher page, or re-add it from real metadata with \`${citeHint(r, entry)}\`. If it is real but unindexed, add \`note = {overfull: skip}\`.`
+      };
+    case "mismatch": {
+      if (r.wrongWork?.field === "eprint") {
+        const others = (r.differences ?? []).filter((d) => d.field !== "eprint").map((d) => `${d.field}: bib \u201C${d.bib}\u201D, record \u201C${d.record}\u201D`);
+        return {
+          ...common,
+          ...evidence2,
+          rule: "reference-arxiv-wrong-work",
+          severity: "error",
+          message: `\`${r.key}\`: the arXiv id ${r.wrongWork.id} points to a different paper, \u201C${r.wrongWork.title}\u201D`,
+          detail: [
+            `arXiv has \u201C${r.wrongWork.title}\u201D as ${r.wrongWork.id}, not the cited work`,
+            ...others
+          ].join("; "),
+          fix: `Find the correct arXiv id for the cited title, or re-add the entry with \`${citeHint(r, entry)}\`. Do not re-add it from this id: that would cite the unrelated paper.`
+        };
+      }
+      if (r.wrongWork) {
+        const others = (r.differences ?? []).filter((d) => d.field !== "doi").map((d) => `${d.field}: bib \u201C${d.bib}\u201D, record \u201C${d.record}\u201D`);
+        return {
+          ...common,
+          ...evidence2,
+          rule: "reference-doi-wrong-work",
+          severity: "error",
+          message: `\`${r.key}\`: the DOI ${r.wrongWork.id} points to a different paper, \u201C${r.wrongWork.title}\u201D`,
+          detail: [
+            `doi.org resolves ${r.wrongWork.id} to \u201C${r.wrongWork.title}\u201D, not to the cited work`,
+            ...others
+          ].join("; "),
+          fix: `Find the correct DOI for the cited title on the publisher page, or re-add the entry with \`${citeHint(r, entry)}\`. Do not re-add it from this DOI: that would cite the unrelated paper.`
+        };
+      }
+      const diffs = (r.differences ?? []).map(
+        (d) => `${d.field}: bib \u201C${d.bib}\u201D, record \u201C${d.record}\u201D`
+      );
+      return {
+        ...common,
+        ...evidence2,
+        rule: "reference-metadata-mismatch",
+        severity: "warning",
+        message: `\`${r.key}\`: ${fieldList(r) || "metadata"} differ${r.differences?.length === 1 ? "s" : ""} from the ${r.source ? sourceName(r.source) : "index"} record`,
+        detail: [r.reason, ...diffs].filter(Boolean).join("; "),
+        fix: `Compare the entry with the record${r.matched?.doi ? ` (doi ${r.matched.doi})` : ""} and correct it, or replace it with \`${citeHint(r, entry)}\`.`
+      };
+    }
+    case "unverifiable": {
+      const why2 = withoutLookupNote(r.reason);
+      const lines = failureLines(r);
+      return {
+        ...common,
+        rule: "reference-unverifiable",
+        severity: "info",
+        message: `\`${r.key}\` could not be checked automatically${why2 ? `: ${why2}` : ""}`,
+        ...lines ? { detail: `The lookup was incomplete. ${lines}` } : {},
+        fix: "Check this entry by hand; add a DOI where one exists."
+      };
+    }
+    case "error": {
+      const lines = failureLines(r);
+      return {
+        ...common,
+        rule: "reference-lookup-failed",
+        severity: "warning",
+        message: lines ? `\`${r.key}\` could not be checked because ${failedText(r)} did not answer` : `\`${r.key}\` could not be checked: ${r.reason ?? "lookup failed"}`,
+        detail: lines ? `${lines} A network problem is not evidence against the reference.` : "A network problem is not evidence against the reference; it was neither confirmed nor ruled out.",
+        fix: `${failedText(r)} could not answer. Add the DOI or arXiv id to the entry (doi.org and arXiv can confirm it even when the title search fails), or re-add it with \`overfull cite <doi | arXiv:id>\`.`
+      };
+    }
+  }
+}
+function bibIssueProblems(issues, file) {
+  return issues.map((i) => ({
+    rule: "bib-parse-error",
+    check: "references",
+    severity: /^(duplicate field|undefined macro)/.test(i.message) ? "warning" : "error",
+    message: i.message,
+    location: { line: i.line, ...file ? { file } : {} },
+    ...i.key ? { data: { key: i.key } } : {}
+  }));
+}
+function missingKeys(cited, entries, texFiles) {
+  const defined = new Set(entries.map((e) => e.key));
+  const missing = cited.filter((k) => !defined.has(k));
+  const where = texFiles?.length ? citeLocations(texFiles, missing) : void 0;
+  return missing.map((key) => {
+    const location2 = where?.get(key);
+    return {
+      rule: "citation-key-missing",
+      check: "references",
+      severity: "error",
+      message: `\`${key}\` is cited but not defined in any .bib file`,
+      ...location2 ? { location: location2 } : {},
+      fix: `Add it with \`overfull cite <doi | arXiv:id | "title">\` (then use the key it prints), fix the key in \`\\cite{${key}}\`, or remove the \`\\cite\` if the source is not known.`,
+      data: { key }
+    };
+  });
+}
+function plural3(n, noun) {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+function summaryOf(results, stats) {
+  const parts = [];
+  if (stats.notFound) parts.push(`${stats.notFound} not found`);
+  const differing = (stats.mismatch ?? 0) - (stats.wrongWork ?? 0);
+  if (differing) parts.push(`${differing} with differing metadata`);
+  if (stats.wrongWork)
+    parts.push(`${stats.wrongWork} with an identifier that points to another work`);
+  if (stats.error) parts.push(`${stats.error} could not be checked`);
+  if (stats.unverifiable) parts.push(`${stats.unverifiable} not checkable automatically`);
+  const head = `${stats.verified} of ${plural3(results.length, "reference")} verified`;
+  return parts.length ? `${head} (${parts.join(", ")})` : head;
+}
+function unreachableHosts(reason) {
+  const hosts = [];
+  for (const part of (reason ?? "").replace(/^lookup incomplete: /, "").split("; ")) {
+    const m = /^([A-Za-z0-9.-]+\.[A-Za-z]{2,})(?:: (?:network error|timed out)| returned a non-JSON page)/.exec(
+      part
+    );
+    if (m?.[1]) hosts.push(m[1]);
+  }
+  return hosts;
+}
+function collapseNetworkFailures(problems, results) {
+  const byKey = new Map(results.map((r) => [r.key, r]));
+  const network = problems.filter((p) => {
+    if (p.rule !== "reference-lookup-failed" && p.rule !== "reference-not-reverified") return false;
+    const r = byKey.get(String(p.data?.key));
+    return r?.status === "error" && unreachableHosts(r.reason).length > 0;
+  });
+  if (network.length < COLLAPSE_AT) return;
+  const entries = network.map((p) => {
+    const r = byKey.get(String(p.data?.key));
+    return { key: r.key, reason: r.reason ?? "", ...p.location ? { location: p.location } : {} };
+  });
+  const hosts = [...new Set(entries.flatMap((e) => unreachableHosts(e.reason)))];
+  const hostText = hosts.length === 1 ? hosts[0] : `${hosts.slice(0, -1).join(", ")} and ${hosts.at(-1)}`;
+  const summary = {
+    rule: "reference-lookup-failed",
+    check: "references",
+    severity: "warning",
+    message: `Could not reach ${hostText}; ${entries.length} entries were not re-verified. Run again when online.`,
+    detail: "A network problem is not evidence against the references; they were neither confirmed nor ruled out.",
+    fix: "Run `overfull check` again with network access. Entries with a DOI or arXiv id can be confirmed by doi.org or arXiv even when a title search index is unreachable.",
+    evidence: entries.map((e) => `${e.key}: ${e.reason}`).join("\n"),
+    data: { keys: entries.map((e) => e.key), hosts, entries }
+  };
+  const drop = new Set(network);
+  const at = problems.findIndex((p) => drop.has(p));
+  const kept = problems.filter((p) => !drop.has(p));
+  kept.splice(at, 0, summary);
+  problems.splice(0, problems.length, ...kept);
+}
+function refsCheck(results, opts = {}) {
+  const byKey = new Map((opts.entries ?? []).map((e) => [e.key, e]));
+  const stats = {
+    total: results.length,
+    verified: results.filter((r) => r.status === "verified").length,
+    mismatch: results.filter((r) => r.status === "mismatch").length,
+    notFound: results.filter((r) => r.status === "not-found").length,
+    unverifiable: results.filter((r) => r.status === "unverifiable").length,
+    error: results.filter((r) => r.status === "error").length
+  };
+  const wrongWork = results.filter((r) => r.status === "mismatch" && r.wrongWork).length;
+  if (wrongWork) stats.wrongWork = wrongWork;
+  const problems = [
+    ...bibIssueProblems(opts.issues ?? [], opts.bibFile),
+    ...opts.extra ?? [],
+    ...results.map((r) => problemFor(r, byKey.get(r.key), opts.requireProvenance)).filter((p) => p !== null),
+    ...results.filter((r) => {
+      if (r.unproven) return true;
+      const entry = byKey.get(r.key);
+      return Boolean(opts.requireProvenance && entry && isUnproven(entry, r));
+    }).map((r) => unprovenProblem(r, byKey.get(r.key))),
+    ...retractedProblems(results, byKey),
+    ...publishedVersionProblems(results, byKey),
+    ...opts.entries ? duplicateProblems(opts.entries) : [],
+    ...opts.reportUncited && opts.entries && opts.citedKeys ? uncitedProblems(opts.entries, opts.citedKeys) : []
+  ];
+  collapseNetworkFailures(problems, results);
+  if (problems.some((p) => p.rule === "reference-unproven")) {
+    stats.unproven = problems.filter((p) => p.rule === "reference-unproven").length;
+  }
+  if (results.some((r) => r.reason === "offline") && results.every((r) => r.reason === "offline" || r.reason === "skipped by author")) {
+    const blocking = problems.filter((p) => p.rule !== "reference-unverifiable");
+    const notChecked = `${plural3(results.length, "reference")} not checked (offline)`;
+    const missing = blocking.filter((p) => p.rule === "citation-key-missing").length;
+    if (blocking.some((p) => p.severity !== "info")) {
+      const lead = missing ? `${plural3(missing, "cited key")} with no .bib entry` : plural3(blocking.filter((p) => p.severity !== "info").length, "problem");
+      return {
+        check: "references",
+        status: statusOf(blocking),
+        problems: blocking,
+        summary: `${lead}; ${notChecked}`,
+        stats
+      };
+    }
+    return {
+      check: "references",
+      status: "skipped",
+      skippedReason: "offline: references were not looked up",
+      problems: blocking,
+      summary: notChecked,
+      stats
+    };
+  }
+  return {
+    check: "references",
+    status: statusOf(problems),
+    problems,
+    summary: summaryOf(results, stats),
+    stats
+  };
+}
+function withoutLookupNote(reason) {
+  if (!reason?.endsWith(")")) return reason;
+  const at = reason.indexOf(" (lookup incomplete: ");
+  return at < 0 ? reason : reason.slice(0, at);
+}
+var UNPROVEN_FIX, refsRules, COLLAPSE_AT;
+var init_check = __esm({
+  "../packages/core/src/refs/check.ts"() {
+    "use strict";
+    init_types();
+    init_tex2();
+    init_entry();
+    init_extra();
+    init_verify();
+    UNPROVEN_FIX = "Ask the author for a DOI/arXiv id and add it with `overfull cite`, or remove the \\cite. If you wrote this entry yourself, add `note = {overfull: author-provided}` to it.";
+    refsRules = [
+      {
+        id: "bib-file-missing",
+        check: "references",
+        severity: "error",
+        title: "Bibliography file not found",
+        summary: "A .bib file named in overfull.yml (`bib:`) or in `\\addbibresource`/`\\bibliography` does not exist, so its entries cannot be checked and LaTeX cannot use them.",
+        fix: "Fix the path in `bib:` (overfull.yml) or in `\\addbibresource`, relative to the project root."
+      },
+      {
+        id: "refs-cache-ignored",
+        check: "references",
+        severity: "info",
+        title: "Project reference cache ignored",
+        summary: "With `references.cache: project`, lookups are cached in `.overfull/cache/refs.json` inside the project. That file is repository content: in CI (any provider, with or without a .git directory) it is never read, and anywhere a cache reached through a symlink is not used, because it could mark references as verified that were never looked up. Every reference is looked up again.",
+        fix: "Keep `.overfull/` out of git (add it to .gitignore) and make sure it is a real directory, not a symlink; or drop `references.cache: project` to use the user cache directory."
+      },
+      {
+        id: "reference-not-found",
+        check: "references",
+        severity: "error",
+        title: "Reference not found in any index",
+        summary: "A journal or conference reference matched nothing in CrossRef, dblp or arXiv, or its DOI / arXiv id does not exist. The reference may be mistyped, or may not exist.",
+        fix: 'Check the title and DOI against the publisher page, then re-add the reference from real metadata with `overfull cite "<title>"` or `overfull cite <doi>`. If it is real but unindexed, add `note = {overfull: skip}`.'
+      },
+      {
+        id: "reference-metadata-mismatch",
+        check: "references",
+        severity: "warning",
+        title: "Reference metadata differs from the index record",
+        summary: "A matching record was found, but its year, authors or title differ meaningfully from the .bib entry.",
+        fix: "Compare the entry with the record shown and correct it, or replace it with `overfull cite <doi>`."
+      },
+      {
+        id: "reference-doi-wrong-work",
+        check: "references",
+        severity: "error",
+        title: "DOI points to a different work",
+        summary: "The entry\u2019s DOI resolves at doi.org, but to a paper with a different title or authors. Readers who follow the DOI land on an unrelated work.",
+        fix: 'Find the correct DOI for the cited title on the publisher page, or re-add the entry with `overfull cite "<title>"`. Do not re-add it from this DOI: that would cite the unrelated paper.'
+      },
+      {
+        id: "reference-arxiv-wrong-work",
+        check: "references",
+        severity: "error",
+        title: "arXiv id points to a different work",
+        summary: "The entry\u2019s arXiv id exists, but arXiv has a paper with a different title or authors under it. Readers who follow the id land on an unrelated work.",
+        fix: 'Find the correct arXiv id for the cited title on arxiv.org, or re-add the entry with `overfull cite "<title>"`. Do not re-add it from this id: that would cite the unrelated paper.'
+      },
+      {
+        id: "bib-outside-project",
+        check: "references",
+        severity: "warning",
+        title: "Bibliography outside the project not checked",
+        summary: "The document names a .bib file outside the project directory (for example `\\bibliography{../shared/refs}`). Overfull only reads files inside the project, so the references in it were not checked.",
+        fix: "Pass the file explicitly with `--bib` (or `bib:` in overfull.yml) from a project that contains it, or move it into the project."
+      },
+      {
+        id: "reference-unverifiable",
+        check: "references",
+        severity: "info",
+        title: "Reference could not be checked automatically",
+        summary: "Websites, software, standards, books and theses are often not in scholarly indexes, so their existence cannot be confirmed automatically.",
+        fix: "Check these entries by hand. Add a DOI or ISBN where one exists."
+      },
+      {
+        id: "reference-lookup-failed",
+        check: "references",
+        severity: "warning",
+        title: "Reference lookup failed",
+        summary: "An index could not be reached (network error, timeout, rate limit), so the reference was neither confirmed nor ruled out.",
+        fix: "The message names the index that could not answer. Add the DOI or arXiv id to the entry: doi.org and arXiv can confirm it even when the title search fails. Or re-add the entry with `overfull cite <doi | arXiv:id>`."
+      },
+      {
+        id: "reference-unproven",
+        check: "references",
+        severity: "error",
+        title: "Reference neither verified nor added with overfull cite",
+        summary: "With `references.requireCite`, every entry that cannot be verified must have been added with `overfull cite`: it carries an intact `x-overfull = {cite \u2026 <hash>}` marker and a DOI, eprint or URL. The hash makes edits evident; it is not authentication. Entries the author vouches for carry `note = {overfull: author-provided}` (added by the author, never by an agent). A hand-written entry that no index confirms may not exist.",
+        fix: UNPROVEN_FIX
+      },
+      {
+        id: "reference-not-reverified",
+        check: "references",
+        severity: "warning",
+        title: "Cited entry could not be re-verified",
+        summary: "The entry was added with `overfull cite` (its `x-overfull` marker is intact), but this run could not confirm it again: the check ran offline or the indexes could not be reached.",
+        fix: "Run `overfull check` again with network access. If an index stays unreachable, the DOI or arXiv id in the entry lets doi.org or arXiv confirm it."
+      },
+      {
+        id: "reference-retracted",
+        check: "references",
+        severity: "error",
+        title: "Cited work is retracted or withdrawn",
+        summary: "CrossRef records a retraction or withdrawal for the work this entry matched (publisher notices and Retraction Watch data). Citing it as sound evidence misleads readers. Needs the lookup to find the work by DOI; entries without a DOI are not checked for this.",
+        fix: "Read the retraction notice. Replace the work with one that stands, or cite it only to say it was retracted, together with the notice."
+      },
+      {
+        id: "reference-published-version",
+        check: "references",
+        severity: "info",
+        title: "Preprint has a published version",
+        summary: "The entry is an arXiv preprint, and its arXiv record names a DOI for the published article.",
+        fix: "If you read the published version, run `overfull cite <doi>` and cite that; if you read the preprint, keep the entry."
+      },
+      {
+        id: "reference-duplicate",
+        check: "references",
+        severity: "warning",
+        title: "Two entries for the same work",
+        summary: "Two entries have the same DOI, the same arXiv id, or the same title and year. The reference list may show the work twice, under two keys. Checked offline, from the .bib file alone.",
+        fix: "Keep one entry, use its key in every `\\cite{}`, and delete the other."
+      },
+      {
+        id: "reference-uncited",
+        check: "references",
+        severity: "info",
+        title: "Bibliography entry that nothing cites",
+        summary: "No `\\cite` in the document uses this entry. Off by default; turn it on with `references.reportUncited: true` in overfull.yml. Needs the cited keys (from the .aux or .bcf, or the .tex sources).",
+        fix: "Cite it where it belongs, or remove the entry."
+      },
+      {
+        id: "bib-parse-error",
+        check: "references",
+        severity: "error",
+        title: "Malformed .bib entry",
+        summary: "A .bib entry could not be parsed, so BibTeX/biber will skip or misread it.",
+        fix: "Fix the syntax at the reported line: usually a missing comma, `=`, or closing brace."
+      },
+      {
+        id: "citation-key-missing",
+        check: "references",
+        severity: "error",
+        title: "Cited key not in any .bib file",
+        summary: "The document cites a key that no .bib file defines; the PDF shows `[?]` or the key in bold.",
+        fix: 'Add the entry with `overfull cite <doi | arXiv:id | "title">`, or fix the key in `\\cite{}`.'
+      }
+    ];
+    COLLAPSE_AT = 3;
+  }
+});
+
+// ../packages/core/src/refs/index.ts
+var init_refs = __esm({
+  "../packages/core/src/refs/index.ts"() {
+    "use strict";
+    init_check();
+    init_verify();
+  }
+});
+
+// ../packages/core/src/report/shared.ts
+function formatLocation(loc) {
+  if (!loc) return "";
+  if (loc.file) return loc.line ? `${loc.file}:${loc.line}` : loc.file;
+  if (loc.page) return `p.${loc.page}`;
+  return "";
+}
+function sortProblems(problems) {
+  return problems.map((p, i) => ({ p, i })).sort((a, b) => {
+    const fa = a.p.location?.file;
+    const fb = b.p.location?.file;
+    return SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] || (fa === void 0 ? 1 : 0) - (fb === void 0 ? 1 : 0) || (fa ?? "").localeCompare(fb ?? "") || (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) || a.i - b.i;
+  }).map(({ p }) => p);
+}
+function sortedProblems(report) {
+  const checkIndex = (c) => CHECK_IDS.indexOf(c);
+  return report.checks.flatMap((c) => c.problems).map((p, i) => ({ p, i })).sort(
+    (a, b) => SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] || checkIndex(a.p.check) - checkIndex(b.p.check) || (a.p.location?.file ?? "").localeCompare(b.p.location?.file ?? "") || (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) || (a.p.location?.page ?? 0) - (b.p.location?.page ?? 0) || a.i - b.i
+  ).map(({ p }) => p);
+}
+function tally(report) {
+  const all = report.checks.flatMap((c) => c.problems);
+  return {
+    errors: all.filter((p) => p.severity === "error").length,
+    warnings: all.filter((p) => p.severity === "warning").length,
+    infos: all.filter((p) => p.severity === "info").length,
+    passed: report.checks.filter((c) => c.status === "pass").length,
+    skipped: report.checks.filter((c) => c.status === "skipped").length
+  };
+}
+function checkLine(c) {
+  if (c.status === "skipped") return `skipped: ${c.skippedReason ?? "not run"}`;
+  if (c.summary) return c.summary;
+  const n = c.problems.filter((p) => p.severity !== "info").length;
+  if (n === 0) return "no problems";
+  return `${n} problem${n === 1 ? "" : "s"}`;
+}
+function nothingCheckedLine(report) {
+  if (report.status !== "skipped") return void 0;
+  const reason = report.checks.find((c) => c.skippedReason)?.skippedReason;
+  return `Nothing was checked${reason ? `: ${reason}` : ""}.`;
+}
+function tallyLine(t) {
+  const parts = [`${t.errors} to fix`, `${t.warnings} to review`];
+  if (t.infos) parts.push(`${t.infos} note${t.infos === 1 ? "" : "s"}`);
+  parts.push(`${t.passed} passed`);
+  if (t.skipped) parts.push(`${t.skipped} skipped`);
+  return parts.join(" \xB7 ");
+}
+function oneLine(s) {
+  return s.replace(/[\r\n\u0085\u2028\u2029]+/g, " ").replace(UNSAFE_CHARS, "");
+}
+function safeLines(s) {
+  return s.split(/\r\n|[\r\n\u0085\u2028\u2029]/).map(oneLine);
+}
+function neutralizeWorkflowCommands(text2) {
+  let prev;
+  let out = text2;
+  do {
+    prev = out;
+    out = out.replace(COMMAND_AT_LINE_START, "$1$2\u200B$3");
+  } while (out !== prev);
+  return out;
+}
+var SEVERITY_ORDER, RUNNER_WHITESPACE, UNSAFE_CHARS, COMMAND_AT_LINE_START;
+var init_shared = __esm({
+  "../packages/core/src/report/shared.ts"() {
+    "use strict";
+    init_types();
+    SEVERITY_ORDER = { error: 0, warning: 1, info: 2 };
+    RUNNER_WHITESPACE = "[\\s\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff\\f\\v]";
+    UNSAFE_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
+    COMMAND_AT_LINE_START = new RegExp(`(^|[\\r\\n])(${RUNNER_WHITESPACE}*?)(::|##\\[)`, "g");
+  }
+});
+
+// ../packages/core/src/report/annotations.ts
+function escapeData(s) {
+  return s.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+}
+function escapeProperty(s) {
+  return escapeData(s).replace(/:/g, "%3A").replace(/,/g, "%2C");
+}
+function joinPath(root, file) {
+  if (!root || root === "." || root === "./") return file;
+  return `${root.replace(/\/+$/, "")}/${file}`;
+}
+function annotation(p, opts) {
+  const cmd = p.severity === "error" ? "error" : p.severity === "warning" ? "warning" : "notice";
+  const props = [];
+  if (p.location?.file) {
+    props.push(`file=${escapeProperty(joinPath(opts.root, p.location.file))}`);
+    if (p.location.line) props.push(`line=${p.location.line}`);
+  }
+  props.push(`title=${escapeProperty(`overfull ${p.rule}`)}`);
+  const page = p.location?.page && !p.location.file ? `Page ${p.location.page}: ` : "";
+  const msg = p.fix ? `${page}${p.message}
+Fix: ${p.fix}` : `${page}${p.message}`;
+  return `::${cmd} ${props.join(",")}::${escapeData(msg)}`;
+}
+function githubAnnotations(report, opts = {}) {
+  const list2 = sortedProblems(report).map((p) => annotation(p, opts));
+  return opts.limit ? list2.slice(0, opts.limit) : list2;
+}
+var init_annotations = __esm({
+  "../packages/core/src/report/annotations.ts"() {
+    "use strict";
+    init_shared();
+  }
+});
+
+// ../packages/core/src/report/dedupe.ts
+function mergeDuplicateFindings(checks) {
+  const refs = checks.find((c) => c.check === "references");
+  const output = checks.find((c) => c.check === "output");
+  if (!refs || !output) return checks;
+  const missing = new Set(
+    refs.problems.filter((p) => p.rule === "citation-key-missing").map((p) => String(p.data?.key))
+  );
+  if (!missing.size) return checks;
+  const kept = output.problems.filter(
+    (p) => !(p.rule === "undefined-citation" && missing.has(String(p.data?.key)))
+  );
+  if (kept.length === output.problems.length) return checks;
+  output.problems = kept;
+  if (output.status !== "skipped") {
+    output.status = statusOf(kept);
+    output.summary = outputSummary(kept);
+  }
+  return checks;
+}
+var init_dedupe = __esm({
+  "../packages/core/src/report/dedupe.ts"() {
+    "use strict";
+    init_analyze();
+    init_types();
+  }
+});
+
+// ../packages/core/src/report/human.ts
+function palette(color) {
+  const wrap = (open, close) => (s) => color ? `\x1B[${open}m${s}\x1B[${close}m` : s;
+  return {
+    red: wrap(31, 39),
+    yellow: wrap(33, 39),
+    green: wrap(32, 39),
+    cyan: wrap(36, 39),
+    dim: wrap(2, 22),
+    bold: wrap(1, 22)
+  };
+}
+function pad(s, width) {
+  return s.length >= width ? s : s + " ".repeat(width - s.length);
+}
+function formatHuman(report, opts = {}) {
+  const c = palette(opts.color ?? false);
+  const statusPaint = {
+    pass: c.green,
+    warn: c.yellow,
+    fail: c.red,
+    skipped: c.dim
+  };
+  const sevPaint = { error: c.red, warning: c.yellow, info: c.cyan };
+  const lines = [];
+  const statusWord = { pass: "PASS", warn: "WARN", fail: "FAIL", skipped: "NOTHING CHECKED" }[report.status];
+  const target = report.target ? ` ${oneLine(report.target)}` : "";
+  lines.push(`${c.bold(`overfull${target}`)}  ${statusPaint[report.status](c.bold(statusWord))}`);
+  const nameWidth = Math.max(...report.checks.map((ch2) => ch2.check.length), 5) + 2;
+  for (const ch2 of report.checks) {
+    const glyph = statusPaint[ch2.status](STATUS_GLYPH[ch2.status]);
+    const text2 = oneLine(checkLine(ch2));
+    lines.push(
+      `  ${glyph} ${pad(ch2.check, nameWidth)}${ch2.status === "skipped" ? c.dim(text2) : text2}`
+    );
+  }
+  const problems = sortedProblems(report);
+  if (problems.length > 0) {
+    lines.push("");
+    const locWidth = Math.min(
+      28,
+      Math.max(...problems.map((p) => oneLine(formatLocation(p.location)).length))
+    );
+    for (const p of problems)
+      lines.push(...problemLines(p, locWidth, opts.verbose ?? false, c, sevPaint));
+  }
+  lines.push("");
+  const why2 = nothingCheckedLine(report);
+  if (why2) lines.push(why2);
+  lines.push(tallyLine(tally(report)));
+  if (!opts.verbose && problems.some((p) => p.fix || p.detail)) {
+    lines.push(c.dim("Run with --verbose for fixes, or `overfull explain <rule>`."));
+  }
+  return `${neutralizeWorkflowCommands(lines.join("\n"))}
+`;
+}
+function problemLines(p, locWidth, verbose, c, sevPaint) {
+  const loc = oneLine(formatLocation(p.location));
+  const locCol = locWidth > 0 ? `${pad(loc, locWidth)}  ` : "";
+  const related = p.related ? c.dim(` (+${p.related} follow-on)`) : "";
+  const out = [
+    `  ${sevPaint[p.severity](SEVERITY_GLYPH[p.severity])} ${locCol}${oneLine(p.message)}${related}  ${c.dim(oneLine(p.rule))}`
+  ];
+  if (verbose) {
+    const indent = " ".repeat(4 + (locWidth > 0 ? locWidth + 2 : 0));
+    if (p.detail) out.push(`${indent}${c.dim("why:")} ${oneLine(p.detail)}`);
+    if (p.fix) out.push(`${indent}${c.dim("fix:")} ${oneLine(p.fix)}`);
+    if (p.evidence) {
+      for (const e of safeLines(p.evidence).slice(0, 4)) out.push(`${indent}${c.dim(`| ${e}`)}`);
+    }
+  }
+  return out;
+}
+var STATUS_GLYPH, SEVERITY_GLYPH;
+var init_human = __esm({
+  "../packages/core/src/report/human.ts"() {
+    "use strict";
+    init_shared();
+    STATUS_GLYPH = { pass: "\u2713", warn: "!", fail: "\u2715", skipped: "\u2013" };
+    SEVERITY_GLYPH = { error: "\u2715", warning: "!", info: "i" };
+  }
+});
+
+// ../packages/core/src/report/json.ts
+function sortKeys(v) {
+  if (Array.isArray(v)) return v.map(sortKeys);
+  if (v && typeof v === "object") {
+    const out = {};
+    for (const k of Object.keys(v).sort()) out[k] = sortKeys(v[k]);
+    return out;
+  }
+  return v;
+}
+function ordered(obj, keys) {
+  const out = {};
+  for (const k of keys) if (obj[k] !== void 0) out[k] = obj[k];
+  return out;
+}
+function problem(p) {
+  const o = ordered(p, [
+    "rule",
+    "check",
+    "severity",
+    "message",
+    "location",
+    "detail",
+    "fix",
+    "related",
+    "evidence",
+    "data"
+  ]);
+  if (p.location) o.location = ordered(p.location, ["file", "line", "page"]);
+  if (p.data) o.data = sortKeys(p.data);
+  return o;
+}
+function check(c) {
+  const o = ordered(c, ["check", "status", "summary", "skippedReason", "stats", "problems"]);
+  if (c.stats) o.stats = sortKeys(c.stats);
+  o.problems = c.problems.map((p) => problem(p));
+  return o;
+}
+function formatJson(report) {
+  const o = ordered(report, ["tool", "version", "target", "assumed", "status", "checks"]);
+  if (report.assumed) o.assumed = sortKeys(report.assumed);
+  o.checks = report.checks.map((c) => check(c));
+  return `${JSON.stringify(o, null, 2)}
+`;
+}
+var init_json = __esm({
+  "../packages/core/src/report/json.ts"() {
+    "use strict";
+  }
+});
+
+// ../packages/core/src/report/markdown.ts
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function escapeMarkdown(s) {
+  return escapeHtml(oneLine(s)).replace(/([\\`*_{}[\]|~#])/g, "\\$1");
+}
+function inline(s) {
+  return oneLine(s).split("`").map(
+    (part, i) => i % 2 === 1 ? `<code>${escapeHtml(part).replace(/\|/g, "&#124;")}</code>` : escapeMarkdown(part)
+  ).join("");
+}
+function problemItem(p) {
+  const loc = formatLocation(p.location);
+  const head = `- **${p.severity}**${loc ? ` <code>${escapeHtml(oneLine(loc))}</code>` : ""} ${escapeMarkdown(p.message)} <sub>${escapeHtml(oneLine(p.rule))}</sub>`;
+  const sub = [];
+  if (p.detail) sub.push(`  - Why: ${inline(p.detail)}`);
+  if (p.fix) sub.push(`  - Fix: ${inline(p.fix)}`);
+  return [head, ...sub].join("\n");
+}
+function formatMarkdown(report) {
+  const out = [];
+  const target = report.target ? ` \u2014 ${escapeMarkdown(report.target)}` : "";
+  const word = report.status === "skipped" ? "NOTHING CHECKED" : report.status.toUpperCase();
+  out.push(`## Overfull preflight: ${word}${target}`, "");
+  const why2 = nothingCheckedLine(report);
+  if (why2) out.push(inline(why2), "");
+  out.push("| Check | Status | Summary |", "| --- | --- | --- |");
+  for (const c of report.checks) {
+    out.push(`| ${c.check} | ${STATUS_TEXT[c.status]} | ${inline(checkLine(c))} |`);
+  }
+  out.push("", tallyLine(tally(report)), "");
+  const problems = sortedProblems(report);
+  for (const c of report.checks) {
+    const mine = problems.filter((p) => p.check === c.check);
+    if (mine.length === 0) continue;
+    const open = mine.some((p) => p.severity === "error") ? " open" : "";
+    out.push(
+      `<details${open}><summary><b>${c.check}</b>: ${mine.length} item${mine.length === 1 ? "" : "s"}</summary>`,
+      ""
+    );
+    for (const p of mine) out.push(problemItem(p));
+    out.push("", "</details>", "");
+  }
+  return `${neutralizeWorkflowCommands(out.join("\n").trimEnd())}
+`;
+}
+var STATUS_TEXT;
+var init_markdown = __esm({
+  "../packages/core/src/report/markdown.ts"() {
+    "use strict";
+    init_shared();
+    STATUS_TEXT = { pass: "pass", warn: "warn", fail: "fail", skipped: "skipped" };
+  }
+});
+
+// ../packages/core/src/venue/arxiv.ts
+function detectEngine(log) {
+  if (!log) return void 0;
+  const head = log.slice(0, 400);
+  if (/This is LuaH?B?TeX|This is LuaTeX/i.test(head)) return "lualatex";
+  if (/This is XeTeX/i.test(head)) return "xelatex";
+  if (/This is pdfTeX|This is e-pTeX/i.test(head)) return "pdflatex";
+  return void 0;
+}
+function isAbsolute(p) {
+  return /^(\/|~[/\\]|[A-Za-z]:[\\/]|\\\\)/.test(p.trim());
+}
+function dirname(p) {
+  const i = p.lastIndexOf("/");
+  return i < 0 ? "" : p.slice(0, i + 1);
+}
+function arxivProblems(ctx) {
+  const problems = [];
+  const files = ctx.texFiles ?? [];
+  const uses = findCommands(files, PATH_COMMANDS);
+  for (const use of uses) {
+    for (const p of use.arg.split(",")) {
+      if (!isAbsolute(p)) continue;
+      problems.push({
+        rule: "arxiv-absolute-path",
+        check: "venue",
+        severity: "error",
+        message: `Absolute path in \\${use.name}: ${p.trim()}`,
+        location: { file: use.file, line: use.line },
+        fix: "Use a path relative to the main file (arXiv only has your uploaded files)"
+      });
+    }
+    if (/\s/.test(use.arg.trim()) && use.name !== "bibliography") {
+      problems.push({
+        rule: "arxiv-filename-space",
+        check: "venue",
+        severity: "warning",
+        message: `File name with a space in \\${use.name}: ${use.arg.trim()}`,
+        location: { file: use.file, line: use.line },
+        fix: "Rename the file without spaces (use - or _)"
+      });
+    }
+  }
+  const engine = detectEngine(ctx.log);
+  if (engine === "lualatex") {
+    problems.push({
+      rule: "arxiv-unsupported-engine",
+      check: "venue",
+      severity: "error",
+      message: "This build used LuaLaTeX, but arXiv compiles with pdfLaTeX",
+      fix: "arXiv compiles with pdfLaTeX; build with `make arxiv` / `latexmk -pdf` and check that log with --log",
+      data: { engine }
+    });
+  }
+  for (const use of uses.filter(
+    (u) => u.name === "includegraphics" && /\.e?ps$/i.test(u.arg.trim())
+  )) {
+    problems.push({
+      rule: "arxiv-eps-pdflatex",
+      check: "venue",
+      severity: "warning",
+      message: `EPS figure (arXiv compiles with pdfLaTeX, which cannot include it): ${use.arg.trim()}`,
+      location: { file: use.file, line: use.line },
+      fix: "Convert to PDF (`epstopdf figure.eps`) and include the .pdf; arXiv\u2019s pdfLaTeX will not convert it"
+    });
+  }
+  const shell = /\\usepackage(\[[^\]]*\])?\{[^}]*\b(minted|pythontex|svg|gnuplottex|shellesc)\b[^}]*\}|\\write18|\\ShellEscape|\\immediate\\write18/g;
+  for (const hit of grepTex(files, shell)) {
+    problems.push({
+      rule: "arxiv-shell-escape",
+      check: "venue",
+      severity: "warning",
+      message: `Needs shell escape, which arXiv does not allow: ${hit.match.slice(0, 60)}`,
+      location: { file: hit.file, line: hit.line },
+      fix: "Use `listings` instead of `minted`, or pre-generate the output (minted: `frozencache`) and upload it"
+    });
+  }
+  if (ctx.main && ctx.files) {
+    for (const f of ctx.files.filter((f2) => /\s/.test(f2) && !f2.startsWith("."))) {
+      problems.push({
+        rule: "arxiv-filename-space",
+        check: "venue",
+        severity: "warning",
+        message: `File name with a space: ${f}`,
+        location: { file: f },
+        fix: "Rename the file without spaces (use - or _)"
+      });
+    }
+    const usesBib = uses.some((u) => u.name === "addbibresource" || u.name === "bibliography");
+    const stem = ctx.main.replace(/\.tex$/i, "");
+    const expected = `${stem}.bbl`;
+    const hasBbl = ctx.files.some((f) => f.toLowerCase() === expected.toLowerCase());
+    if (usesBib && !hasBbl) {
+      const other = ctx.files.find(
+        (f) => f.toLowerCase().endsWith(".bbl") && dirname(f) === dirname(ctx.main ?? "")
+      );
+      problems.push({
+        rule: "arxiv-missing-bbl",
+        check: "venue",
+        severity: "info",
+        message: other ? `Found ${other}, but arXiv compiles ${ctx.main} and reads ${expected}; rename or copy it to ${expected}` : `No ${expected} next to ${ctx.main}; arXiv does not run biber`,
+        fix: other ? `Copy the .bbl to ${expected} (arXiv runs on the main file, not on your jobname)` : "Build once, then upload the generated .bbl (named like your main file) with your sources",
+        data: { expected, ...other ? { found: other } : {} }
+      });
+    }
+  }
+  const seen = /* @__PURE__ */ new Set();
+  return problems.filter((p) => {
+    const key = `${p.rule}|${p.location?.file}|${p.location?.line}|${p.message}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+var PATH_COMMANDS;
+var init_arxiv2 = __esm({
+  "../packages/core/src/venue/arxiv.ts"() {
+    "use strict";
+    init_tex2();
+    PATH_COMMANDS = [
+      "includegraphics",
+      "input",
+      "include",
+      "addbibresource",
+      "bibliography",
+      "subfile",
+      "includepdf",
+      "lstinputlisting",
+      "inputminted"
+    ];
+  }
+});
+
+// ../packages/core/src/venue/aux-file.ts
+function parseAuxLabels(aux) {
+  const labels = /* @__PURE__ */ new Map();
+  const re = /\\newlabel\s*\{/g;
+  for (let m = re.exec(aux); m; m = re.exec(aux)) {
+    const name = readGroup(aux, m.index + m[0].length - 1);
+    if (!name) continue;
+    let i = name.end;
+    while (aux[i] === " ") i++;
+    const body = readGroup(aux, i);
+    if (!body) continue;
+    const fields = [];
+    let j = 0;
+    while (j < body.value.length && fields.length < 2) {
+      while (body.value[j] === " ") j++;
+      const g = readGroup(body.value, j);
+      if (!g) break;
+      fields.push(g.value);
+      j = g.end;
+    }
+    if (fields.length < 2) continue;
+    labels.set(name.value, { ref: clean(fields[0] ?? ""), page: clean(fields[1] ?? "") });
+    re.lastIndex = body.end;
+  }
+  return labels;
+}
+function clean(s) {
+  return s.replace(/\\relax\s*/g, "").replace(/\\protect\s*/g, "").replace(/[{}]/g, "").trim();
+}
+var init_aux_file = __esm({
+  "../packages/core/src/venue/aux-file.ts"() {
+    "use strict";
+    init_tex2();
+  }
+});
+
+// ../packages/core/src/venue/anonymity.ts
+function authorText(arg) {
+  return arg.replace(/\\(and|And|AND|thanks|footnote|email|affil|inst|orcid)\b(\s*\{[^}]*\})?/g, " ").replace(/\\\\(\[[^\]]*\])?/g, " ").replace(/\\[A-Za-z@]+\*?/g, " ").replace(/[{}$^_~&,;]/g, " ").replace(/\s+/g, " ").trim();
+}
+function anonymityProblems(ctx) {
+  const problems = [];
+  const pdfAuthor = ctx.facts?.info.author ?? ctx.facts?.xmp.creators?.join(", ");
+  if (pdfAuthor && !ANON.test(pdfAuthor)) {
+    problems.push({
+      rule: "anonymity-pdf-author",
+      check: "venue",
+      severity: "error",
+      message: `PDF metadata names the author: "${pdfAuthor}"`,
+      fix: "Set `\\hypersetup{pdfauthor={Anonymous}}` (or remove `pdfauthor`) for the review version",
+      data: { author: pdfAuthor }
+    });
+  }
+  const files = ctx.texFiles ?? [];
+  for (const use of findCommands(files, ["author"])) {
+    const text2 = authorText(use.arg);
+    if (!text2 || ANON.test(text2)) continue;
+    if (!new RegExp("\\p{L}{2,}", "u").test(text2)) continue;
+    problems.push({
+      rule: "anonymity-author-named",
+      check: "venue",
+      severity: "error",
+      message: `\\author names someone: "${text2.slice(0, 60)}${text2.length > 60 ? "\u2026" : ""}"`,
+      location: { file: use.file, line: use.line },
+      fix: "Use `\\author{Anonymous}` or the venue class\u2019s review/anonymous option"
+    });
+  }
+  const ack = /\\(?:section|chapter|subsection|paragraph|subsubsection)\*?\s*\{\s*Acknowledg|\\begin\{acknowledg|\\acknowledg(?:e)?ments\b/i;
+  for (const hit of grepTex(files, ack)) {
+    problems.push({
+      rule: "anonymity-acknowledgments",
+      check: "venue",
+      severity: "warning",
+      message: "Acknowledgments section in an anonymous submission",
+      location: { file: hit.file, line: hit.line },
+      fix: "Remove or comment out acknowledgments until the camera-ready version"
+    });
+  }
+  const self2 = /\b(?:our|my)\s+(?:previous|prior|earlier|own|recent)\s+(?:work|paper|papers|study|studies|publication|results?)\b/gi;
+  for (const hit of grepTex(files, self2)) {
+    problems.push({
+      rule: "anonymity-self-reference",
+      check: "venue",
+      severity: "info",
+      message: `Possible self-identification: "${hit.match}"`,
+      location: { file: hit.file, line: hit.line },
+      fix: 'Cite your earlier work in the third person ("Smith et al. [3] showed\u2026")'
+    });
+  }
+  return problems;
+}
+var ANON;
+var init_anonymity = __esm({
+  "../packages/core/src/venue/anonymity.ts"() {
+    "use strict";
+    init_tex2();
+    ANON = /anonym|blind|submission|paper\s*id|author\s*names?\s*(hidden|withheld)/i;
+  }
+});
+
+// ../packages/core/src/venue/disclosure.ts
+function isDisclosureTitle(title) {
+  return AI.test(title) && USE.test(title);
+}
+function sectionBody(src, start) {
+  const rest = src.slice(start);
+  const next = rest.search(
+    /\\(section|subsection|subsubsection|paragraph|chapter|addsec|appendix|printbibliography|bibliography)\b|\\end\{document\}/
+  );
+  const raw = next < 0 ? rest : rest.slice(0, next);
+  return raw.replace(/\\label\s*\{[^}]*\}/g, " ").replace(/\\[a-zA-Z@]+\*?/g, " ").replace(/[{}~]/g, " ").replace(/\s+/g, " ").trim();
+}
+function bodyAfterHeading(f, line) {
+  const src = stripComments(f.content);
+  const lines = src.split("\n");
+  const offset = lines.slice(0, line - 1).join("\n").length;
+  const headingEnd = src.indexOf("}", offset);
+  return sectionBody(src, headingEnd < 0 ? offset : headingEnd + 1);
+}
+function findDisclosure(ctx) {
+  const files = ctx.texFiles ?? [];
+  const label = grepTex(files, /\\label\s*\{overfull:disclosure\}/)[0];
+  const heading = findCommands(files, HEADINGS).find((h) => isDisclosureTitle(h.arg));
+  const hit = heading ?? label;
+  if (hit) {
+    const f = files.find((x) => x.path === hit.file);
+    return {
+      file: hit.file,
+      line: hit.line,
+      ...f ? { body: bodyAfterHeading(f, hit.line) } : {}
+    };
+  }
+  if (files.length === 0 && ctx.facts) {
+    const page = ctx.facts.pages.findIndex(
+      (p) => p.text.split("\n").some((l) => l.length < 80 && isDisclosureTitle(l))
+    );
+    if (page >= 0) return { file: "", line: 0 };
+  }
+  return null;
+}
+function disclosureProblems(level, ctx) {
+  if (!level || level === "off") return [];
+  if (!ctx.texFiles?.length && !ctx.facts) return [];
+  const found = findDisclosure(ctx);
+  if (!found) {
+    return [
+      {
+        rule: "disclosure-missing",
+        check: "venue",
+        severity: level === "required" ? "error" : "info",
+        message: level === "required" ? "No AI-use disclosure statement found (required by this venue)" : "No AI-use disclosure statement found (many venues now ask for one)",
+        fix: "Add a short section such as `\\section*{Use of Generative AI}\\label{overfull:disclosure}`. The author writes the statement: which AI tools were used and for what, and that the authors checked the output. Only the author can say whether none were used."
+      }
+    ];
+  }
+  if (found.body === void 0) return [];
+  const unfinished = PLACEHOLDER.test(found.body) || found.body.length < MIN_STATEMENT_CHARS;
+  if (!unfinished) return [];
+  return [
+    {
+      rule: "disclosure-placeholder",
+      check: "venue",
+      severity: level === "required" ? "error" : "warning",
+      message: "The AI-use disclosure is still a placeholder or nearly empty",
+      location: { file: found.file, line: found.line },
+      detail: `The section reads: "${found.body.slice(0, 120)}${found.body.length > 120 ? "\u2026" : ""}"`,
+      fix: "The author writes the statement: which AI tools were used and for what, and that the authors checked the output. Only the author can say whether none were used."
+    }
+  ];
+}
+var AI, USE, HEADINGS, PLACEHOLDER, MIN_STATEMENT_CHARS;
+var init_disclosure = __esm({
+  "../packages/core/src/venue/disclosure.ts"() {
+    "use strict";
+    init_tex2();
+    AI = /\b(AI|LLMs?|large\s+language\s+models?|generative|artificial\s+intelligence|GenAI|ChatGPT)\b/i;
+    USE = /\b(use|usage|used|disclosure|statement|declaration|assist\w*|tools?)\b/i;
+    HEADINGS = ["section", "subsection", "subsubsection", "paragraph", "chapter", "addsec"];
+    PLACEHOLDER = /\b(placeholder|todo|tbd|tbc|lorem ipsum|xxx+|fill (this|in))\b|\[(describe|write|insert)[^\]]*\]/i;
+    MIN_STATEMENT_CHARS = 40;
+  }
+});
+
+// ../packages/core/src/venue/layout.ts
+function layoutCheckApplies(profile) {
+  if (profile.id === "generic" || profile.id === "thesis") return false;
+  return profile.pageLimit !== void 0 || (profile.styleFiles?.length ?? 0) > 0;
+}
+function problem2(use, kind, what, fix) {
+  return {
+    rule: "layout-tampering",
+    check: "venue",
+    severity: "warning",
+    message: `${what}; check that your venue allows this`,
+    location: { file: use.file, line: use.line },
+    fix,
+    data: { kind }
+  };
+}
+function layoutProblems(profile, ctx) {
+  if (!layoutCheckApplies(profile)) return [];
+  const named = new Set((profile.styleFiles ?? []).map((f) => f.name));
+  const strict = named.size > 0;
+  const files = (ctx.texFiles ?? []).filter(
+    (f) => !/\.cls$/i.test(f.path) && !named.has(baseName(f.path))
+  );
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const add = (p) => {
+    const key = `${p.location?.file}:${p.location?.line}:${p.data?.kind}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(p);
+  };
+  for (const f of files) {
+    const lines = stripComments(f.content).split("\n");
+    const nearAnchor = (i) => lines.slice(Math.max(0, i - NEAR), i + NEAR + 1).some(
+      (l) => /\\(?:begin|end)\{(?:figure|table|wrapfigure|wraptable)\*?\}|\\caption\b|\\(?:sub)*section\b|\\paragraph\b/.test(
+        l
+      )
+    );
+    lines.forEach((line, i) => {
+      const at = { file: f.path, line: i + 1 };
+      const neg = /\\(vspace|vskip)\*?\s*\{?\s*(-[^}\s]*)/.exec(line);
+      if (neg && nearAnchor(i)) {
+        add(
+          problem2(
+            at,
+            "negative-vspace",
+            `\`\\${neg[1]}{${neg[2]}}\` pulls a figure, table or heading closer to the text`,
+            "Remove it, or check the venue\u2019s formatting rules before you keep it"
+          )
+        );
+      }
+      const skip = new RegExp(
+        `\\\\(?:setlength|addtolength)\\s*\\{?\\\\(${NEGATIVE_SPACE_LENGTHS})\\}?\\s*\\{\\s*(-[^}]*)\\}`
+      ).exec(line);
+      if (skip) {
+        add(
+          problem2(
+            at,
+            "negative-skip",
+            `\`\\${skip[1]}\` is set to ${skip[2]?.trim()}, which shrinks the space around floats or equations`,
+            "Remove it, or check the venue\u2019s formatting rules before you keep it"
+          )
+        );
+      }
+      const stretch = /\\renewcommand\s*\{?\\baselinestretch\}?\s*\{([^}]*)\}/.exec(line) ?? /\\(?:linespread|setstretch)\s*\{([^}]*)\}/.exec(line);
+      const factor = stretch?.[1] === void 0 ? void 0 : num2(stretch[1]);
+      if (stretch && factor !== void 0 && factor < 1) {
+        add(
+          problem2(
+            at,
+            "line-spacing",
+            `Line spacing is set to ${stretch[1]?.trim()} (below 1)`,
+            "Remove it, or check the venue\u2019s formatting rules before you keep it"
+          )
+        );
+      }
+      if (strict) {
+        const len = new RegExp(
+          `\\\\(?:(?:setlength|addtolength)\\s*\\{?\\\\(${PAGE_LENGTHS})\\}?|(${PAGE_LENGTHS})\\s*=)`
+        ).exec(line);
+        if (len) {
+          const name = len[1] ?? len[2];
+          add(
+            problem2(
+              at,
+              "page-length",
+              `\`\\${name}\` is changed from the venue\u2019s style`,
+              "Remove it and use the venue\u2019s style file as shipped"
+            )
+          );
+        }
+        const geo = /\\(?:usepackage|geometry|newgeometry|RequirePackage)\b/.test(line) ? /geometry/.test(line) && GEOMETRY_KEYS.test(line) : false;
+        if (geo) {
+          add(
+            problem2(
+              at,
+              "geometry",
+              "The `geometry` package changes margins or the text block",
+              "Remove it and use the venue\u2019s style file as shipped"
+            )
+          );
+        }
+        if (/\\renewcommand\s*\{?\\(?:@normalsize|normalsize)\b/.test(line)) {
+          add(
+            problem2(
+              at,
+              "font-size",
+              "The base font size (`\\normalsize`) is redefined",
+              "Remove it and use the venue\u2019s style file as shipped"
+            )
+          );
+        }
+      }
+    });
+  }
+  for (const use of findCommands(files, ["usepackage", "RequirePackage"])) {
+    if (/(^|,)\s*savetrees\s*(,|$)/.test(use.arg)) {
+      add(
+        problem2(
+          use,
+          "savetrees",
+          "The `savetrees` package shrinks margins, spacing and fonts",
+          "Remove it; most venues do not allow it"
+        )
+      );
+    }
+  }
+  if (strict) {
+    for (const use of findCommands(files, ["documentclass"])) {
+      const size = use.optional ? /(?:^|,)\s*(\d+(?:\.\d+)?pt)\s*(?:,|$)/.exec(use.optional) : null;
+      if (size) {
+        add(
+          problem2(
+            use,
+            "font-size",
+            `The class option ${size[1]} sets the base font size`,
+            "Remove it unless the venue\u2019s instructions ask for that size"
+          )
+        );
+      }
+    }
+    for (const hit of grepTex(
+      files.filter((f) => f.path === ctx.main),
+      /\\fontsize\s*\{[^}]*\}\s*\{[^}]*\}\s*\\selectfont[^\n]*/
+    )) {
+      const f = files.find((x) => x.path === hit.file);
+      const body = f ? stripComments(f.content).search(/\\begin\{document\}/) : -1;
+      const before = f ? stripComments(f.content).split("\n").slice(0, hit.line).join("\n") : "";
+      if (body < 0 || before.length < body) {
+        add(
+          problem2(
+            hit,
+            "font-size",
+            "The base font size is set in the preamble with `\\fontsize`",
+            "Remove it and use the venue\u2019s style file as shipped"
+          )
+        );
+      }
+    }
+  }
+  const order = new Map(files.map((f, n) => [f.path, n]));
+  return out.sort(
+    (a, b) => (order.get(a.location?.file ?? "") ?? 0) - (order.get(b.location?.file ?? "") ?? 0) || (a.location?.line ?? 0) - (b.location?.line ?? 0)
+  );
+}
+var baseName, NEGATIVE_SPACE_LENGTHS, PAGE_LENGTHS, GEOMETRY_KEYS, NEAR, num2;
+var init_layout = __esm({
+  "../packages/core/src/venue/layout.ts"() {
+    "use strict";
+    init_tex2();
+    baseName = (path) => path.split("/").pop() ?? path;
+    NEGATIVE_SPACE_LENGTHS = "abovecaptionskip|belowcaptionskip|textfloatsep|floatsep|intextsep|dbltextfloatsep|dblfloatsep|abovedisplayskip|belowdisplayskip|abovedisplayshortskip|belowdisplayshortskip";
+    PAGE_LENGTHS = "textheight|textwidth|columnsep|oddsidemargin|evensidemargin|topmargin|headheight|headsep|footskip|voffset|hoffset|marginparwidth|columnwidth|linewidth";
+    GEOMETRY_KEYS = /\b(?:margin|left|right|top|bottom|lmargin|rmargin|tmargin|bmargin|textwidth|textheight|text|total|body|hmargin|vmargin|inner|outer|width|height|hscale|vscale|columnsep|footskip|headheight|headsep|marginparwidth)\s*=/;
+    NEAR = 3;
+    num2 = (s) => {
+      const m = /^\s*([+-]?\d*\.?\d+)/.exec(s);
+      return m ? Number(m[1]) : void 0;
+    };
+  }
+});
+
+// ../packages/core/src/venue/links.ts
+function why(url) {
+  const host = url.hostname.toLowerCase().replace(/^www\./, "");
+  if (ANONYMIZERS.some((a) => host === a || host.endsWith(`.${a}`))) return void 0;
+  if (host === "osf.io" && url.searchParams.has("view_only")) return void 0;
+  if (USER_HOSTS.includes(host)) {
+    const user = url.pathname.split("/").filter(Boolean)[0];
+    return user ? `a ${host} page of "${user}"` : void 0;
+  }
+  if (host.endsWith(".github.io") || host.endsWith(".gitlab.io"))
+    return `a personal page (${host})`;
+  if (host === "sites.google.com") return "a personal Google Sites page";
+  if (/^[^/]*\/~[^/]+/.test(`${host}${url.pathname}`)) return "a personal page (a ~user path)";
+  if (/(^|\.)(edu|ac\.[a-z]{2}|edu\.[a-z]{2})$/.test(host))
+    return `an institutional page (${host})`;
+  return void 0;
+}
+function anonymityLinkProblems(ctx) {
+  const out = [];
+  for (const f of ctx.texFiles ?? []) {
+    if (/\.(cls|sty)$/i.test(f.path)) continue;
+    stripComments(f.content).split("\n").forEach((line, i) => {
+      for (const m of line.matchAll(URL_RE)) {
+        const raw = m[0].replace(/[.,;:)\]]+$/, "");
+        let url;
+        try {
+          url = new URL(raw);
+        } catch {
+          continue;
+        }
+        const reason = why(url);
+        if (!reason) continue;
+        out.push({
+          rule: "anonymity-link",
+          check: "venue",
+          severity: "warning",
+          message: `Link to ${reason} can identify the authors: ${raw.slice(0, 80)}`,
+          location: { file: f.path, line: i + 1 },
+          fix: "Use an anonymized copy (e.g. anonymous.4open.science), or remove the link for the review version. Ignore this if the link is not yours",
+          data: { url: raw }
+        });
+      }
+    });
+  }
+  return out;
+}
+var URL_RE, ANONYMIZERS, USER_HOSTS;
+var init_links = __esm({
+  "../packages/core/src/venue/links.ts"() {
+    "use strict";
+    init_tex2();
+    URL_RE = /https?:\/\/[^\s{}\\|<>"^`]+/gi;
+    ANONYMIZERS = ["anonymous.4open.science"];
+    USER_HOSTS = ["github.com", "gitlab.com", "bitbucket.org"];
+  }
+});
+
+// ../packages/core/src/venue/margins.ts
+function marginProblems(profile, ctx) {
+  const block = profile.textBlock;
+  if (!block || !ctx.facts) return [];
+  const out = [];
+  for (const page of ctx.facts.pages) {
+    const box = page.textBox;
+    if (!box) continue;
+    const left = block.leftMm ?? (page.widthMm - block.widthMm) / 2;
+    const right = left + block.widthMm;
+    const past = [];
+    const over = (mm) => Math.round(mm * 10) / 10;
+    if (box.leftMm < left - TOLERANCE_MM)
+      past.push(`${over(left - box.leftMm)} mm into the left margin`);
+    if (box.rightMm > right + TOLERANCE_MM)
+      past.push(`${over(box.rightMm - right)} mm into the right margin`);
+    if (block.topMm !== void 0 && block.heightMm !== void 0) {
+      const top = block.topMm;
+      const bottom = top + block.heightMm;
+      if (box.topMm < top - TOLERANCE_MM)
+        past.push(`${over(top - box.topMm)} mm into the top margin`);
+      if (box.bottomMm > bottom + TOLERANCE_MM)
+        past.push(`${over(box.bottomMm - bottom)} mm into the bottom margin`);
+    }
+    if (!past.length) continue;
+    out.push({
+      rule: "text-outside-block",
+      check: "venue",
+      severity: "warning",
+      message: `Text on page ${page.number} reaches ${past.join(" and ")} (text block ${block.widthMm} mm wide for ${profile.name})`,
+      location: { page: page.number },
+      fix: "Find the overfull line, table or figure on that page (`overfull pages` renders it) and make it fit; do not change the margins.",
+      data: { page: page.number, textBox: box, textBlock: block }
+    });
+  }
+  return out;
+}
+var TOLERANCE_MM;
+var init_margins = __esm({
+  "../packages/core/src/venue/margins.ts"() {
+    "use strict";
+    TOLERANCE_MM = 2;
+  }
+});
+
+// ../packages/core/src/venue/pages.ts
+function mainTextPages(profile, ctx) {
+  const endLabel = profile.pageLimit?.endLabel;
+  if (!endLabel || !ctx.aux) return void 0;
+  const entry = parseAuxLabels(ctx.aux).get(endLabel);
+  return entry && /^\d+$/.test(entry.page) ? Number(entry.page) : void 0;
+}
+function pageLimitText(profile, ctx) {
+  const max = profile.pageLimit?.max;
+  if (max === void 0) return void 0;
+  const total = ctx.facts?.pageCount;
+  const main3 = mainTextPages(profile, ctx);
+  if (main3 !== void 0)
+    return `main text ${pages(main3)}, limit ${max}${total !== void 0 ? ` (${total} in total)` : ""}`;
+  return total !== void 0 ? `${pages(total)}, limit ${max}` : void 0;
+}
+function pageLimitProblems(profile, ctx) {
+  const limit = profile.pageLimit;
+  if (!limit) return [];
+  const problems = [];
+  const { max, endLabel } = limit;
+  if (endLabel) {
+    const entry = ctx.aux ? parseAuxLabels(ctx.aux).get(endLabel) : void 0;
+    if (entry && /^\d+$/.test(entry.page)) {
+      const page = Number(entry.page);
+      if (page > max) {
+        problems.push({
+          rule: "page-limit-exceeded",
+          check: "venue",
+          severity: "error",
+          message: `The main text is ${pages(page)}; the limit is ${max}${ctx.facts?.pageCount !== void 0 ? ` (${ctx.facts.pageCount} pages in total)` : ""}`,
+          location: { page },
+          detail: `Counted up to \`\\label{${endLabel}}\`. Partial pages count as full pages.`,
+          fix: `Cut ${page - max === 1 ? "about a page" : `about ${page - max} pages`} before \`\\label{${endLabel}}\`, or move material to the appendix`,
+          data: { pages: page, max, endLabel }
+        });
+      }
+      problems.push(...floatsAfterEnd(ctx.aux ?? "", page, endLabel));
+      return problems;
+    }
+    if (ctx.facts)
+      problems.push({
+        rule: "page-limit-label-missing",
+        check: "venue",
+        severity: "warning",
+        message: entry ? `\\label{${endLabel}} is on page "${entry.page}", which is not a page number; counted all pages` : `\\label{${endLabel}} not found in the .aux; counted all pages`,
+        fix: `Put \`\\label{${endLabel}}\` right after the last line of the main text (before references/appendix) and rebuild`,
+        data: { endLabel }
+      });
+  }
+  const total = ctx.facts?.pageCount;
+  if (total === void 0) {
+    problems.push({
+      rule: "page-limit-unchecked",
+      check: "venue",
+      severity: "info",
+      message: `Page limit (${max}) not checked: no PDF`,
+      fix: "Build the PDF first: `overfull build` locally, or an earlier step of your CI workflow"
+    });
+  } else if (total > max) {
+    problems.push({
+      rule: "page-limit-exceeded",
+      check: "venue",
+      severity: "error",
+      message: `The paper is ${pages(total)}; the limit is ${max} (all pages counted)`,
+      fix: endLabel ? `Cut ${total - max} page(s), or fix \`\\label{${endLabel}}\` so only the main text is counted` : `Cut ${total - max} page(s), or set \`venue.pageLimit.endLabel\` if references/appendix do not count`,
+      data: { pages: total, max }
+    });
+  }
+  return problems;
+}
+function floatsAfterEnd(aux, endPage, endLabel) {
+  const labels = parseAuxLabels(aux);
+  const pageOf = (p) => /^\d+$/.test(p) ? Number(p) : void 0;
+  let appendixPage = Number.POSITIVE_INFINITY;
+  for (const [name, l] of labels) {
+    const page = pageOf(l.page);
+    if (page !== void 0 && !FLOAT_LABEL.test(name) && APPENDIX_LABEL.test(name)) {
+      appendixPage = Math.min(appendixPage, page);
+    }
+  }
+  const problems = [];
+  for (const [name, l] of labels) {
+    if (!FLOAT_LABEL.test(name) || APPENDIX_LABEL.test(name.replace(FLOAT_LABEL, ""))) continue;
+    if (/^[A-Z](?:\.|$)/.test(l.ref)) continue;
+    const page = pageOf(l.page);
+    if (page === void 0 || page <= endPage || page >= appendixPage) continue;
+    const kind = /^(fig|figure):/i.test(name) ? "Figure" : "Table";
+    problems.push({
+      rule: "float-after-main-end",
+      check: "venue",
+      severity: "warning",
+      message: `${kind} ${name} floated to page ${page}, after the end of the main text (page ${endPage}); it may not count toward the page limit but reviewers will see it outside the main text`,
+      location: { page },
+      fix: `Place the ${kind.toLowerCase()} earlier (\`[t]\` or \`[htbp]\`, or move it closer to where it is first referenced) so it lands before \`\\label{${endLabel}}\`, or move it to the appendix on purpose`,
+      data: { label: name, page, endPage, endLabel }
+    });
+  }
+  return problems;
+}
+function paperSizeProblems(profile, ctx) {
+  const want = profile.paper;
+  if (!want || want === "any" || !ctx.facts) return [];
+  const target = PAPER[want];
+  const off = ctx.facts.pages.filter(
+    (p) => Math.abs(p.widthMm - target.w) > TOLERANCE_MM2 || Math.abs(p.heightMm - target.h) > TOLERANCE_MM2
+  );
+  const first2 = off[0];
+  if (!first2) return [];
+  const other = want === "a4" ? "letter" : "a4";
+  const isOther = Math.abs(first2.widthMm - PAPER[other].w) <= TOLERANCE_MM2 && Math.abs(first2.heightMm - PAPER[other].h) <= TOLERANCE_MM2;
+  const size = isOther ? PAPER[other].label : `${first2.widthMm} \xD7 ${first2.heightMm} mm`;
+  return [
+    {
+      rule: "paper-size-mismatch",
+      check: "venue",
+      severity: "warning",
+      message: `Page ${first2.number} is ${size}, venue expects ${target.label}${off.length > 1 ? ` (${off.length} pages differ)` : ""}`,
+      location: { page: first2.number },
+      fix: want === "a4" ? "Use `\\documentclass[a4paper]{...}` or `\\usepackage[a4paper]{geometry}`" : "Use `\\documentclass[letterpaper]{...}` or `\\usepackage[letterpaper]{geometry}`",
+      data: { expected: want, widthMm: first2.widthMm, heightMm: first2.heightMm, pages: off.length }
+    }
+  ];
+}
+var PAPER, TOLERANCE_MM2, pages, FLOAT_LABEL, APPENDIX_LABEL;
+var init_pages = __esm({
+  "../packages/core/src/venue/pages.ts"() {
+    "use strict";
+    init_aux_file();
+    PAPER = {
+      a4: { w: 210, h: 297, label: "A4 (210 \xD7 297 mm)" },
+      letter: { w: 215.9, h: 279.4, label: "US Letter (8.5 \xD7 11 in)" }
+    };
+    TOLERANCE_MM2 = 3;
+    pages = (n) => `${n} page${n === 1 ? "" : "s"}`;
+    FLOAT_LABEL = /^(fig|figure|tab|table):/i;
+    APPENDIX_LABEL = /^(?:app|appendix)\b|^app(?:endix)?[:._-]|[:._-]app(?:endix)?(?:[:._-]|$)/i;
+  }
+});
+
+// ../packages/core/src/venue/stale.ts
+function staleProfileProblems(profile, now) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(profile.checkedOn ?? "");
+  if (!m) return [];
+  const checked = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  const limit = new Date(checked);
+  limit.setUTCMonth(limit.getUTCMonth() + STALE_AFTER_MONTHS);
+  if (now.getTime() <= limit.getTime()) return [];
+  return [
+    {
+      rule: "venue-profile-stale",
+      check: "venue",
+      severity: "info",
+      message: `Profile ${profile.id} was last checked against the venue's pages on ${profile.checkedOn}; it may be out of date`,
+      fix: `Read the venue's current instructions${profile.source?.length ? ` (${profile.source.join(", ")})` : ""} before you submit`,
+      data: { profile: profile.id, checkedOn: profile.checkedOn, months: STALE_AFTER_MONTHS }
+    }
+  ];
+}
+var STALE_AFTER_MONTHS;
+var init_stale = __esm({
+  "../packages/core/src/venue/stale.ts"() {
+    "use strict";
+    STALE_AFTER_MONTHS = 14;
+  }
+});
+
+// ../packages/core/src/venue/style-file.ts
+function styleFileProblems(profile, files) {
+  const problems = [];
+  for (const sf of profile.styleFiles ?? []) {
+    if (!sf.sha256) continue;
+    const want = sf.sha256.toLowerCase();
+    for (const f of files) {
+      if (baseName2(f.path) !== sf.name) continue;
+      if (sha256Hex(f.content) === want) continue;
+      if (f.content.includes("\r\n") && sha256Hex(f.content.replace(/\r\n/g, "\n")) === want)
+        continue;
+      problems.push({
+        rule: "style-file-modified",
+        check: "venue",
+        severity: "warning",
+        message: `${f.path} differs from the official ${sf.name} for ${profile.name}`,
+        location: { file: f.path },
+        detail: `Expected SHA-256 ${want}. Venues often reject papers built with a changed style file.`,
+        fix: `Download ${sf.name} again from the venue's page and keep your changes in your own files`,
+        data: { file: f.path, styleFile: sf.name, expected: want }
+      });
+    }
+  }
+  return problems;
+}
+var baseName2;
+var init_style_file = __esm({
+  "../packages/core/src/venue/style-file.ts"() {
+    "use strict";
+    init_sha256();
+    baseName2 = (path) => path.split("/").pop() ?? path;
+  }
+});
+
+// ../packages/core/src/venue/check.ts
+function venueCheck(profile, ctx) {
+  if (!ctx.facts && !ctx.texFiles?.length && !ctx.aux) {
+    return {
+      check: "venue",
+      status: "skipped",
+      problems: [],
+      skippedReason: "No PDF or .tex sources to check"
+    };
+  }
+  const problems = [
+    ...pageLimitProblems(profile, ctx),
+    ...paperSizeProblems(profile, ctx),
+    ...profile.anonymous ? [...anonymityProblems(ctx), ...anonymityLinkProblems(ctx)] : [],
+    ...styleFileProblems(profile, ctx.texFiles ?? []),
+    ...layoutProblems(profile, ctx),
+    ...marginProblems(profile, ctx),
+    ...disclosureProblems(profile.disclosure, ctx),
+    ...profile.arxiv ? arxivProblems(ctx) : [],
+    ...staleProfileProblems(profile, ctx.now ?? /* @__PURE__ */ new Date())
+  ];
+  const stats = {};
+  if (ctx.facts) stats.pages = ctx.facts.pageCount;
+  if (profile.pageLimit) stats.pageLimit = profile.pageLimit.max;
+  const errors = problems.filter((p) => p.severity === "error").length;
+  const warnings = problems.filter((p) => p.severity === "warning").length;
+  const parts = [`profile ${profile.id}`];
+  const limitText = pageLimitText(profile, ctx);
+  if (limitText) parts.push(limitText);
+  else if (ctx.facts) parts.push(`${ctx.facts.pageCount} pages`);
+  if (errors) parts.push(`${errors} to fix`);
+  if (warnings) parts.push(`${warnings} to review`);
+  return { check: "venue", status: statusOf(problems), problems, summary: parts.join(", "), stats };
+}
+var init_check2 = __esm({
+  "../packages/core/src/venue/check.ts"() {
+    "use strict";
+    init_types();
+    init_anonymity();
+    init_arxiv2();
+    init_disclosure();
+    init_layout();
+    init_links();
+    init_margins();
+    init_pages();
+    init_stale();
+    init_style_file();
+  }
+});
+
+// ../packages/core/src/venue/venues.generated.ts
+var venueProfileData;
+var init_venues_generated = __esm({
+  "../packages/core/src/venue/venues.generated.ts"() {
+    "use strict";
+    venueProfileData = {
+      "aaai-2027": {
+        id: "aaai-2027",
+        name: "AAAI-27 (main technical track)",
+        extends: "double-blind",
+        year: 2027,
+        source: [
+          "https://aaai.org/conference/aaai/aaai-27/main-technical-track-call/",
+          "https://aaai.org/conference/aaai/aaai-27/submission-instructions/",
+          "https://aaai.org/conference/aaai/aaai-27/policies-aaai-27-authors/",
+          "https://aaai.org/authorkit27/"
+        ],
+        checkedOn: "2026-11-10",
+        paper: "letter",
+        pageLimit: {
+          max: 7,
+          endLabel: "overfull:main-end",
+          counts: "Main content, including any ethical statements",
+          excludes: [
+            "References"
+          ]
+        },
+        anonymous: true,
+        styleFiles: [
+          {
+            name: "aaai2027.sty",
+            sha256: "01990f8d3716f8e39c5b28a7478f3ac6e28630d1161de6105a7217f5e7f60e43"
+          }
+        ],
+        textBlock: {
+          widthMm: 177.8
+        },
+        notes: "The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for references. Acknowledgements are omitted from papers submitted for review. The author policy allows judicious use of generative AI tools; the pages read state no disclosure requirement. The hash is of aaai2027.sty (2027/10/21) from the AuthorKit27 archive downloaded on 2026-11-10. The AAAI-28 call page redirects to AAAI-26 content, so AAAI-27 is the latest published. Text block: 7 in wide, centred on US Letter (aaai2027.sty)."
+      },
+      "acl-rolling-review": {
+        id: "acl-rolling-review",
+        name: "ACL Rolling Review (long papers)",
+        extends: "double-blind",
+        year: "rolling",
+        source: [
+          "https://aclrollingreview.org/cfp",
+          "https://acl-org.github.io/ACLPUB/formatting.html"
+        ],
+        checkedOn: "2026-11-10",
+        paper: "a4",
+        pageLimit: {
+          max: 8,
+          endLabel: "overfull:main-end",
+          counts: "Content, including figures and tables",
+          excludes: [
+            "Limitations (required section)",
+            "Ethical considerations",
+            "References"
+          ]
+        },
+        anonymous: true,
+        disclosure: "recommended",
+        notes: "Short papers have 4 pages of content. Final versions of long papers get one more page (9). Missing a Limitations section is a desk-rejection reason. Use of generative AI for writing or coding must be disclosed in the Responsible NLP Checklist, with details in the Acknowledgements; some uses (language polishing, short-form input assistance) need no disclosure. The official style files are at https://github.com/acl-org/acl-style-files (not reachable from this session, so no file name or hash is recorded)."
+      },
+      "acm-sigconf": {
+        id: "acm-sigconf",
+        name: "ACM conference proceedings (acmart, sigconf format)",
+        extends: "paper",
+        year: "rolling",
+        source: [
+          "https://ctan.org/pkg/acmart",
+          "https://mirrors.ctan.org/macros/latex/contrib/acmart/acmart.dtx"
+        ],
+        checkedOn: "2026-11-10",
+        paper: "letter",
+        styleFiles: [
+          {
+            name: "acmart.cls"
+          }
+        ],
+        textBlock: {
+          widthMm: 177.9
+        },
+        notes: "Each ACM conference sets its own page limit and review rules; set them in overfull.yml (`venue:`) from the call for papers, and use the class option `anonymous` for double-blind review. Layout from acmart v2.21 (2026/11/01): the sigconf format is US Letter with 54 pt inner and outer margins, so the text block is 8.5 in minus 108 pt wide. acmart.cls is generated from acmart.dtx, so no hash is recorded. ACM's own pages (acm.org/publications) could not be read from the build machine."
+      },
+      "aistats-2027": {
+        id: "aistats-2027",
+        name: "AISTATS 2027",
+        extends: "double-blind",
+        year: 2027,
+        source: [
+          "https://virtual.aistats.org/Conferences/2027/CallForPapers",
+          "https://aistats.org/aistats2027/AISTATS2027PaperPack.zip"
+        ],
+        checkedOn: "2026-11-11",
+        paper: "letter",
+        pageLimit: {
+          max: 8,
+          endLabel: "overfull:main-end",
+          counts: "Main text",
+          excludes: [
+            "References",
+            "AI Use Statement",
+            "Reproducibility checklist",
+            "Appendices"
+          ]
+        },
+        anonymous: true,
+        disclosure: "required",
+        styleFiles: [
+          {
+            name: "aistats2027.sty",
+            sha256: "33ab38f8aac4b2f1df9fe67e354928598200584e9568385f32deb889e1b81d42"
+          }
+        ],
+        textBlock: {
+          widthMm: 171.5,
+          leftMm: 22.2
+        },
+        notes: "The call requires an AI Use Statement in every submission, in the ICLR format, and allows generative AI tools otherwise. Papers whose main text is over the limit are desk-rejected; the camera-ready limit is 9 pages. Submissions may use author-year or numeric citations; camera-ready papers must use author-year. Paper size is US Letter (the article class default, emitted by the style file). The hash is of aistats2027.sty (2026/09/02) from AISTATS2027PaperPack.zip downloaded on 2026-11-11. Text block: 6.75 in wide, 0.875 in from the left edge (aistats2027.sty)."
+      },
+      "cvpr-2027": {
+        id: "cvpr-2027",
+        name: "CVPR 2027",
+        extends: "double-blind",
+        year: 2027,
+        source: [
+          "https://cvpr.thecvf.com/Conferences/2027/AuthorGuidelines",
+          "https://media.eventhosts.cc/Conferences/CVPR2027/author-kit-CVPR2027-v1-latex.zip"
+        ],
+        checkedOn: "2026-11-10",
+        paper: "letter",
+        pageLimit: {
+          max: 8,
+          endLabel: "overfull:main-end",
+          counts: "Main text including figures and tables",
+          excludes: [
+            "References",
+            "LLM Usage Statement"
+          ]
+        },
+        anonymous: true,
+        disclosure: "required",
+        styleFiles: [
+          {
+            name: "cvpr.sty",
+            sha256: "1cd7f434b13d41c475df4a1901a5d82d9ca8b80b8cf6205dc4602a5c164286b4"
+          }
+        ],
+        textBlock: {
+          widthMm: 174.6
+        },
+        notes: 'Every submission needs a section titled "LLM Usage Statement" after the main text and before the references; it states "No LLMs or generative AI tools were used in this work" if none were. The camera-ready version must disclose AI-generated content in the Acknowledgments. Paper size is from the check in the official cvpr.sty. The hash is of cvpr.sty from author-kit-CVPR2027-v1-latex.zip downloaded on 2026-11-10. Text block: 6.875 in wide, centred on US Letter (cvpr.sty).'
+      },
+      "eccv-2026": {
+        id: "eccv-2026",
+        name: "ECCV 2026",
+        extends: "double-blind",
+        year: 2026,
+        source: [
+          "https://eccv.ecva.net/Conferences/2026/SubmissionPolicies",
+          "https://eccv.ecva.net/Conferences/2026/CallForPapers"
+        ],
+        checkedOn: "2026-11-11",
+        paper: "any",
+        pageLimit: {
+          max: 14,
+          endLabel: "overfull:main-end",
+          counts: "Main paper including figures and tables",
+          excludes: [
+            "References"
+          ]
+        },
+        anonymous: true,
+        disclosure: "off",
+        styleFiles: [
+          {
+            name: "eccv.sty",
+            sha256: "07785f87dd4741a761e5064d6752e59dbca308b7999de35df983e70dc0a33d80"
+          },
+          {
+            name: "llncs.cls",
+            sha256: "8152fe7afa929cbd3f3679d6f7c1d562525414ed9c5940a69e86cd923416cb2b"
+          }
+        ],
+        textBlock: {
+          widthMm: 122,
+          heightMm: 193,
+          leftMm: 12,
+          topMm: 12
+        },
+        notes: "Papers over 14 pages (excluding references), not anonymized, or not in the ECCV 2026 template are desk-rejected, and so are submissions whose margins, formatting or font were changed (the 2026 template's font differs from CVPR's). The LLM policy allows any tools but makes authors responsible for the content; papers citing non-existent material are rejected. No AI-use statement is asked for. The kit is the one the submission policies link (github.com/paolo-favaro/paper-template, tag Latest, commit da8c09c of 2026-01-23); its own llncs.cls differs from Springer's current one. The review option crops the page to 146 x 217 mm around a 122 x 193 mm text block 12 mm from the left and top edges (eccv.sty), hence no standard paper size."
+      },
+      "emnlp-2026": {
+        id: "emnlp-2026",
+        name: "EMNLP 2026 (main conference)",
+        extends: "double-blind",
+        year: 2026,
+        source: [
+          "https://2026.emnlp.org/calls/main_conference_papers/",
+          "https://aclrollingreview.org/cfp",
+          "https://acl-org.github.io/ACLPUB/formatting.html"
+        ],
+        checkedOn: "2026-11-10",
+        paper: "a4",
+        pageLimit: {
+          max: 8,
+          endLabel: "overfull:main-end",
+          counts: "Content, including figures and tables",
+          excludes: [
+            "Limitations (required section)",
+            "Ethical considerations",
+            "References"
+          ]
+        },
+        anonymous: true,
+        disclosure: "recommended",
+        notes: "Papers go through ACL Rolling Review and follow all ARR submission requirements; the EMNLP page lists long papers (8 pages) and short papers (4 pages). Final versions get one additional page (9 for long papers, 5 for short papers). Exclusions and the A4 size are from the ARR call and the ACL formatting guidelines it links. Writing-assistance disclosure follows the ARR policy. No style file name or hash is recorded because the official style repository was not reachable from this session."
+      },
+      "iclr-2027": {
+        id: "iclr-2027",
+        name: "ICLR 2027",
+        extends: "double-blind",
+        year: 2027,
+        source: [
+          "https://iclr.cc/Conferences/2027/CallForPapers",
+          "https://iclr.cc/Conferences/2027/AuthorGuidelines",
+          "https://iclr.cc/Conferences/2027/AIPolicyForAuthors"
+        ],
+        checkedOn: "2026-11-10",
+        pageLimit: {
+          max: 9,
+          endLabel: "overfull:main-end",
+          counts: "Main text at submission",
+          excludes: [
+            "References",
+            "AI use statement",
+            "Optional ethics statement (at most 1 page)"
+          ]
+        },
+        anonymous: true,
+        disclosure: "required",
+        styleFiles: [
+          {
+            name: "iclr2027_conference.sty",
+            sha256: "797deef41724e93761426ac0cbcca46279a91cc650dd1f0ce76a4f08d2098ea6"
+          }
+        ],
+        textBlock: {
+          widthMm: 139.7
+        },
+        notes: "The page limit is 10 for the discussion phase and the camera-ready version. A mandatory AI use statement section does not count toward the limit. Style files are from iclr-2027-style-files.zip (linked from the author guidelines), downloaded on 2026-11-10 (file dated 2026-07-28 in the archive). Text block: 5.5 in wide with 1.5 in side margins (iclr2027_conference.sty)."
+      },
+      "icml-2026": {
+        id: "icml-2026",
+        name: "ICML 2026",
+        extends: "double-blind",
+        year: 2026,
+        source: [
+          "https://icml.cc/Conferences/2026/CallForPapers",
+          "https://icml.cc/Conferences/2026/AuthorInstructions"
+        ],
+        checkedOn: "2026-11-10",
+        paper: "letter",
+        pageLimit: {
+          max: 8,
+          endLabel: "overfull:main-end",
+          counts: "Main paper",
+          excludes: [
+            "References",
+            "Impact statement",
+            "Appendices"
+          ]
+        },
+        anonymous: true,
+        disclosure: "recommended",
+        styleFiles: [
+          {
+            name: "icml2026.sty",
+            sha256: "7cdcf90f6a59c5219e7f15c88f7ed09fcaf598dad91e6cdddc4dc3cb0e397a95"
+          }
+        ],
+        textBlock: {
+          widthMm: 171.5,
+          leftMm: 19.6
+        },
+        notes: "Final versions of accepted papers get one extra page for the main paper. The call allows generative AI tools and encourages authors to explain notable uses in their methodology; LLMs cannot be authors. The hash is of icml2026.sty (v2.0, 2025/10/29) from icml2026.zip downloaded on 2026-11-10. The ICML 2027 call page exists but has no content yet. Text block: 6.75 in wide, 0.77 in from the left edge (icml2026.sty)."
+      },
+      "ieee-conference": {
+        id: "ieee-conference",
+        name: "IEEE conference proceedings (IEEEtran, conference mode)",
+        extends: "paper",
+        year: "rolling",
+        source: [
+          "https://conferences.ieeeauthorcenter.ieee.org/write-your-paper/authoring-tools-and-templates/",
+          "https://conferences.ieeeauthorcenter.ieee.org/write-your-paper/meet-ieee-xplore-requirements/",
+          "https://conferences.ieeeauthorcenter.ieee.org/author-ethics/guidelines-and-policies/submission-policies/",
+          "https://ctan.org/pkg/ieeetran"
+        ],
+        checkedOn: "2026-11-10",
+        disclosure: "recommended",
+        styleFiles: [
+          {
+            name: "IEEEtran.cls",
+            sha256: "da751920a317ed318b7b5cd7fa585a6cc7d28502d457856382e9be24b10a3bd7"
+          }
+        ],
+        textBlock: {
+          widthMm: 181.4
+        },
+        notes: "Each IEEE conference sets its own page limit, paper size and review rules; set them in overfull.yml (`venue:`) from the call for papers. IEEE's submission policies ask authors to disclose AI-generated content in the acknowledgments (editing and grammar help excepted), so the disclosure is recommended rather than required. IEEE Xplore needs every font embedded. The hash is of IEEEtran.cls V1.8b (2015/08/26) as distributed on CTAN, the current release; IEEE's own template page could not be read from the build machine. The text block is the class's conference-mode width (43 pc, centred)."
+      },
+      "neurips-2026": {
+        id: "neurips-2026",
+        name: "NeurIPS 2026 (main track)",
+        extends: "double-blind",
+        year: 2026,
+        source: [
+          "https://neurips.cc/Conferences/2026/CallForPapers",
+          "https://neurips.cc/Conferences/2026/MainTrackHandbook",
+          "https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip"
+        ],
+        checkedOn: "2026-11-10",
+        paper: "letter",
+        pageLimit: {
+          max: 9,
+          endLabel: "overfull:main-end",
+          counts: "Main text including all figures and tables",
+          excludes: [
+            "References",
+            "Optional technical appendices",
+            "Mandatory paper checklist"
+          ]
+        },
+        anonymous: true,
+        disclosure: "recommended",
+        styleFiles: [
+          {
+            name: "neurips_2026.sty",
+            sha256: "c3fc2894e83d2517ca18b66741d6c595986d97957dc08ec08bb2125a7ec4555a"
+          }
+        ],
+        textBlock: {
+          widthMm: 139.7
+        },
+        notes: "The handbook asks authors to describe agent or LLM use in the experimental setup only when it is an important, original or non-standard part of the method. Accepted papers get one additional content page for the camera-ready version. Paper size is from the letterpaper option in the official style file (the handbook does not state it). The hash is of neurips_2026.sty (dated 2026-01-29) from the kit downloaded on 2026-11-10. Text block: 5.5 in wide, centred on US Letter (geometry in neurips_2026.sty)."
+      },
+      "springer-lncs": {
+        id: "springer-lncs",
+        name: "Springer LNCS proceedings (also LNAI, LNBI, CCIS, LNBIP, LNICST, IFIP AICT)",
+        extends: "paper",
+        year: "rolling",
+        source: [
+          "https://www.springer.com/gp/computer-science/lncs/conference-proceedings-guidelines",
+          "https://cms-resources.apps.public.k8s.springernature.io/springer-cms/rest/v1/content/27852130/data/Instructions%20for%20Authors%20PDF",
+          "https://cms-resources.apps.public.k8s.springernature.io/springer-cms/rest/v1/content/27851904/data/LaTeX2e%20Proceedings%20Template%20ZIP"
+        ],
+        checkedOn: "2026-11-10",
+        accessibility: "recommended",
+        styleFiles: [
+          {
+            name: "llncs.cls",
+            sha256: "04ec99046ad9867f6cd54ffd1ef8c47c767b327d1baec77536db0528cd492fa2"
+          }
+        ],
+        textBlock: {
+          widthMm: 122,
+          leftMm: 47.5
+        },
+        notes: "No page limit or paper size is set by Springer; the volume editors set the limit (full papers are typically 12-15 pages, short papers 6-11). Springer's instructions say proceedings contributions need alternative text for non-text content under WCAG; the level is recommended here because Overfull's accessibility check is about the PDF, not alt text. The hash is of llncs.cls v2.25 (2026/09/03) from the LaTeX2e template downloaded on 2026-11-10. Text block: 12.2 cm wide, 1 in + 63 pt from the left edge (llncs.cls)."
+      }
+    };
+  }
+});
+
+// ../packages/core/src/venue/profiles.ts
+function merge(parent, inline2) {
+  const merged = { ...parent };
+  for (const [k, v] of Object.entries(inline2)) {
+    if (v !== void 0) merged[k] = v;
+  }
+  if (inline2.pageLimit) merged.pageLimit = { ...parent.pageLimit, ...inline2.pageLimit };
+  if (!inline2.id) merged.id = parent.id;
+  return merged;
+}
+function known(name, venues) {
+  return Object.hasOwn(builtinProfiles, name) || Object.hasOwn(venues, name);
+}
+function lookup(name, venues) {
+  const built = Object.hasOwn(builtinProfiles, name) ? builtinProfiles[name] : void 0;
+  if (built) return { ...built };
+  const data = Object.hasOwn(venues, name) ? venues[name] : void 0;
+  if (!data) throw new UnknownProfileError(name, venues);
+  const { extends: base, ...fields } = data;
+  const parent = lookup(base ?? "generic", venues);
+  const withDescription = {
+    description: `${data.name}${data.year !== void 0 ? ` (${data.year})` : ""}`,
+    ...fields
+  };
+  return merge(parent, withDescription);
+}
+function resolveProfile(nameOrInline, venues = venueProfileData) {
+  if (typeof nameOrInline === "string") return lookup(nameOrInline, venues);
+  const { extends: base, ...inline2 } = nameOrInline;
+  const baseName3 = base ?? (inline2.id && known(inline2.id, venues) ? inline2.id : "generic");
+  return merge(lookup(baseName3, venues), inline2);
+}
+var ALL_CHECKS, builtinProfiles, UnknownProfileError;
+var init_profiles = __esm({
+  "../packages/core/src/venue/profiles.ts"() {
+    "use strict";
+    init_types();
+    init_venues_generated();
+    ALL_CHECKS = [...CHECK_IDS];
+    builtinProfiles = {
+      generic: {
+        id: "generic",
+        name: "Generic",
+        description: "Any LaTeX document: build, output, references; accessibility as advice.",
+        paper: "any",
+        disclosure: "off",
+        accessibility: "recommended",
+        checks: ALL_CHECKS
+      },
+      thesis: {
+        id: "thesis",
+        name: "Thesis",
+        description: "Theses and dissertations: accessible PDF/UA output required, no page limit.",
+        paper: "any",
+        disclosure: "off",
+        accessibility: "required",
+        checks: ALL_CHECKS
+      },
+      paper: {
+        id: "paper",
+        name: "Paper",
+        description: "Conference or journal paper: AI-use disclosure recommended, accessible (tagged) PDF required.",
+        paper: "any",
+        disclosure: "recommended",
+        accessibility: "required",
+        checks: ALL_CHECKS
+      },
+      arxiv: {
+        id: "arxiv",
+        name: "arXiv",
+        description: "arXiv submission: no absolute paths, no shell escape, .bbl included, pdfLaTeX-safe figures.",
+        paper: "any",
+        disclosure: "off",
+        accessibility: "recommended",
+        arxiv: true,
+        checks: ALL_CHECKS
+      },
+      "double-blind": {
+        id: "double-blind",
+        name: "Double-blind review",
+        description: "Anonymous submission: no author names in the PDF metadata or source, no acknowledgments.",
+        paper: "any",
+        anonymous: true,
+        disclosure: "recommended",
+        accessibility: "recommended",
+        checks: ALL_CHECKS
+      }
+    };
+    UnknownProfileError = class extends Error {
+      constructor(name, extra = venueProfileData) {
+        const venues = Object.keys({ ...venueProfileData, ...extra });
+        super(
+          `Unknown profile "${name}". Built-in profiles: ${Object.keys(builtinProfiles).join(", ")}` + (venues.length ? `. Venue profiles: ${venues.join(", ")}` : "")
+        );
+        this.name = "UnknownProfileError";
+      }
+    };
+  }
+});
+
+// ../packages/core/src/venue/rules.ts
+var venueRules;
+var init_rules3 = __esm({
+  "../packages/core/src/venue/rules.ts"() {
+    "use strict";
+    venueRules = [
+      {
+        id: "page-limit-exceeded",
+        check: "venue",
+        severity: "error",
+        title: "Page limit exceeded",
+        summary: "The document (or its main text, up to the end label) is longer than the venue allows.",
+        fix: "Shorten the main text, or move material to an appendix if the venue does not count it."
+      },
+      {
+        id: "page-limit-label-missing",
+        check: "venue",
+        severity: "warning",
+        title: "Page-limit end label not found",
+        summary: "The profile counts pages up to a label (default `overfull:main-end`), but the .aux has no such label, so all pages were counted.",
+        fix: "Put `\\label{overfull:main-end}` right after the last paragraph of the main text and rebuild."
+      },
+      {
+        id: "page-limit-unchecked",
+        check: "venue",
+        severity: "info",
+        title: "Page limit not checked",
+        summary: "There was no PDF (or .aux label) to count pages from.",
+        fix: "Build the document first (`overfull build`)."
+      },
+      {
+        id: "text-outside-block",
+        check: "venue",
+        severity: "warning",
+        title: "Text outside the text block",
+        summary: "Text on a page of the PDF reaches into the margin, measured against the text block of the venue's style file (2 mm tolerance). Only for venue profiles that record a text block.",
+        fix: "Find the line, table or figure that sticks out (`overfull pages <n>` renders the page) and make it fit. Changing the margins or the text block is usually against the rules."
+      },
+      {
+        id: "paper-size-mismatch",
+        check: "venue",
+        severity: "warning",
+        title: "Wrong paper size",
+        summary: "Pages are not the paper size the venue expects (A4 or US Letter).",
+        fix: "Set the paper size in the class options or with `\\usepackage[a4paper]{geometry}` / `letterpaper`."
+      },
+      {
+        id: "anonymity-pdf-author",
+        check: "venue",
+        severity: "error",
+        title: "Author name in PDF metadata",
+        summary: "The PDF Author field names a person in a double-blind submission.",
+        fix: "Set `\\hypersetup{pdfauthor={Anonymous}}` for the review version."
+      },
+      {
+        id: "anonymity-author-named",
+        check: "venue",
+        severity: "error",
+        title: "Author named in the source",
+        summary: "`\\author{...}` contains names in a double-blind submission.",
+        fix: "Use `\\author{Anonymous}` or the venue class\u2019s anonymous/review option."
+      },
+      {
+        id: "anonymity-acknowledgments",
+        check: "venue",
+        severity: "warning",
+        title: "Acknowledgments in an anonymous submission",
+        summary: "Acknowledgments often name people, grants or institutions and break anonymity.",
+        fix: "Remove the acknowledgments until the camera-ready version."
+      },
+      {
+        id: "anonymity-self-reference",
+        check: "venue",
+        severity: "info",
+        title: "Possible self-identifying phrase",
+        summary: 'Phrases such as "our previous work [3]" reveal who the authors are.',
+        fix: "Refer to your earlier work in the third person."
+      },
+      {
+        id: "disclosure-missing",
+        check: "venue",
+        severity: "error",
+        title: "AI-use disclosure missing",
+        summary: "The venue asks authors to state whether and how generative AI tools were used; no such statement was found.",
+        fix: "Add a short section, e.g. `\\section*{Use of Generative AI}\\label{overfull:disclosure}`. The author writes the statement: which AI tools were used and for what, and that the authors checked the output. Only the author can say whether none were used."
+      },
+      {
+        id: "disclosure-placeholder",
+        check: "venue",
+        severity: "error",
+        title: "AI-use disclosure is a placeholder",
+        summary: "The disclosure section exists but still holds placeholder text or almost nothing. Submitting it as is misstates how the paper was written.",
+        fix: "The author writes the statement: which AI tools were used and for what, and that the authors checked the output. Only the author can say whether none were used."
+      },
+      {
+        id: "arxiv-absolute-path",
+        check: "venue",
+        severity: "error",
+        title: "Absolute path (arXiv)",
+        summary: "arXiv compiles only the uploaded files, so absolute paths break the build.",
+        fix: "Use paths relative to the main file."
+      },
+      {
+        id: "float-after-main-end",
+        check: "venue",
+        severity: "warning",
+        title: "Figure or table floated past the end of the main text",
+        summary: "A main-text figure or table landed on a page after the page-limit end label. It may escape the page count, but reviewers see it among the references or appendix.",
+        fix: "Place the float earlier (`[t]`/`[htbp]`, or closer to its first reference) so it lands before the end label, or move it to the appendix on purpose."
+      },
+      {
+        id: "arxiv-unsupported-engine",
+        check: "venue",
+        severity: "error",
+        title: "Built with LuaLaTeX (arXiv)",
+        summary: "arXiv compiles submissions with pdfLaTeX. A paper that only builds with LuaLaTeX (fontspec, Lua code) fails there, and a LuaLaTeX log says nothing about the arXiv build.",
+        fix: "arXiv compiles with pdfLaTeX; build with `make arxiv` / `latexmk -pdf` and check that log with --log."
+      },
+      {
+        id: "arxiv-eps-pdflatex",
+        check: "venue",
+        severity: "warning",
+        title: "EPS figure with pdfLaTeX (arXiv)",
+        summary: "pdfLaTeX cannot include .eps files directly, and arXiv will not convert them for you.",
+        fix: "Convert figures to PDF with `epstopdf` and include the .pdf."
+      },
+      {
+        id: "arxiv-shell-escape",
+        check: "venue",
+        severity: "warning",
+        title: "Shell escape needed (arXiv)",
+        summary: "Packages such as `minted` need `-shell-escape`, which arXiv does not enable.",
+        fix: "Switch to `listings`, or pre-generate the output and upload it."
+      },
+      {
+        id: "arxiv-missing-bbl",
+        check: "venue",
+        severity: "info",
+        title: ".bbl not present (arXiv)",
+        summary: "arXiv does not run biber; with biblatex you must upload the .bbl generated by your build.",
+        fix: "Build locally, then include the .bbl named like the main file (`main.tex` \u2192 `main.bbl`; a `<jobname>.bbl` must be copied to that name) in the upload."
+      },
+      {
+        id: "arxiv-filename-space",
+        check: "venue",
+        severity: "warning",
+        title: "File name with spaces (arXiv)",
+        summary: "arXiv\u2019s processing breaks on file names containing spaces.",
+        fix: "Rename files using - or _ instead of spaces."
+      },
+      {
+        id: "venue-profile-stale",
+        check: "venue",
+        severity: "info",
+        title: "Venue profile may be out of date",
+        summary: "The profile was last compared with the venue\u2019s official pages more than 14 months ago. Page limits, style files and policies change between years.",
+        fix: "Read the venue\u2019s current author instructions (the profile lists its sources) and compare them with what Overfull reports."
+      },
+      {
+        id: "style-file-modified",
+        check: "venue",
+        severity: "warning",
+        title: "Style file differs from the official one",
+        summary: "The project\u2019s copy of a style or class file named by the profile does not match the SHA-256 recorded for the official file. Venues often reject papers built with a changed style file. Only profiles that record a hash are checked; a copy with Windows line endings is compared after converting them.",
+        fix: "Download the style file again from the venue\u2019s page and keep your own changes in separate files."
+      },
+      {
+        id: "layout-tampering",
+        check: "venue",
+        severity: "warning",
+        title: "Source squeezes the layout",
+        summary: "The source uses a command often used to fit more text on a page: a negative `\\vspace` next to a figure, table or heading, negative float or equation spacing, line spacing below 1, `savetrees`, or (for profiles that name a style file) changed margins, text block or base font size. Overfull cannot tell whether your venue allows it.",
+        fix: "Check that your venue allows this. If it does not, remove the command and shorten the text instead."
+      },
+      {
+        id: "anonymity-link",
+        check: "venue",
+        severity: "warning",
+        title: "Link that can identify the authors",
+        summary: "An anonymous submission links to a personal repository (`github.com/<user>`, GitLab, Bitbucket), a personal page (`*.github.io`, Google Sites, `~user`) or an institutional page. Links to anonymous.4open.science are allowed. A link to someone else\u2019s page is reported too.",
+        fix: "Use an anonymized copy such as anonymous.4open.science, or remove the link for the review version. Ignore the warning for links that are not yours."
+      },
+      {
+        id: "tex-file-skipped",
+        check: "venue",
+        severity: "info",
+        title: "Source file not read",
+        summary: "A .tex/.sty/.cls file in the project was not read for the venue checks: it is not a regular file (a pipe, socket or device) or it is larger than 20 MB.",
+        fix: "Nothing to do if the file is not part of the document. Otherwise replace it with a regular file of normal size."
+      }
+    ];
+  }
+});
+
+// ../packages/core/src/venue/index.ts
+var init_venue = __esm({
+  "../packages/core/src/venue/index.ts"() {
+    "use strict";
+    init_check2();
+    init_profiles();
+    init_rules3();
+  }
+});
+
+// ../packages/core/src/rules.ts
+function allRules() {
+  if (cache) return cache;
+  const seen = /* @__PURE__ */ new Map();
+  for (const r of [...logRules, ...refsRules, ...pdfRules, ...venueRules]) {
+    if (!seen.has(r.id)) seen.set(r.id, r);
+  }
+  cache = [...seen.values()];
+  return cache;
+}
+function getRule(id) {
+  const exact = allRules().find((r) => r.id === id);
+  if (exact) return exact;
+  const m = /^verapdf-(\d[\w-]*)$/.exec(id);
+  const generic = allRules().find((r) => r.id === "verapdf");
+  if (m && generic) {
+    const clause = m[1].replace(/-/g, ".");
+    const info3 = veraPdfClauseInfo(clause);
+    if (info3) {
+      return {
+        ...generic,
+        id,
+        title: `PDF/UA clause ${clause}: ${info3.title} (veraPDF)`,
+        summary: info3.summary,
+        fix: info3.fix
+      };
+    }
+    return { ...generic, id, title: `PDF/UA clause ${clause} failed (veraPDF)` };
+  }
+  return void 0;
+}
+var cache;
+var init_rules4 = __esm({
+  "../packages/core/src/rules.ts"() {
+    "use strict";
+    init_log();
+    init_pdf();
+    init_refs();
+    init_venue();
+  }
+});
+
+// ../packages/core/src/report/sarif.ts
+function joinPath2(root, file) {
+  const f = file.replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!root || root === "." || root === "./") return f;
+  return `${root.replace(/\/+$/, "")}/${f}`;
+}
+function messageOf(p) {
+  const page = p.location?.page && !p.location.file ? `Page ${p.location.page}: ` : "";
+  const text2 = `${page}${oneLine(p.message)}`;
+  return p.fix ? `${text2} Fix: ${oneLine(p.fix)}` : text2;
+}
+function ruleDescriptor(id, problem3) {
+  const info3 = getRule(id);
+  const title = info3?.title ?? oneLine(problem3.message);
+  return {
+    id,
+    name: id,
+    shortDescription: { text: title.slice(0, 1024) },
+    ...info3 ? { fullDescription: { text: info3.summary } } : {},
+    ...info3?.fix ? { help: { text: info3.fix } } : {},
+    helpUri: `${SITE}rules/${encodeURIComponent(id)}/`,
+    defaultConfiguration: { level: LEVEL[info3?.severity ?? problem3.severity] },
+    properties: { tags: [info3?.check ?? problem3.check] }
+  };
+}
+function formatSarif(report, opts = {}) {
+  const problems = sortedProblems(report);
+  const fallback = opts.fallbackFile ?? report.assumed?.main;
+  const ids = [];
+  const first2 = /* @__PURE__ */ new Map();
+  for (const p of problems) {
+    if (!first2.has(p.rule)) {
+      first2.set(p.rule, p);
+      ids.push(p.rule);
+    }
+  }
+  const results = problems.map((p) => {
+    const file = p.location?.file ?? fallback;
+    const line = p.location?.file ? p.location.line : void 0;
+    return {
+      ruleId: p.rule,
+      ruleIndex: ids.indexOf(p.rule),
+      level: LEVEL[p.severity],
+      message: { text: messageOf(p) },
+      ...file ? {
+        locations: [
+          {
+            physicalLocation: {
+              artifactLocation: { uri: joinPath2(opts.root, file), uriBaseId: "%SRCROOT%" },
+              region: { startLine: line && line > 0 ? line : 1 }
+            }
+          }
+        ]
+      } : {}
+    };
+  });
+  const log = {
+    $schema: SCHEMA,
+    version: "2.1.0",
+    runs: [
+      {
+        tool: {
+          driver: {
+            name: "overfull",
+            version: report.version,
+            informationUri: SITE,
+            rules: ids.map((id) => ruleDescriptor(id, first2.get(id)))
+          }
+        },
+        results
+      }
+    ]
+  };
+  return `${JSON.stringify(log, null, 2)}
+`;
+}
+var SITE, SCHEMA, LEVEL;
+var init_sarif = __esm({
+  "../packages/core/src/report/sarif.ts"() {
+    "use strict";
+    init_rules4();
+    init_shared();
+    SITE = "https://amet13.github.io/overfull/";
+    SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json";
+    LEVEL = {
+      error: "error",
+      warning: "warning",
+      info: "note"
+    };
+  }
+});
+
+// ../packages/core/src/report/index.ts
+var init_report = __esm({
+  "../packages/core/src/report/index.ts"() {
+    "use strict";
+    init_annotations();
+    init_dedupe();
+    init_human();
+    init_json();
+    init_markdown();
+    init_sarif();
+    init_shared();
+  }
+});
+
+// ../packages/core/src/index.ts
+var init_src = __esm({
+  "../packages/core/src/index.ts"() {
+    "use strict";
+    init_bib();
+    init_log();
+    init_pdf();
+    init_refs();
+    init_report();
+    init_rules4();
+    init_types();
+    init_venue();
+  }
+});
+
+// ../packages/cli/src/cache.ts
+import { createHash } from "node:crypto";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname as dirname2, join, relative, sep } from "node:path";
+function userCacheDir(env, platform = process.platform) {
+  const home = env.HOME || env.USERPROFILE || homedir();
+  if (platform === "win32")
+    return join(env.LOCALAPPDATA || join(home, "AppData", "Local"), "overfull");
+  return join(env.XDG_CACHE_HOME || join(home, ".cache"), "overfull");
+}
+function refsCachePath(root, mode, env) {
+  if (mode === "project") return join(root, ".overfull", "cache", "refs.json");
+  let real = root;
+  try {
+    real = realpathSync(root);
+  } catch {
+  }
+  const key = createHash("sha256").update(real).digest("hex").slice(0, 16);
+  return join(userCacheDir(env), key, "refs.json");
+}
+function symlinkOnPath(root, file) {
+  const parts = relative(root, file).split(sep).filter(Boolean);
+  let p = root;
+  for (const part of parts) {
+    p = join(p, part);
+    try {
+      if (lstatSync(p).isSymbolicLink()) return p;
+    } catch {
+      return void 0;
+    }
+  }
+  return void 0;
+}
+function storedAt(value) {
+  if (!value || typeof value !== "object") return void 0;
+  const at = value.cachedAt;
+  if (typeof at === "number") return at;
+  if (at && typeof at === "object") {
+    const times = Object.values(at).filter((t) => typeof t === "number");
+    return times.length ? Math.max(...times) : void 0;
+  }
+  return void 0;
+}
+var MemoryCache, PRUNE_AFTER_MS, FileCache;
+var init_cache2 = __esm({
+  "../packages/cli/src/cache.ts"() {
+    "use strict";
+    MemoryCache = class {
+      data = /* @__PURE__ */ new Map();
+      get(key) {
+        return this.data.get(key);
+      }
+      set(key, value) {
+        this.data.set(key, value);
+      }
+      save() {
+      }
+    };
+    PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1e3;
+    FileCache = class {
+      constructor(path) {
+        this.path = path;
+        try {
+          const parsed = JSON.parse(readFileSync(path, "utf8"));
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+            this.data = parsed;
+        } catch {
+          this.data = {};
+        }
+      }
+      path;
+      data = {};
+      dirty = false;
+      get(key) {
+        return this.data[key];
+      }
+      set(key, value) {
+        this.data[key] = value;
+        this.dirty = true;
+      }
+      save() {
+        if (!this.dirty) return;
+        const now = Date.now();
+        for (const [key, value] of Object.entries(this.data)) {
+          const at = storedAt(value);
+          if (at !== void 0 && now - at > PRUNE_AFTER_MS) delete this.data[key];
+        }
+        try {
+          mkdirSync(dirname2(this.path), { recursive: true });
+          writeFileSync(this.path, `${JSON.stringify(this.data, null, 1)}
+`);
+          this.dirty = false;
+        } catch {
+        }
+      }
+    };
+  }
+});
+
 // ../node_modules/.pnpm/yaml@2.9.1/node_modules/yaml/dist/nodes/identity.js
 var require_identity = __commonJS({
   "../node_modules/.pnpm/yaml@2.9.1/node_modules/yaml/dist/nodes/identity.js"(exports) {
@@ -996,13 +10303,13 @@ var require_Collection = __commonJS({
 var require_stringifyComment = __commonJS({
   "../node_modules/.pnpm/yaml@2.9.1/node_modules/yaml/dist/stringify/stringifyComment.js"(exports) {
     "use strict";
-    var stringifyComment = (str3) => str3.replace(/^(?!$)(?: $)?/gm, "#");
+    var stringifyComment = (str2) => str2.replace(/^(?!$)(?: $)?/gm, "#");
     function indentComment(comment, indent) {
       if (/^\n+$/.test(comment))
         return comment.substring(1);
       return indent ? comment.replace(/^(?! *$)/gm, indent) : comment;
     }
-    var lineComment = (str3, indent, comment) => str3.endsWith("\n") ? indentComment(comment, indent) : comment.includes("\n") ? "\n" + indentComment(comment, indent) : (str3.endsWith(" ") ? "" : " ") + comment;
+    var lineComment = (str2, indent, comment) => str2.endsWith("\n") ? indentComment(comment, indent) : comment.includes("\n") ? "\n" + indentComment(comment, indent) : (str2.endsWith(" ") ? "" : " ") + comment;
     exports.indentComment = indentComment;
     exports.lineComment = lineComment;
     exports.stringifyComment = stringifyComment;
@@ -1156,16 +10463,16 @@ var require_stringifyString = __commonJS({
       lineWidth: ctx.options.lineWidth,
       minContentWidth: ctx.options.minContentWidth
     });
-    var containsDocumentMarker = (str3) => /^(%|---|\.\.\.)/m.test(str3);
-    function lineLengthOverLimit(str3, lineWidth, indentLength) {
+    var containsDocumentMarker = (str2) => /^(%|---|\.\.\.)/m.test(str2);
+    function lineLengthOverLimit(str2, lineWidth, indentLength) {
       if (!lineWidth || lineWidth < 0)
         return false;
       const limit = lineWidth - indentLength;
-      const strLen = str3.length;
+      const strLen = str2.length;
       if (strLen <= limit)
         return false;
       for (let i = 0, start = 0; i < strLen; ++i) {
-        if (str3[i] === "\n") {
+        if (str2[i] === "\n") {
           if (i - start > limit)
             return true;
           start = i + 1;
@@ -1182,11 +10489,11 @@ var require_stringifyString = __commonJS({
       const { implicitKey } = ctx;
       const minMultiLineLength = ctx.options.doubleQuotedMinMultiLineLength;
       const indent = ctx.indent || (containsDocumentMarker(value) ? "  " : "");
-      let str3 = "";
+      let str2 = "";
       let start = 0;
       for (let i = 0, ch2 = json[i]; ch2; ch2 = json[++i]) {
         if (ch2 === " " && json[i + 1] === "\\" && json[i + 2] === "n") {
-          str3 += json.slice(start, i) + "\\ ";
+          str2 += json.slice(start, i) + "\\ ";
           i += 1;
           start = i;
           ch2 = "\\";
@@ -1195,38 +10502,38 @@ var require_stringifyString = __commonJS({
           switch (json[i + 1]) {
             case "u":
               {
-                str3 += json.slice(start, i);
+                str2 += json.slice(start, i);
                 const code3 = json.substr(i + 2, 4);
                 switch (code3) {
                   case "0000":
-                    str3 += "\\0";
+                    str2 += "\\0";
                     break;
                   case "0007":
-                    str3 += "\\a";
+                    str2 += "\\a";
                     break;
                   case "000b":
-                    str3 += "\\v";
+                    str2 += "\\v";
                     break;
                   case "001b":
-                    str3 += "\\e";
+                    str2 += "\\e";
                     break;
                   case "0085":
-                    str3 += "\\N";
+                    str2 += "\\N";
                     break;
                   case "00a0":
-                    str3 += "\\_";
+                    str2 += "\\_";
                     break;
                   case "2028":
-                    str3 += "\\L";
+                    str2 += "\\L";
                     break;
                   case "2029":
-                    str3 += "\\P";
+                    str2 += "\\P";
                     break;
                   default:
                     if (code3.substr(0, 2) === "00")
-                      str3 += "\\x" + code3.substr(2);
+                      str2 += "\\x" + code3.substr(2);
                     else
-                      str3 += json.substr(i, 6);
+                      str2 += json.substr(i, 6);
                 }
                 i += 5;
                 start = i + 1;
@@ -1236,14 +10543,14 @@ var require_stringifyString = __commonJS({
               if (implicitKey || json[i + 2] === '"' || json.length < minMultiLineLength) {
                 i += 1;
               } else {
-                str3 += json.slice(start, i) + "\n\n";
+                str2 += json.slice(start, i) + "\n\n";
                 while (json[i + 2] === "\\" && json[i + 3] === "n" && json[i + 4] !== '"') {
-                  str3 += "\n";
+                  str2 += "\n";
                   i += 2;
                 }
-                str3 += indent;
+                str2 += indent;
                 if (json[i + 2] === " ")
-                  str3 += "\\";
+                  str2 += "\\";
                 i += 1;
                 start = i + 1;
               }
@@ -1252,8 +10559,8 @@ var require_stringifyString = __commonJS({
               i += 1;
           }
       }
-      str3 = start ? str3 + json.slice(start) : json;
-      return implicitKey ? str3 : foldFlowLines.foldFlowLines(str3, indent, foldFlowLines.FOLD_QUOTED, getFoldOptions(ctx, false));
+      str2 = start ? str2 + json.slice(start) : json;
+      return implicitKey ? str2 : foldFlowLines.foldFlowLines(str2, indent, foldFlowLines.FOLD_QUOTED, getFoldOptions(ctx, false));
     }
     function singleQuotedString(value, ctx) {
       if (ctx.options.singleQuote === false || ctx.implicitKey && value.includes("\n") || /[ \t]\n|\n[ \t]/.test(value))
@@ -1381,15 +10688,15 @@ ${indent}${start}${value}${end}`;
           return quotedString(value, ctx);
         }
       }
-      const str3 = value.replace(/\n+/g, `$&
+      const str2 = value.replace(/\n+/g, `$&
 ${indent}`);
       if (actualString) {
-        const test = (tag2) => tag2.default && tag2.tag !== "tag:yaml.org,2002:str" && tag2.test?.test(str3);
+        const test = (tag2) => tag2.default && tag2.tag !== "tag:yaml.org,2002:str" && tag2.test?.test(str2);
         const { compat, tags } = ctx.doc.schema;
         if (tags.some(test) || compat?.some(test))
           return quotedString(value, ctx);
       }
-      return implicitKey ? str3 : foldFlowLines.foldFlowLines(str3, indent, foldFlowLines.FOLD_FLOW, getFoldOptions(ctx, false));
+      return implicitKey ? str2 : foldFlowLines.foldFlowLines(str2, indent, foldFlowLines.FOLD_FLOW, getFoldOptions(ctx, false));
     }
     function stringifyString(item, ctx, onComment, onChompKeep) {
       const { implicitKey, inFlow } = ctx;
@@ -1541,11 +10848,11 @@ var require_stringify = __commonJS({
       const props = stringifyProps(node, tagObj, ctx);
       if (props.length > 0)
         ctx.indentAtStart = (ctx.indentAtStart ?? 0) + props.length + 1;
-      const str3 = typeof tagObj.stringify === "function" ? tagObj.stringify(node, ctx, onComment, onChompKeep) : identity.isScalar(node) ? stringifyString.stringifyString(node, ctx, onComment, onChompKeep) : node.toString(ctx, onComment, onChompKeep);
+      const str2 = typeof tagObj.stringify === "function" ? tagObj.stringify(node, ctx, onComment, onChompKeep) : identity.isScalar(node) ? stringifyString.stringifyString(node, ctx, onComment, onChompKeep) : node.toString(ctx, onComment, onChompKeep);
       if (!props)
-        return str3;
-      return identity.isScalar(node) || str3[0] === "{" || str3[0] === "[" ? `${props} ${str3}` : `${props}
-${ctx.indent}${str3}`;
+        return str2;
+      return identity.isScalar(node) || str2[0] === "{" || str2[0] === "[" ? `${props} ${str2}` : `${props}
+${ctx.indent}${str2}`;
     }
     exports.createStringifyContext = createStringifyContext;
     exports.stringify = stringify;
@@ -1580,8 +10887,8 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str3 = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
-      if (!explicitKey && !ctx.inFlow && str3.length > 1024) {
+      let str2 = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      if (!explicitKey && !ctx.inFlow && str2.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
         explicitKey = true;
@@ -1590,27 +10897,27 @@ var require_stringifyPair = __commonJS({
         if (allNullValues || value == null) {
           if (keyCommentDone && onComment)
             onComment();
-          return str3 === "" ? "?" : explicitKey ? `? ${str3}` : str3;
+          return str2 === "" ? "?" : explicitKey ? `? ${str2}` : str2;
         }
       } else if (allNullValues && !simpleKeys || value == null && explicitKey) {
-        str3 = `? ${str3}`;
+        str2 = `? ${str2}`;
         if (keyComment && !keyCommentDone) {
-          str3 += stringifyComment.lineComment(str3, ctx.indent, commentString(keyComment));
+          str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(keyComment));
         } else if (chompKeep && onChompKeep)
           onChompKeep();
-        return str3;
+        return str2;
       }
       if (keyCommentDone)
         keyComment = null;
       if (explicitKey) {
         if (keyComment)
-          str3 += stringifyComment.lineComment(str3, ctx.indent, commentString(keyComment));
-        str3 = `? ${str3}
+          str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(keyComment));
+        str2 = `? ${str2}
 ${indent}:`;
       } else {
-        str3 = `${str3}:`;
+        str2 = `${str2}:`;
         if (keyComment)
-          str3 += stringifyComment.lineComment(str3, ctx.indent, commentString(keyComment));
+          str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(keyComment));
       }
       let vsb, vcb, valueComment;
       if (identity.isNode(value)) {
@@ -1626,7 +10933,7 @@ ${indent}:`;
       }
       ctx.implicitKey = false;
       if (!explicitKey && !keyComment && identity.isScalar(value))
-        ctx.indentAtStart = str3.length + 1;
+        ctx.indentAtStart = str2.length + 1;
       chompKeep = false;
       if (!indentSeq && indentStep.length >= 2 && !ctx.inFlow && !explicitKey && identity.isSeq(value) && !value.flow && !value.tag && !value.anchor) {
         ctx.indent = ctx.indent.substring(2);
@@ -1670,16 +10977,16 @@ ${ctx.indent}`;
       } else if (valueStr === "" || valueStr[0] === "\n") {
         ws = "";
       }
-      str3 += ws + valueStr;
+      str2 += ws + valueStr;
       if (ctx.inFlow) {
         if (valueCommentDone && onComment)
           onComment();
       } else if (valueComment && !valueCommentDone) {
-        str3 += stringifyComment.lineComment(str3, ctx.indent, commentString(valueComment));
+        str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(valueComment));
       } else if (chompKeep && onChompKeep) {
         onChompKeep();
       }
-      return str3;
+      return str2;
     }
     exports.stringifyPair = stringifyPair;
   }
@@ -1906,31 +11213,31 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str4 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str3 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
-          str4 += stringifyComment.lineComment(str4, itemIndent, commentString(comment2));
+          str3 += stringifyComment.lineComment(str3, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
           chompKeep = false;
-        lines.push(blockItemPrefix + str4);
+        lines.push(blockItemPrefix + str3);
       }
-      let str3;
+      let str2;
       if (lines.length === 0) {
-        str3 = flowChars.start + flowChars.end;
+        str2 = flowChars.start + flowChars.end;
       } else {
-        str3 = lines[0];
+        str2 = lines[0];
         for (let i = 1; i < lines.length; ++i) {
           const line = lines[i];
-          str3 += line ? `
+          str2 += line ? `
 ${indent}${line}` : "\n";
         }
       }
       if (comment) {
-        str3 += "\n" + stringifyComment.indentComment(commentString(comment), indent);
+        str2 += "\n" + stringifyComment.indentComment(commentString(comment), indent);
         if (onComment)
           onComment();
       } else if (chompKeep && onChompKeep)
         onChompKeep();
-      return str3;
+      return str2;
     }
     function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
       const { indent, indentStep, flowCollectionPadding: fcPadding, options: { commentString } } = ctx;
@@ -1973,21 +11280,21 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str3 = stringify.stringify(item, itemCtx, () => comment = null);
-        reqNewline || (reqNewline = lines.length > linesAtValue || str3.includes("\n"));
+        let str2 = stringify.stringify(item, itemCtx, () => comment = null);
+        reqNewline || (reqNewline = lines.length > linesAtValue || str2.includes("\n"));
         if (i < items.length - 1) {
-          str3 += ",";
+          str2 += ",";
         } else if (ctx.options.trailingComma) {
           if (ctx.options.lineWidth > 0) {
-            reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str3.length + 2) > ctx.options.lineWidth);
+            reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str2.length + 2) > ctx.options.lineWidth);
           }
           if (reqNewline) {
-            str3 += ",";
+            str2 += ",";
           }
         }
         if (comment)
-          str3 += stringifyComment.lineComment(str3, itemIndent, commentString(comment));
-        lines.push(str3);
+          str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment));
+        lines.push(str2);
         linesAtValue = lines.length;
       }
       const { start, end } = flowChars;
@@ -1999,11 +11306,11 @@ ${indent}${line}` : "\n";
           reqNewline = ctx.options.lineWidth > 0 && len > ctx.options.lineWidth;
         }
         if (reqNewline) {
-          let str3 = start;
+          let str2 = start;
           for (const line of lines)
-            str3 += line ? `
+            str2 += line ? `
 ${indentStep}${indent}${line}` : "\n";
-          return `${str3}
+          return `${str2}
 ${indent}${end}`;
         } else {
           return `${start}${fcPadding}${lines.join(" ")}${fcPadding}${end}`;
@@ -2335,7 +11642,7 @@ var require_string = __commonJS({
       identify: (value) => typeof value === "string",
       default: true,
       tag: "tag:yaml.org,2002:str",
-      resolve: (str3) => str3,
+      resolve: (str2) => str2,
       stringify(item, ctx, onComment, onChompKeep) {
         ctx = Object.assign({ actualString: true }, ctx);
         return stringifyString.stringifyString(item, ctx, onComment, onChompKeep);
@@ -2373,7 +11680,7 @@ var require_bool = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:bool",
       test: /^(?:[Tt]rue|TRUE|[Ff]alse|FALSE)$/,
-      resolve: (str3) => new Scalar.Scalar(str3[0] === "t" || str3[0] === "T"),
+      resolve: (str2) => new Scalar.Scalar(str2[0] === "t" || str2[0] === "T"),
       stringify({ source, value }, ctx) {
         if (source && boolTag.test.test(source)) {
           const sv = source[0] === "t" || source[0] === "T";
@@ -2425,7 +11732,7 @@ var require_float = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$/,
-      resolve: (str3) => str3.slice(-3).toLowerCase() === "nan" ? NaN : str3[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
+      resolve: (str2) => str2.slice(-3).toLowerCase() === "nan" ? NaN : str2[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
       stringify: stringifyNumber.stringifyNumber
     };
     var floatExp = {
@@ -2434,7 +11741,7 @@ var require_float = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "EXP",
       test: /^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$/,
-      resolve: (str3) => parseFloat(str3),
+      resolve: (str2) => parseFloat(str2),
       stringify(node) {
         const num3 = Number(node.value);
         return isFinite(num3) ? num3.toExponential() : stringifyNumber.stringifyNumber(node);
@@ -2445,11 +11752,11 @@ var require_float = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$/,
-      resolve(str3) {
-        const node = new Scalar.Scalar(parseFloat(str3));
-        const dot = str3.indexOf(".");
-        if (dot !== -1 && str3[str3.length - 1] === "0")
-          node.minFractionDigits = str3.length - dot - 1;
+      resolve(str2) {
+        const node = new Scalar.Scalar(parseFloat(str2));
+        const dot = str2.indexOf(".");
+        if (dot !== -1 && str2[str2.length - 1] === "0")
+          node.minFractionDigits = str2.length - dot - 1;
         return node;
       },
       stringify: stringifyNumber.stringifyNumber
@@ -2466,7 +11773,7 @@ var require_int = __commonJS({
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
-    var intResolve = (str3, offset, radix, { intAsBigInt }) => intAsBigInt ? BigInt(str3) : parseInt(str3.substring(offset), radix);
+    var intResolve = (str2, offset, radix, { intAsBigInt }) => intAsBigInt ? BigInt(str2) : parseInt(str2.substring(offset), radix);
     function intStringify(node, radix, prefix) {
       const { value } = node;
       if (intIdentify(value) && value >= 0)
@@ -2479,15 +11786,15 @@ var require_int = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "OCT",
       test: /^0o[0-7]+$/,
-      resolve: (str3, _onError, opt) => intResolve(str3, 2, 8, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 2, 8, opt),
       stringify: (node) => intStringify(node, 8, "0o")
     };
-    var int2 = {
+    var int = {
       identify: intIdentify,
       default: true,
       tag: "tag:yaml.org,2002:int",
       test: /^[-+]?[0-9]+$/,
-      resolve: (str3, _onError, opt) => intResolve(str3, 0, 10, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 0, 10, opt),
       stringify: stringifyNumber.stringifyNumber
     };
     var intHex = {
@@ -2496,10 +11803,10 @@ var require_int = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "HEX",
       test: /^0x[0-9a-fA-F]+$/,
-      resolve: (str3, _onError, opt) => intResolve(str3, 2, 16, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 2, 16, opt),
       stringify: (node) => intStringify(node, 16, "0x")
     };
-    exports.int = int2;
+    exports.int = int;
     exports.intHex = intHex;
     exports.intOct = intOct;
   }
@@ -2515,16 +11822,16 @@ var require_schema = __commonJS({
     var string = require_string();
     var bool = require_bool();
     var float = require_float();
-    var int2 = require_int();
+    var int = require_int();
     var schema = [
       map.map,
       seq.seq,
       string.string,
       _null.nullTag,
       bool.boolTag,
-      int2.intOct,
-      int2.int,
-      int2.intHex,
+      int.intOct,
+      int.int,
+      int.intHex,
       float.floatNaN,
       float.floatExp,
       float.float
@@ -2549,7 +11856,7 @@ var require_schema2 = __commonJS({
         identify: (value) => typeof value === "string",
         default: true,
         tag: "tag:yaml.org,2002:str",
-        resolve: (str3) => str3,
+        resolve: (str2) => str2,
         stringify: stringifyJSON
       },
       {
@@ -2566,7 +11873,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:bool",
         test: /^true$|^false$/,
-        resolve: (str3) => str3 === "true",
+        resolve: (str2) => str2 === "true",
         stringify: stringifyJSON
       },
       {
@@ -2574,7 +11881,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:int",
         test: /^-?(?:0|[1-9][0-9]*)$/,
-        resolve: (str3, _onError, { intAsBigInt }) => intAsBigInt ? BigInt(str3) : parseInt(str3, 10),
+        resolve: (str2, _onError, { intAsBigInt }) => intAsBigInt ? BigInt(str2) : parseInt(str2, 10),
         stringify: ({ value }) => intIdentify(value) ? value.toString() : JSON.stringify(value)
       },
       {
@@ -2582,7 +11889,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:float",
         test: /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][-+]?[0-9]+)?$/,
-        resolve: (str3) => parseFloat(str3),
+        resolve: (str2) => parseFloat(str2),
         stringify: stringifyJSON
       }
     ];
@@ -2590,9 +11897,9 @@ var require_schema2 = __commonJS({
       default: true,
       tag: "",
       test: /^/,
-      resolve(str3, onError) {
-        onError(`Unresolved plain scalar ${JSON.stringify(str3)}`);
-        return str3;
+      resolve(str2, onError) {
+        onError(`Unresolved plain scalar ${JSON.stringify(str2)}`);
+        return str2;
       }
     };
     var schema = [map.map, seq.seq].concat(jsonScalars, jsonError);
@@ -2624,10 +11931,10 @@ var require_binary = __commonJS({
         if (typeof node_buffer.Buffer === "function") {
           return node_buffer.Buffer.from(src, "base64");
         } else if (typeof atob === "function") {
-          const str3 = atob(src.replace(/[\n\r]/g, ""));
-          const buffer = new Uint8Array(str3.length);
-          for (let i = 0; i < str3.length; ++i)
-            buffer[i] = str3.charCodeAt(i);
+          const str2 = atob(src.replace(/[\n\r]/g, ""));
+          const buffer = new Uint8Array(str2.length);
+          for (let i = 0; i < str2.length; ++i)
+            buffer[i] = str2.charCodeAt(i);
           return buffer;
         } else {
           onError("This environment does not support reading binary tags; either Buffer or atob is required");
@@ -2638,28 +11945,28 @@ var require_binary = __commonJS({
         if (!value)
           return "";
         const buf = value;
-        let str3;
+        let str2;
         if (typeof node_buffer.Buffer === "function") {
-          str3 = buf instanceof node_buffer.Buffer ? buf.toString("base64") : node_buffer.Buffer.from(buf.buffer).toString("base64");
+          str2 = buf instanceof node_buffer.Buffer ? buf.toString("base64") : node_buffer.Buffer.from(buf.buffer).toString("base64");
         } else if (typeof btoa === "function") {
           let s = "";
           for (let i = 0; i < buf.length; ++i)
             s += String.fromCharCode(buf[i]);
-          str3 = btoa(s);
+          str2 = btoa(s);
         } else {
           throw new Error("This environment does not support writing binary tags; either Buffer or btoa is required");
         }
         type ?? (type = Scalar.Scalar.BLOCK_LITERAL);
         if (type !== Scalar.Scalar.QUOTE_DOUBLE) {
           const lineWidth = Math.max(ctx.options.lineWidth - ctx.indent.length, ctx.options.minContentWidth);
-          const n = Math.ceil(str3.length / lineWidth);
+          const n = Math.ceil(str2.length / lineWidth);
           const lines = new Array(n);
           for (let i = 0, o = 0; i < n; ++i, o += lineWidth) {
-            lines[i] = str3.substr(o, lineWidth);
+            lines[i] = str2.substr(o, lineWidth);
           }
-          str3 = lines.join(type === Scalar.Scalar.BLOCK_LITERAL ? "\n" : " ");
+          str2 = lines.join(type === Scalar.Scalar.BLOCK_LITERAL ? "\n" : " ");
         }
-        return stringifyString.stringifyString({ comment, type, value: str3 }, ctx, onComment, onChompKeep);
+        return stringifyString.stringifyString({ comment, type, value: str2 }, ctx, onComment, onChompKeep);
       }
     };
     exports.binary = binary;
@@ -2865,7 +12172,7 @@ var require_float2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$/,
-      resolve: (str3) => str3.slice(-3).toLowerCase() === "nan" ? NaN : str3[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
+      resolve: (str2) => str2.slice(-3).toLowerCase() === "nan" ? NaN : str2[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
       stringify: stringifyNumber.stringifyNumber
     };
     var floatExp = {
@@ -2874,7 +12181,7 @@ var require_float2 = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "EXP",
       test: /^[-+]?(?:[0-9][0-9_]*)?(?:\.[0-9_]*)?[eE][-+]?[0-9]+$/,
-      resolve: (str3) => parseFloat(str3.replace(/_/g, "")),
+      resolve: (str2) => parseFloat(str2.replace(/_/g, "")),
       stringify(node) {
         const num3 = Number(node.value);
         return isFinite(num3) ? num3.toExponential() : stringifyNumber.stringifyNumber(node);
@@ -2885,11 +12192,11 @@ var require_float2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^[-+]?(?:[0-9][0-9_]*)?\.[0-9_]*$/,
-      resolve(str3) {
-        const node = new Scalar.Scalar(parseFloat(str3.replace(/_/g, "")));
-        const dot = str3.indexOf(".");
+      resolve(str2) {
+        const node = new Scalar.Scalar(parseFloat(str2.replace(/_/g, "")));
+        const dot = str2.indexOf(".");
         if (dot !== -1) {
-          const f = str3.substring(dot + 1).replace(/_/g, "");
+          const f = str2.substring(dot + 1).replace(/_/g, "");
           if (f[f.length - 1] === "0")
             node.minFractionDigits = f.length;
         }
@@ -2909,34 +12216,34 @@ var require_int2 = __commonJS({
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
-    function intResolve(str3, offset, radix, { intAsBigInt }) {
-      const sign = str3[0];
+    function intResolve(str2, offset, radix, { intAsBigInt }) {
+      const sign = str2[0];
       if (sign === "-" || sign === "+")
         offset += 1;
-      str3 = str3.substring(offset).replace(/_/g, "");
+      str2 = str2.substring(offset).replace(/_/g, "");
       if (intAsBigInt) {
         switch (radix) {
           case 2:
-            str3 = `0b${str3}`;
+            str2 = `0b${str2}`;
             break;
           case 8:
-            str3 = `0o${str3}`;
+            str2 = `0o${str2}`;
             break;
           case 16:
-            str3 = `0x${str3}`;
+            str2 = `0x${str2}`;
             break;
         }
-        const n2 = BigInt(str3);
+        const n2 = BigInt(str2);
         return sign === "-" ? BigInt(-1) * n2 : n2;
       }
-      const n = parseInt(str3, radix);
+      const n = parseInt(str2, radix);
       return sign === "-" ? -1 * n : n;
     }
     function intStringify(node, radix, prefix) {
       const { value } = node;
       if (intIdentify(value)) {
-        const str3 = value.toString(radix);
-        return value < 0 ? "-" + prefix + str3.substr(1) : prefix + str3;
+        const str2 = value.toString(radix);
+        return value < 0 ? "-" + prefix + str2.substr(1) : prefix + str2;
       }
       return stringifyNumber.stringifyNumber(node);
     }
@@ -2946,7 +12253,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "BIN",
       test: /^[-+]?0b[0-1_]+$/,
-      resolve: (str3, _onError, opt) => intResolve(str3, 2, 2, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 2, 2, opt),
       stringify: (node) => intStringify(node, 2, "0b")
     };
     var intOct = {
@@ -2955,15 +12262,15 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "OCT",
       test: /^[-+]?0[0-7_]+$/,
-      resolve: (str3, _onError, opt) => intResolve(str3, 1, 8, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 1, 8, opt),
       stringify: (node) => intStringify(node, 8, "0")
     };
-    var int2 = {
+    var int = {
       identify: intIdentify,
       default: true,
       tag: "tag:yaml.org,2002:int",
       test: /^[-+]?[0-9][0-9_]*$/,
-      resolve: (str3, _onError, opt) => intResolve(str3, 0, 10, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 0, 10, opt),
       stringify: stringifyNumber.stringifyNumber
     };
     var intHex = {
@@ -2972,10 +12279,10 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "HEX",
       test: /^[-+]?0x[0-9a-fA-F_]+$/,
-      resolve: (str3, _onError, opt) => intResolve(str3, 2, 16, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 2, 16, opt),
       stringify: (node) => intStringify(node, 16, "0x")
     };
-    exports.int = int2;
+    exports.int = int;
     exports.intBin = intBin;
     exports.intHex = intHex;
     exports.intOct = intOct;
@@ -3076,9 +12383,9 @@ var require_timestamp = __commonJS({
   "../node_modules/.pnpm/yaml@2.9.1/node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
-    function parseSexagesimal(str3, asBigInt) {
-      const sign = str3[0];
-      const parts = sign === "-" || sign === "+" ? str3.substring(1) : str3;
+    function parseSexagesimal(str2, asBigInt) {
+      const sign = str2[0];
+      const parts = sign === "-" || sign === "+" ? str2.substring(1) : str2;
       const num3 = (n) => asBigInt ? BigInt(n) : Number(n);
       const res = parts.replace(/_/g, "").split(":").reduce((res2, p) => res2 * num3(60) + num3(p), num3(0));
       return sign === "-" ? num3(-1) * res : res;
@@ -3115,7 +12422,7 @@ var require_timestamp = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "TIME",
       test: /^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+$/,
-      resolve: (str3, _onError, { intAsBigInt }) => parseSexagesimal(str3, intAsBigInt),
+      resolve: (str2, _onError, { intAsBigInt }) => parseSexagesimal(str2, intAsBigInt),
       stringify: stringifySexagesimal
     };
     var floatTime = {
@@ -3124,7 +12431,7 @@ var require_timestamp = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "TIME",
       test: /^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\.[0-9_]*$/,
-      resolve: (str3) => parseSexagesimal(str3, false),
+      resolve: (str2) => parseSexagesimal(str2, false),
       stringify: stringifySexagesimal
     };
     var timestamp = {
@@ -3135,8 +12442,8 @@ var require_timestamp = __commonJS({
       // may be omitted altogether, resulting in a date format. In such a case, the time part is
       // assumed to be 00:00:00Z (start of day, UTC).
       test: RegExp("^([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})(?:(?:t|T|[ \\t]+)([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2}(\\.[0-9]+)?)(?:[ \\t]*(Z|[-+][012]?[0-9](?::[0-9]{2})?))?)?$"),
-      resolve(str3) {
-        const match = str3.match(timestamp.test);
+      resolve(str2) {
+        const match = str2.match(timestamp.test);
         if (!match)
           throw new Error("!!timestamp expects a date, starting with yyyy-mm-dd");
         const [, year, month, day, hour, minute, second] = match.map(Number);
@@ -3170,7 +12477,7 @@ var require_schema3 = __commonJS({
     var binary = require_binary();
     var bool = require_bool2();
     var float = require_float2();
-    var int2 = require_int2();
+    var int = require_int2();
     var merge2 = require_merge();
     var omap = require_omap();
     var pairs = require_pairs();
@@ -3183,10 +12490,10 @@ var require_schema3 = __commonJS({
       _null.nullTag,
       bool.trueTag,
       bool.falseTag,
-      int2.intBin,
-      int2.intOct,
-      int2.int,
-      int2.intHex,
+      int.intBin,
+      int.intOct,
+      int.int,
+      int.intHex,
       float.floatNaN,
       float.floatExp,
       float.float,
@@ -3213,7 +12520,7 @@ var require_tags = __commonJS({
     var string = require_string();
     var bool = require_bool();
     var float = require_float();
-    var int2 = require_int();
+    var int = require_int();
     var schema = require_schema();
     var schema$1 = require_schema2();
     var binary = require_binary();
@@ -3237,9 +12544,9 @@ var require_tags = __commonJS({
       floatExp: float.floatExp,
       floatNaN: float.floatNaN,
       floatTime: timestamp.floatTime,
-      int: int2.int,
-      intHex: int2.intHex,
-      intOct: int2.intOct,
+      int: int.int,
+      intHex: int.intHex,
+      intOct: int.intOct,
       intTime: timestamp.intTime,
       map: map.map,
       merge: merge2.merge,
@@ -6363,15 +15670,15 @@ var require_parser = __commonJS({
     var node_process = __require("process");
     var cst = require_cst();
     var lexer = require_lexer();
-    function includesToken(list3, type) {
-      for (let i = 0; i < list3.length; ++i)
-        if (list3[i].type === type)
+    function includesToken(list2, type) {
+      for (let i = 0; i < list2.length; ++i)
+        if (list2[i].type === type)
           return true;
       return false;
     }
-    function findNonEmptyIndex(list3) {
-      for (let i = 0; i < list3.length; ++i) {
-        switch (list3[i].type) {
+    function findNonEmptyIndex(list2) {
+      for (let i = 0; i < list2.length; ++i) {
+        switch (list2[i].type) {
           case "space":
           case "comment":
           case "newline":
@@ -7279,7 +16586,7 @@ var require_public_api = __commonJS({
       }
       return doc;
     }
-    function parse2(src, reviver, options) {
+    function parse(src, reviver, options) {
       let _reviver = void 0;
       if (typeof reviver === "function") {
         _reviver = reviver;
@@ -7320,7 +16627,7 @@ var require_public_api = __commonJS({
         return value.toString(options);
       return new Document.Document(value, _replacer, options).toString(options);
     }
-    exports.parse = parse2;
+    exports.parse = parse;
     exports.parseAllDocuments = parseAllDocuments;
     exports.parseDocument = parseDocument;
     exports.stringify = stringify;
@@ -7376,6 +16683,706 @@ var require_dist = __commonJS({
     exports.stringify = publicApi.stringify;
     exports.visit = visit.visit;
     exports.visitAsync = visit.visitAsync;
+  }
+});
+
+// ../packages/cli/src/io.ts
+var UsageError;
+var init_io = __esm({
+  "../packages/cli/src/io.ts"() {
+    "use strict";
+    UsageError = class extends Error {
+      constructor(message) {
+        super(message);
+        this.name = "UsageError";
+      }
+    };
+  }
+});
+
+// ../packages/cli/src/safety.ts
+import { randomBytes } from "node:crypto";
+import { existsSync, lstatSync as lstatSync2, realpathSync as realpathSync2 } from "node:fs";
+import { dirname as dirname3, isAbsolute as isAbsolute2, relative as relative2, resolve, sep as sep2 } from "node:path";
+function checkName(value, what, allowSlash) {
+  const segments = value.split("/");
+  const ok = SAFE_NAME.test(value) && !value.startsWith("-") && !value.startsWith("/") && (allowSlash || !value.includes("/")) && !segments.includes("..") && !segments.some((s) => s.startsWith("-"));
+  if (!ok) {
+    throw new UsageError(
+      `Unsafe ${what} "${value}": use only letters, digits, ".", "_", "-"${allowSlash ? ' and "/"' : ""}, no leading "-" and no ".." (latexmk passes it to a shell).`
+    );
+  }
+  return value;
+}
+function safeJobname(value) {
+  return checkName(value, "jobname", false);
+}
+function safeRelPath(value, what = "main file") {
+  return checkName(value.split("\\").join("/"), what, true);
+}
+function safeImage(value, where = "image") {
+  if (value.startsWith("-") || !IMAGE_REF.test(value)) {
+    throw new UsageError(
+      `Invalid Docker image "${value}" (${where}). Use a reference like ghcr.io/owner/name:tag.`
+    );
+  }
+  return value;
+}
+function isInside(root, target) {
+  const rel2 = relative2(root, target);
+  return rel2 === "" || !rel2.startsWith(`..${sep2}`) && rel2 !== ".." && !isAbsolute2(rel2);
+}
+function insideRoot(root, path, what) {
+  const abs = resolve(root, path);
+  let ok = isInside(root, abs);
+  if (ok && existsSync(abs)) {
+    try {
+      ok = isInside(realpathSync2(root), realpathSync2(abs));
+    } catch {
+    }
+  }
+  if (!ok) {
+    throw new UsageError(
+      `${what} "${path}" is outside the project directory (${root}). Overfull only reads and writes files inside the project.`
+    );
+  }
+  return abs;
+}
+function insideRootOrUndefined(root, path) {
+  try {
+    return insideRoot(root, path, "path");
+  } catch {
+    return void 0;
+  }
+}
+function isCI(env) {
+  return CI_VARS.some((k) => {
+    const v = env[k];
+    return v !== void 0 && v !== "" && v.toLowerCase() !== "false" && v !== "0";
+  });
+}
+function stopCommands() {
+  const token = `overfull-${randomBytes(16).toString("hex")}`;
+  return { start: `::stop-commands::${token}
+`, end: `::${token}::
+` };
+}
+var SAFE_NAME, IMAGE_REF, CI_VARS, LEADING_WS;
+var init_safety = __esm({
+  "../packages/cli/src/safety.ts"() {
+    "use strict";
+    init_shared();
+    init_io();
+    SAFE_NAME = /^[A-Za-z0-9._/-]+$/;
+    IMAGE_REF = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?(?::[0-9]+)?\/)?[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*(?:\/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(?:@sha256:[a-f0-9]{64})?$/;
+    CI_VARS = [
+      "CI",
+      "GITHUB_ACTIONS",
+      "TF_BUILD",
+      "GITLAB_CI",
+      "BUILDKITE",
+      "CIRCLECI",
+      "JENKINS_URL",
+      "TEAMCITY_VERSION"
+    ];
+    LEADING_WS = new RegExp(`^${RUNNER_WHITESPACE}+`);
+  }
+});
+
+// ../packages/cli/src/project.ts
+import {
+  closeSync,
+  constants,
+  existsSync as existsSync2,
+  fstatSync,
+  lstatSync as lstatSync3,
+  openSync,
+  readdirSync,
+  readFileSync as readFileSync2,
+  realpathSync as realpathSync3,
+  statSync
+} from "node:fs";
+import { join as join2, relative as relative3, sep as sep3 } from "node:path";
+function listFiles(root) {
+  const out = [];
+  let realRoot = root;
+  try {
+    realRoot = realpathSync3(root);
+  } catch {
+  }
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const name of entries.sort()) {
+      if (out.length >= MAX_FILES) return;
+      const full = join2(dir, name);
+      let st;
+      try {
+        st = lstatSync3(full);
+        if (st.isSymbolicLink()) {
+          const target = statSync(full);
+          if (target.isDirectory()) continue;
+          if (!insideRootOrUndefined(realRoot, realpathSync3(full))) continue;
+          st = target;
+        }
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        if (!SKIP_DIRS.has(name)) walk(full);
+      } else out.push(relative3(root, full).split(sep3).join("/"));
+    }
+  };
+  walk(root);
+  return out;
+}
+function isDiffArtifact(path) {
+  const name = path.split("/").pop() ?? path;
+  return name.startsWith("overfull-diff") || /-diff[0-9a-f]{4,40}\.tex$/i.test(name);
+}
+function readTexFiles(root, files, skipped3 = []) {
+  const out = [];
+  for (const path of files) {
+    if (!/\.(tex|sty|cls)$/i.test(path) || isDiffArtifact(path)) continue;
+    const abs = join2(root, path);
+    let fd;
+    try {
+      fd = openSync(abs, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+    } catch {
+      continue;
+    }
+    try {
+      const st = fstatSync(fd);
+      if (!st.isFile()) {
+        skipped3.push({ path, reason: "not a regular file" });
+        continue;
+      }
+      if (st.size > MAX_TEX_BYTES) {
+        skipped3.push({ path, reason: `larger than ${MAX_TEX_BYTES / 1024 / 1024} MB` });
+        continue;
+      }
+      out.push({ path, content: readFileSync2(fd, "utf8") });
+    } catch (err) {
+      skipped3.push({ path, reason: err instanceof Error ? err.message : String(err) });
+    } finally {
+      closeSync(fd);
+    }
+  }
+  return out;
+}
+function readIfExists(path) {
+  if (!existsSync2(path)) return void 0;
+  requireRegularFile(path);
+  return readFileSync2(path, "utf8");
+}
+function requireRegularFile(path) {
+  let st;
+  try {
+    st = statSync(path);
+  } catch (err) {
+    throw new UsageError(
+      `Cannot read ${path}: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+  if (!st.isFile()) {
+    throw new UsageError(
+      `${path} is not a file (${st.isDirectory() ? "it is a directory" : "it is a pipe, socket or device"}).`
+    );
+  }
+}
+function readAux(root, jobname, auxDir = ".") {
+  const dir = join2(root, auxDir);
+  const mainPath = insideRootOrUndefined(root, join2(dir, `${jobname}.aux`));
+  const main3 = mainPath ? readIfExists(mainPath) : void 0;
+  if (main3 === void 0) return void 0;
+  const parts = [main3];
+  for (const m of main3.matchAll(/\\@input\{([^}]+\.aux)\}/g)) {
+    const p = insideRootOrUndefined(root, join2(dir, m[1]));
+    const extra = p ? readIfExists(p) : void 0;
+    if (extra) parts.push(extra);
+  }
+  return parts.join("\n");
+}
+function detectMain(root, outputDirs = ["."]) {
+  if (isRegular(join2(root, "main.tex")))
+    return { main: "main.tex", how: "main.tex", candidates: [] };
+  let names;
+  try {
+    names = readdirSync(root).sort();
+  } catch {
+    return { candidates: [] };
+  }
+  const candidates = [];
+  for (const name of names) {
+    if (!/\.tex$/i.test(name) || isDiffArtifact(name)) continue;
+    const abs = join2(root, name);
+    let fd;
+    try {
+      fd = openSync(abs, "r");
+      const st = fstatSync(fd);
+      if (!st.isFile() || st.size > MAX_TEX_BYTES) continue;
+      const text2 = readFileSync2(fd, "utf8").replace(/(^|[^\\])%.*$/gm, "$1");
+      if (/\\documentclass\b/.test(text2)) candidates.push(name);
+    } catch {
+    } finally {
+      if (fd !== void 0) closeSync(fd);
+    }
+  }
+  if (candidates.length === 1)
+    return { main: candidates[0], how: "only document", candidates };
+  if (candidates.length > 1) {
+    const built = candidates.filter((c) => {
+      const stem = c.replace(/\.tex$/i, "");
+      return outputDirs.some(
+        (d) => ["log", "pdf"].some((ext) => isRegular(join2(root, d, `${stem}.${ext}`)))
+      );
+    });
+    if (built.length === 1)
+      return { main: built[0], how: "matching build output", candidates };
+  }
+  return { candidates };
+}
+function isRegular(path) {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+function ambiguousMainError(candidates) {
+  const first2 = candidates[0] ?? "paper.tex";
+  return new UsageError(
+    `More than one .tex file here has a \\documentclass: ${candidates.join(", ")}.
+Say which is the main file: \`overfull check --main ${first2}\`, or set \`main: ${first2}\` in overfull.yml.`
+  );
+}
+var SKIP_DIRS, MAX_FILES, MAX_TEX_BYTES;
+var init_project = __esm({
+  "../packages/cli/src/project.ts"() {
+    "use strict";
+    init_io();
+    init_safety();
+    SKIP_DIRS = /* @__PURE__ */ new Set([
+      ".git",
+      "node_modules",
+      ".overfull",
+      "_minted",
+      "dist",
+      ".github",
+      ".agents",
+      ".claude"
+    ]);
+    MAX_FILES = 5e3;
+    MAX_TEX_BYTES = 20 * 1024 * 1024;
+  }
+});
+
+// ../packages/cli/src/config.ts
+import { existsSync as existsSync3, readdirSync as readdirSync2, readFileSync as readFileSync3 } from "node:fs";
+import { basename as basename2, dirname as dirname4, isAbsolute as isAbsolute3, join as join3, resolve as resolve2 } from "node:path";
+function latexmkrcDirs(root) {
+  const out = {};
+  for (const name of [".latexmkrc", "latexmkrc"]) {
+    const p = join3(root, name);
+    if (!existsSync3(p)) continue;
+    const text2 = readFileSync3(p, "utf8").replace(/(^|[^\\$])#.*$/gm, "$1");
+    const o = /\$out_dir\s*=\s*['"]([^'"]+)['"]/.exec(text2);
+    const a = /\$aux_dir\s*=\s*['"]([^'"]+)['"]/.exec(text2);
+    const plain2 = (d) => d !== void 0 && /^[A-Za-z0-9._/-]+$/.test(d) && !d.startsWith("/") && !d.startsWith("-") && !d.split("/").includes("..");
+    if (plain2(o?.[1])) out.outDir = o?.[1];
+    if (plain2(a?.[1])) out.auxDir = a?.[1];
+    const j = /\$jobname\s*=\s*['"]([^'"]+)['"]/.exec(text2);
+    if (j?.[1] && /^[A-Za-z0-9._-]+$/.test(j[1]) && !j[1].startsWith("-")) out.jobname = j[1];
+    break;
+  }
+  return out;
+}
+function stringList(v, field, file) {
+  if (typeof v === "string") return [v];
+  if (Array.isArray(v) && v.every((x) => typeof x === "string")) return v;
+  throw new ConfigError(file, `\`${field}\` must be a string or a list of strings`);
+}
+function closest2(word, options) {
+  const dist = (a, b) => {
+    const d = Array.from(
+      { length: a.length + 1 },
+      (_, i) => [i, ...Array(b.length).fill(0)]
+    );
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        const row = d[i];
+        const prev = d[i - 1];
+        row[j] = Math.min(
+          prev[j] + 1,
+          row[j - 1] + 1,
+          prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+        );
+      }
+    }
+    return d[a.length][b.length];
+  };
+  const best = options.map((o) => ({ o, d: dist(word.toLowerCase(), o.toLowerCase()) })).sort((x, y) => x.d - y.d)[0];
+  return best && best.d <= Math.max(2, Math.floor(word.length / 3)) ? best.o : void 0;
+}
+function checkKeys(obj, allowed, where, file) {
+  for (const k of Object.keys(obj)) {
+    if (allowed.includes(k)) continue;
+    const hint = closest2(k, allowed);
+    throw new ConfigError(
+      file,
+      `unknown key \`${where}${k}\`${hint ? ` (did you mean \`${where}${hint}\`?)` : ""}`
+    );
+  }
+}
+function validateVenue(v, file) {
+  if (!isObj2(v)) throw new ConfigError(file, "`venue` must be a mapping");
+  checkKeys(v, VENUE_KEYS, "venue.", file);
+  const out = {};
+  if (v.pageLimit !== void 0) {
+    const pl = v.pageLimit;
+    if (typeof pl === "number") out.pageLimit = { max: pl };
+    else if (isObj2(pl) && typeof pl.max === "number" && pl.max > 0) {
+      out.pageLimit = { max: pl.max };
+      if (pl.endLabel !== void 0) {
+        if (typeof pl.endLabel !== "string")
+          throw new ConfigError(file, "`venue.pageLimit.endLabel` must be a string");
+        out.pageLimit.endLabel = pl.endLabel;
+      }
+    } else
+      throw new ConfigError(
+        file,
+        "`venue.pageLimit` must be a number or `{ max: 9, endLabel: overfull:main-end }`"
+      );
+  }
+  if (v.paper !== void 0) {
+    if (!["a4", "letter", "any"].includes(String(v.paper)))
+      throw new ConfigError(file, "`venue.paper` must be a4, letter or any");
+    out.paper = v.paper;
+  }
+  for (const k of ["anonymous", "arxiv"]) {
+    if (v[k] === void 0) continue;
+    if (typeof v[k] !== "boolean")
+      throw new ConfigError(file, `\`venue.${k}\` must be true or false`);
+    out[k] = v[k];
+  }
+  for (const k of ["disclosure", "accessibility"]) {
+    if (v[k] === void 0) continue;
+    if (!LEVELS.includes(String(v[k])))
+      throw new ConfigError(file, `\`venue.${k}\` must be required, recommended or off`);
+    out[k] = v[k];
+  }
+  for (const k of ["name", "description", "extends"]) {
+    if (v[k] !== void 0) out[k] = String(v[k]);
+  }
+  if (v.checks !== void 0) out.checks = parseChecks(v.checks, file, "venue.checks");
+  return out;
+}
+function parseChecks(v, file, field = "checks") {
+  const list2 = stringList(v, field, file);
+  for (const c of list2) {
+    if (!CHECK_IDS.includes(c)) {
+      throw new ConfigError(
+        file,
+        `unknown check "${c}" in \`${field}\`; use ${CHECK_IDS.join(", ")}`
+      );
+    }
+  }
+  return list2;
+}
+function discoverBib(root, main3) {
+  const mainPath = join3(root, main3);
+  if (existsSync3(mainPath)) {
+    const src = readFileSync3(mainPath, "utf8").replace(/(^|[^\\])%.*$/gm, "$1");
+    const found = [];
+    for (const m of src.matchAll(/\\addbibresource(?:\[[^\]]*\])?\{([^}]+)\}/g))
+      found.push(m[1].trim());
+    for (const m of src.matchAll(/\\bibliography\{([^}]+)\}/g)) {
+      for (const b of m[1].split(",")) {
+        const name = b.trim();
+        if (name) found.push(name.endsWith(".bib") ? name : `${name}.bib`);
+      }
+    }
+    const rel2 = dirname4(main3);
+    const resolved = found.map((f) => rel2 === "." || isAbsolute3(f) ? f : join3(rel2, f));
+    if (resolved.length) return [...new Set(resolved)];
+  }
+  try {
+    return readdirSync2(root).filter((f) => f.endsWith(".bib")).sort();
+  } catch {
+    return [];
+  }
+}
+function loadConfig(cwd, explicit, env = {}, opts = {}) {
+  let file;
+  if (explicit) {
+    file = resolve2(cwd, explicit);
+    if (!existsSync3(file)) throw new UsageError(`Config file not found: ${explicit}`);
+  } else if (existsSync3(join3(cwd, CONFIG_FILE))) {
+    file = join3(cwd, CONFIG_FILE);
+  } else if (existsSync3(join3(cwd, "overfull.yaml"))) {
+    file = join3(cwd, "overfull.yaml");
+  }
+  const root = file ? dirname4(file) : cwd;
+  let raw = {};
+  if (file) {
+    let data;
+    try {
+      data = (0, import_yaml.parse)(readFileSync3(file, "utf8"));
+    } catch (err) {
+      throw new ConfigError(
+        file,
+        `invalid YAML: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`
+      );
+    }
+    if (data !== null && data !== void 0 && !isObj2(data))
+      throw new ConfigError(file, "must be a mapping of keys to values");
+    raw = data ?? {};
+    checkKeys(raw, TOP_KEYS, "", file);
+  }
+  const f = file ?? join3(root, CONFIG_FILE);
+  if (raw.main !== void 0 && typeof raw.main !== "string")
+    throw new ConfigError(f, "`main` must be a file name");
+  if (raw.jobname !== void 0 && typeof raw.jobname !== "string")
+    throw new ConfigError(f, "`jobname` must be a string");
+  const rc = latexmkrcDirs(root);
+  let main3;
+  let mainSource;
+  let mainCandidates;
+  if (opts.main !== void 0) {
+    main3 = safeRelPath(opts.main);
+    mainSource = "--main";
+    if (!existsSync3(join3(root, main3))) throw new UsageError(`Main file not found: ${opts.main}`);
+  } else if (raw.main !== void 0) {
+    main3 = safeRelPath(raw.main);
+    mainSource = "overfull.yml";
+  } else {
+    const found = detectMain(root, [
+      .../* @__PURE__ */ new Set([".", rc.outDir ?? ".", rc.auxDir ?? rc.outDir ?? "."])
+    ]);
+    if (found.main) {
+      main3 = found.main;
+      mainSource = found.how === "main.tex" ? "main.tex" : "detected";
+    } else {
+      main3 = "main.tex";
+      mainSource = "default";
+      if (found.candidates.length > 1) mainCandidates = found.candidates;
+    }
+  }
+  const jobnameSource = raw.jobname !== void 0 ? "overfull.yml" : rc.jobname ? ".latexmkrc" : "main file";
+  const jobname = safeJobname(
+    raw.jobname ?? rc.jobname ?? basename2(main3).replace(/\.tex$/i, "")
+  );
+  const bib = raw.bib !== void 0 ? stringList(raw.bib, "bib", f) : discoverBib(root, main3);
+  let inline2 = {};
+  let profileName = "generic";
+  if (typeof raw.profile === "string") profileName = raw.profile;
+  else if (isObj2(raw.profile)) inline2 = validateVenue(raw.profile, f);
+  else if (raw.profile !== void 0) throw new ConfigError(f, "`profile` must be a profile name");
+  if (raw.venue !== void 0) inline2 = { ...inline2, ...validateVenue(raw.venue, f) };
+  let profile;
+  try {
+    profile = resolveProfile({ extends: inline2.extends ?? profileName, ...inline2 });
+  } catch (err) {
+    if (err instanceof UnknownProfileError) throw new ConfigError(f, err.message);
+    throw err;
+  }
+  const checks = raw.checks !== void 0 ? parseChecks(raw.checks, f) : profile.checks ?? [...CHECK_IDS];
+  const refs = raw.references ?? {};
+  if (!isObj2(refs)) throw new ConfigError(f, "`references` must be a mapping");
+  checkKeys(refs, ["mailto", "ignore", "cache", "requireCite", "reportUncited"], "references.", f);
+  const cache2 = refs.cache ?? "user";
+  if (cache2 !== "user" && cache2 !== "project")
+    throw new ConfigError(f, "`references.cache` must be user or project");
+  if (refs.requireCite !== void 0 && typeof refs.requireCite !== "boolean")
+    throw new ConfigError(f, "`references.requireCite` must be true or false");
+  const requireCite = refs.requireCite === true;
+  if (refs.reportUncited !== void 0 && typeof refs.reportUncited !== "boolean")
+    throw new ConfigError(f, "`references.reportUncited` must be true or false");
+  const reportUncited = refs.reportUncited === true;
+  const mailto = (typeof refs.mailto === "string" ? refs.mailto : void 0) ?? env.OVERFULL_MAILTO;
+  const ignore = refs.ignore !== void 0 ? stringList(refs.ignore, "references.ignore", f) : [];
+  const build2 = raw.build ?? {};
+  if (!isObj2(build2)) throw new ConfigError(f, "`build` must be a mapping");
+  checkKeys(build2, ["engine", "image", "outDir"], "build.", f);
+  const engine = build2.engine ?? "auto";
+  if (!["auto", "local", "docker"].includes(engine))
+    throw new ConfigError(f, "`build.engine` must be auto, local or docker");
+  if (build2.image !== void 0 && typeof build2.image !== "string")
+    throw new ConfigError(f, "`build.image` must be a Docker image name");
+  const image = env.OVERFULL_IMAGE ? safeImage(env.OVERFULL_IMAGE, "OVERFULL_IMAGE") : build2.image ? safeImage(build2.image, "build.image in overfull.yml") : DEFAULT_IMAGE;
+  if (build2.outDir !== void 0 && typeof build2.outDir !== "string")
+    throw new ConfigError(f, "`build.outDir` must be a directory name");
+  const norm = (d) => d === "." || d === "./" ? "." : d.replace(/^\.\//, "").replace(/\/+$/, "");
+  const outDir = norm(
+    safeRelPath(build2.outDir ?? rc.outDir ?? ".", "output directory")
+  );
+  const auxDir = build2.outDir !== void 0 ? outDir : norm(safeRelPath(rc.auxDir ?? outDir, "aux directory"));
+  const config = {
+    root,
+    main: main3,
+    mainSource,
+    ...mainCandidates ? { mainCandidates } : {},
+    jobname,
+    bib,
+    bibDiscovered: raw.bib === void 0,
+    jobnameFromConfig: jobnameSource !== "main file",
+    jobnameSource,
+    profile,
+    venue: inline2,
+    checks,
+    references: { ...mailto ? { mailto } : {}, ignore, cache: cache2, requireCite, reportUncited },
+    build: { engine, image, outDir, auxDir, outDirFromConfig: build2.outDir !== void 0 }
+  };
+  if (file) config.file = file;
+  return config;
+}
+function requireMain(config) {
+  if (config.mainCandidates) throw ambiguousMainError(config.mainCandidates);
+}
+var import_yaml, DEFAULT_IMAGE, CONFIG_FILE, TOP_KEYS, VENUE_KEYS, LEVELS, ConfigError, isObj2;
+var init_config = __esm({
+  "../packages/cli/src/config.ts"() {
+    "use strict";
+    init_src();
+    import_yaml = __toESM(require_dist(), 1);
+    init_io();
+    init_project();
+    init_safety();
+    DEFAULT_IMAGE = "ghcr.io/amet13/overfull:3";
+    CONFIG_FILE = "overfull.yml";
+    TOP_KEYS = ["main", "jobname", "bib", "profile", "checks", "references", "venue", "build"];
+    VENUE_KEYS = [
+      "pageLimit",
+      "paper",
+      "anonymous",
+      "disclosure",
+      "accessibility",
+      "arxiv",
+      "checks",
+      "name",
+      "description",
+      "extends"
+    ];
+    LEVELS = ["required", "recommended", "off"];
+    ConfigError = class extends UsageError {
+      constructor(file, message) {
+        super(`${basename2(file)}: ${message}`);
+      }
+    };
+    isObj2 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+  }
+});
+
+// ../packages/cli/src/tools.ts
+import { spawn } from "node:child_process";
+import { accessSync, constants as constants2 } from "node:fs";
+import { delimiter, join as join4 } from "node:path";
+function which(cmd, env = process.env, opts = {}) {
+  const win = (opts.platform ?? process.platform) === "win32";
+  const exts = win ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && (opts.allowBatch || !/^\.(bat|cmd)$/i.test(e))) : [""];
+  const sepChar = win ? ";" : delimiter;
+  for (const dir of (env.PATH ?? env.Path ?? "").split(sepChar)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const p = join4(dir, cmd + ext);
+      try {
+        accessSync(p, win ? constants2.F_OK : constants2.X_OK);
+        return p;
+      } catch {
+      }
+    }
+  }
+  return void 0;
+}
+function run(cmd, args, opts = {}) {
+  return new Promise((resolvePromise) => {
+    let stdout = "";
+    let stderr = "";
+    let pending = "";
+    const child = spawn(cmd, args, {
+      cwd: opts.cwd,
+      env: opts.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: opts.shell === true
+    });
+    const timer = opts.timeoutMs ? setTimeout(() => child.kill("SIGTERM"), opts.timeoutMs) : void 0;
+    const feed = (chunk) => {
+      if (!opts.onLine) return;
+      pending += chunk;
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? "";
+      for (const l of lines) opts.onLine(l);
+    };
+    child.stdout.setEncoding("utf8").on("data", (d) => {
+      stdout += d;
+      feed(d);
+    });
+    child.stderr.setEncoding("utf8").on("data", (d) => {
+      stderr += d;
+      feed(d);
+    });
+    child.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      resolvePromise({ code: 127, stdout, stderr, error: err.message });
+    });
+    child.on("close", (code3, signal) => {
+      if (timer) clearTimeout(timer);
+      if (pending && opts.onLine) opts.onLine(pending);
+      resolvePromise({ code: code3 ?? (signal ? 124 : 1), stdout, stderr });
+    });
+  });
+}
+async function dockerAvailable(env) {
+  if (!which("docker", env)) return false;
+  const r = await run("docker", ["info", "--format", "{{.ServerVersion}}"], { timeoutMs: 8e3 });
+  return r.code === 0;
+}
+function quoteWindowsArg(arg) {
+  if (/["%!^&|<>\r\n]/.test(arg)) throw new Error(`Unsupported character in argument: ${arg}`);
+  return /[\s]/.test(arg) || arg === "" ? `"${arg}"` : arg;
+}
+async function dockerImagePresent(image) {
+  const r = await run("docker", ["image", "inspect", image], { timeoutMs: 8e3 });
+  return r.code === 0;
+}
+function dockerUser() {
+  return typeof process.getuid === "function" && typeof process.getgid === "function" ? ["--user", `${process.getuid()}:${process.getgid()}`] : ["--user", "65534:65534"];
+}
+function bindMount(dir, readonly = false) {
+  const field = `source=${dir}`;
+  const source = /[",]/.test(field) ? `"${field.replace(/"/g, '""')}"` : field;
+  return ["--mount", `type=bind,${source},target=/work${readonly ? ",readonly" : ""}`];
+}
+function dockerToolArgs(image, dir, tool, args) {
+  return [
+    "run",
+    "--rm",
+    "--network",
+    "none",
+    "--cap-drop",
+    "ALL",
+    "--security-opt",
+    "no-new-privileges",
+    ...dockerUser(),
+    "-e",
+    "HOME=/tmp",
+    ...bindMount(dir, true),
+    "-w",
+    "/work",
+    "--entrypoint",
+    tool,
+    image,
+    ...args
+  ];
+}
+var init_tools = __esm({
+  "../packages/cli/src/tools.ts"() {
+    "use strict";
   }
 });
 
@@ -7457,8 +17464,8 @@ function createValidAbsoluteUrl(url, baseUrl = null, options = null) {
   const absoluteUrl = baseUrl ? URL.parse(url, baseUrl) : URL.parse(url);
   return _isValidProtocol(absoluteUrl) ? absoluteUrl : null;
 }
-function stripPath(str3) {
-  return str3.substring(str3.lastIndexOf("/") + 1);
+function stripPath(str2) {
+  return str2.substring(str2.lastIndexOf("/") + 1);
 }
 function util_shadow(obj, prop, value, nonSerializable2 = false) {
   Object.defineProperty(obj, prop, {
@@ -7486,22 +17493,22 @@ function bytesToString(bytes) {
   }
   return strBuf.join("");
 }
-function stringToBytes(str3) {
-  if (typeof str3 !== "string") {
+function stringToBytes(str2) {
+  if (typeof str2 !== "string") {
     unreachable("Invalid argument for stringToBytes");
   }
-  const length = str3.length;
+  const length = str2.length;
   const bytes = new Uint8Array(length);
   for (let i = 0; i < length; ++i) {
-    bytes[i] = str3.charCodeAt(i) & 255;
+    bytes[i] = str2.charCodeAt(i) & 255;
   }
   return bytes;
 }
-function stringToUTF8String(str3) {
-  return decodeURIComponent(escape(str3));
+function stringToUTF8String(str2) {
+  return decodeURIComponent(escape(str2));
 }
-function utf8StringToString(str3) {
-  return unescape(encodeURIComponent(str3));
+function utf8StringToString(str2) {
+  return unescape(encodeURIComponent(str2));
 }
 function isArrayEqual(arr1, arr2) {
   if (arr1.length !== arr2.length) {
@@ -7514,12 +17521,12 @@ function isArrayEqual(arr1, arr2) {
   }
   return true;
 }
-function normalizeUnicode(str3) {
+function normalizeUnicode(str2) {
   if (!NormalizeRegex) {
     NormalizeRegex = /([\u00a0\u00b5\u037e\u0eb3\u2000-\u200a\u202f\u2126\ufb00-\ufb04\ufb06\ufb20-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufba1\ufba4-\ufba9\ufbae-\ufbb1\ufbd3-\ufbdc\ufbde-\ufbe7\ufbea-\ufbf8\ufbfc\ufbfd\ufc00-\ufc5d\ufc64-\ufcf1\ufcf5-\ufd3d\ufd88\ufdf4\ufdfa\ufdfb\ufe71\ufe77\ufe79\ufe7b\ufe7d]+)|(\ufb05+)/gu;
     NormalizationMap = /* @__PURE__ */ new Map([["\uFB05", "\u017Ft"]]);
   }
-  return str3.replaceAll(NormalizeRegex, (_, p1, p2) => p1 ? p1.normalize("NFKC") : NormalizationMap.get(p2));
+  return str2.replaceAll(NormalizeRegex, (_, p1, p2) => p1 ? p1.normalize("NFKC") : NormalizationMap.get(p2));
 }
 function _isValidExplicitDest(validRef, validName, dest) {
   if (!Array.isArray(dest) || dest.length < 2) {
@@ -7585,19 +17592,19 @@ function isDict(v, type) {
 function isRefsEqual(v1, v2) {
   return v1.num === v2.num && v1.gen === v2.gen;
 }
-function isCSSString(str3) {
-  const quote = str3[0];
-  if (str3.length < 2 || quote !== `"` && quote !== `'` || str3.at(-1) !== quote) {
+function isCSSString(str2) {
+  const quote = str2[0];
+  if (str2.length < 2 || quote !== `"` && quote !== `'` || str2.at(-1) !== quote) {
     return false;
   }
-  const end = str3.length - 1;
+  const end = str2.length - 1;
   for (let i = 1; i < end; i++) {
-    const char = str3[i];
+    const char = str2[i];
     if (char === quote || CONTROL_CHAR_REGEXP.test(char)) {
       return false;
     }
     if (char === "\\") {
-      if (++i >= end || CONTROL_CHAR_REGEXP.test(str3[i])) {
+      if (++i >= end || CONTROL_CHAR_REGEXP.test(str2[i])) {
         return false;
       }
     }
@@ -7611,45 +17618,45 @@ function serializeFontFamily(fontFamily) {
   const escaped = fontFamily.replaceAll(/["\\\p{Cc}]/gu, (char) => char === `"` || char === "\\" ? `\\${char}` : `\\${char.codePointAt(0).toString(16)} `);
   return `"${escaped}"`;
 }
-function isAscii2(str3) {
-  return typeof str3 === "string" && (!str3 || /^[\x00-\x7F]*$/.test(str3));
+function isAscii2(str2) {
+  return typeof str2 === "string" && (!str2 || /^[\x00-\x7F]*$/.test(str2));
 }
-function stringToAsciiOrUTF16BE(str3) {
-  return str3 === null || str3 === void 0 || isAscii2(str3) ? str3 : stringToUTF16String(str3, true);
+function stringToAsciiOrUTF16BE(str2) {
+  return str2 === null || str2 === void 0 || isAscii2(str2) ? str2 : stringToUTF16String(str2, true);
 }
-function stringToUTF16HexString(str3) {
+function stringToUTF16HexString(str2) {
   const buf = [];
-  for (let i = 0, ii = str3.length; i < ii; i++) {
-    const char = str3.charCodeAt(i);
+  for (let i = 0, ii = str2.length; i < ii; i++) {
+    const char = str2.charCodeAt(i);
     buf.push(Util.hexNums[char >> 8 & 255], Util.hexNums[char & 255]);
   }
   return buf.join("");
 }
-function stringToUTF16String(str3, bigEndian = false) {
+function stringToUTF16String(str2, bigEndian = false) {
   const buf = [];
   if (bigEndian) {
     buf.push("\xFE\xFF");
   }
-  for (let i = 0, ii = str3.length; i < ii; i++) {
-    const char = str3.charCodeAt(i);
+  for (let i = 0, ii = str2.length; i < ii; i++) {
+    const char = str2.charCodeAt(i);
     buf.push(String.fromCharCode(char >> 8 & 255), String.fromCharCode(char & 255));
   }
   return buf.join("");
 }
-function stringToPDFString(str3, keepEscapeSequence = false) {
-  if (str3[0] >= "\xEF") {
+function stringToPDFString(str2, keepEscapeSequence = false) {
+  if (str2[0] >= "\xEF") {
     let encoding;
-    if (str3[0] === "\xFE" && str3[1] === "\xFF") {
+    if (str2[0] === "\xFE" && str2[1] === "\xFF") {
       encoding = "utf-16be";
-      if (str3.length % 2 === 1) {
-        str3 = str3.slice(0, -1);
+      if (str2.length % 2 === 1) {
+        str2 = str2.slice(0, -1);
       }
-    } else if (str3[0] === "\xFF" && str3[1] === "\xFE") {
+    } else if (str2[0] === "\xFF" && str2[1] === "\xFE") {
       encoding = "utf-16le";
-      if (str3.length % 2 === 1) {
-        str3 = str3.slice(0, -1);
+      if (str2.length % 2 === 1) {
+        str2 = str2.slice(0, -1);
       }
-    } else if (str3[0] === "\xEF" && str3[1] === "\xBB" && str3[2] === "\xBF") {
+    } else if (str2[0] === "\xEF" && str2[1] === "\xBB" && str2[2] === "\xBF") {
       encoding = "utf-8";
     }
     if (encoding) {
@@ -7657,7 +17664,7 @@ function stringToPDFString(str3, keepEscapeSequence = false) {
         const decoder = PDFStringTextDecoders[encoding] ??= new TextDecoder(encoding, {
           fatal: true
         });
-        const buffer = stringToBytes(str3);
+        const buffer = stringToBytes(str2);
         const decoded = decoder.decode(buffer);
         return keepEscapeSequence || !decoded.includes("\x1B") ? decoded : decoded.replaceAll(/\x1b[^\x1b]*(?:\x1b|$)/g, "");
       } catch (ex) {
@@ -7666,15 +17673,15 @@ function stringToPDFString(str3, keepEscapeSequence = false) {
     }
   }
   const strBuf = [];
-  for (let i = 0, ii = str3.length; i < ii; i++) {
-    const charCode = str3.charCodeAt(i);
+  for (let i = 0, ii = str2.length; i < ii; i++) {
+    const charCode = str2.charCodeAt(i);
     if (!keepEscapeSequence && charCode === 27) {
-      while (++i < ii && str3.charCodeAt(i) !== 27) {
+      while (++i < ii && str2.charCodeAt(i) !== 27) {
       }
       continue;
     }
     const code3 = PDFStringTranslateTable[charCode];
-    strBuf.push(code3 ? String.fromCharCode(code3) : str3.charAt(i));
+    strBuf.push(code3 ? String.fromCharCode(code3) : str2.charAt(i));
   }
   return strBuf.join("");
 }
@@ -7838,29 +17845,29 @@ function parseXFAPath(path) {
     };
   });
 }
-function escapePDFName(str3) {
+function escapePDFName(str2) {
   const buffer = [];
   let start = 0;
-  for (let i = 0, ii = str3.length; i < ii; i++) {
-    const char = str3.charCodeAt(i);
+  for (let i = 0, ii = str2.length; i < ii; i++) {
+    const char = str2.charCodeAt(i);
     if (char < 33 || char > 126 || char === 35 || char === 40 || char === 41 || char === 60 || char === 62 || char === 91 || char === 93 || char === 123 || char === 125 || char === 47 || char === 37) {
       if (start < i) {
-        buffer.push(str3.substring(start, i));
+        buffer.push(str2.substring(start, i));
       }
       buffer.push(`#${char.toString(16).padStart(2, "0")}`);
       start = i + 1;
     }
   }
   if (buffer.length === 0) {
-    return str3;
+    return str2;
   }
-  if (start < str3.length) {
-    buffer.push(str3.substring(start));
+  if (start < str2.length) {
+    buffer.push(str2.substring(start));
   }
   return buffer.join("");
 }
-function escapeString(str3) {
-  return str3.replaceAll(/([()\\\n\r])/g, (match) => {
+function escapeString(str2) {
+  return str2.replaceAll(/([()\\\n\r])/g, (match) => {
     if (match === "\n") {
       return "\\n";
     } else if (match === "\r") {
@@ -7869,7 +17876,7 @@ function escapeString(str3) {
     return `\\${match}`;
   });
 }
-function _collectJS(entry, xref, list3, parents) {
+function _collectJS(entry, xref, list2, parents) {
   if (!entry) {
     return;
   }
@@ -7884,7 +17891,7 @@ function _collectJS(entry, xref, list3, parents) {
   }
   if (Array.isArray(entry)) {
     for (const element of entry) {
-      _collectJS(element, xref, list3, parents);
+      _collectJS(element, xref, list2, parents);
     }
   } else if (entry instanceof Dict) {
     if (isName(entry.get("S"), "JavaScript")) {
@@ -7897,20 +17904,20 @@ function _collectJS(entry, xref, list3, parents) {
       }
       code3 &&= stringToPDFString(code3, true).replaceAll("\0", "");
       if (code3) {
-        list3.push(code3.trim());
+        list2.push(code3.trim());
       }
     }
-    _collectJS(entry.getRaw("Next"), xref, list3, parents);
+    _collectJS(entry.getRaw("Next"), xref, list2, parents);
   }
   if (parent) {
     parents.remove(parent);
   }
 }
 function _collectAction(dict, name, xref, actions) {
-  const list3 = [];
-  _collectJS(dict, xref, list3, new RefSet());
-  if (list3.length) {
-    actions.set(name, list3);
+  const list2 = [];
+  _collectJS(dict, xref, list2, new RefSet());
+  if (list2.length) {
+    actions.set(name, list2);
   }
 }
 function collectActions(xref, dict, eventType) {
@@ -7939,32 +17946,32 @@ function collectActions(xref, dict, eventType) {
   }
   return actions.size ? actions : null;
 }
-function* codePointIter(str3) {
-  for (let i = 0, ii = str3.length; i < ii; i++) {
-    const char = str3.codePointAt(i);
+function* codePointIter(str2) {
+  for (let i = 0, ii = str2.length; i < ii; i++) {
+    const char = str2.codePointAt(i);
     if (char > 55295 && (char < 57344 || char > 65533)) {
       i++;
     }
     yield char;
   }
 }
-function encodeToXmlString(str3) {
+function encodeToXmlString(str2) {
   const buffer = [];
   let start = 0;
-  for (let i = 0, ii = str3.length; i < ii; i++) {
-    const char = str3.codePointAt(i);
+  for (let i = 0, ii = str2.length; i < ii; i++) {
+    const char = str2.codePointAt(i);
     if (32 <= char && char <= 126) {
       const entity = XMLEntities[char];
       if (entity) {
         if (start < i) {
-          buffer.push(str3.substring(start, i));
+          buffer.push(str2.substring(start, i));
         }
         buffer.push(entity);
         start = i + 1;
       }
     } else {
       if (start < i) {
-        buffer.push(str3.substring(start, i));
+        buffer.push(str2.substring(start, i));
       }
       buffer.push(`&#x${char.toString(16).toUpperCase()};`);
       if (char > 65535) {
@@ -7974,10 +17981,10 @@ function encodeToXmlString(str3) {
     }
   }
   if (buffer.length === 0) {
-    return str3;
+    return str2;
   }
-  if (start < str3.length) {
-    buffer.push(str3.substring(start));
+  if (start < str2.length) {
+    buffer.push(str2.substring(start));
   }
   return buffer.join("");
 }
@@ -8030,10 +18037,10 @@ function validateCSSFont(cssFontInfo) {
   cssFontInfo.italicAngle = isNaN(angle) || angle < -90 || angle > 90 ? DEFAULT_CSS_FONT_OBLIQUE : italicAngle.toString();
   return true;
 }
-function recoverJsURL(str3) {
+function recoverJsURL(str2) {
   const URL_OPEN_METHODS = ["app.launchURL", "window.open", "xfa.host.gotoURL"];
   const regex = new RegExp("^\\s*(" + URL_OPEN_METHODS.join("|").replaceAll(".", "\\.") + `)\\((?:'|")([^'"]*)(?:'|")(?:,\\s*(\\w+)\\)|\\))`, "i");
-  const jsUrl = regex.exec(str3);
+  const jsUrl = regex.exec(str2);
   if (jsUrl?.[2]) {
     return {
       url: jsUrl[2],
@@ -9484,16 +19491,16 @@ async function OpenJPEG(moduleArg = {}) {
     if (endPtr - idx > 16 && heapOrArray.buffer && UTF8Decoder) {
       return UTF8Decoder.decode(heapOrArray.subarray(idx, endPtr));
     }
-    var str3 = "";
+    var str2 = "";
     while (idx < endPtr) {
       var u0 = heapOrArray[idx++];
       if (!(u0 & 128)) {
-        str3 += String.fromCharCode(u0);
+        str2 += String.fromCharCode(u0);
         continue;
       }
       var u1 = heapOrArray[idx++] & 63;
       if ((u0 & 224) == 192) {
-        str3 += String.fromCharCode((u0 & 31) << 6 | u1);
+        str2 += String.fromCharCode((u0 & 31) << 6 | u1);
         continue;
       }
       var u2 = heapOrArray[idx++] & 63;
@@ -9503,13 +19510,13 @@ async function OpenJPEG(moduleArg = {}) {
         u0 = (u0 & 7) << 18 | u1 << 12 | u2 << 6 | heapOrArray[idx++] & 63;
       }
       if (u0 < 65536) {
-        str3 += String.fromCharCode(u0);
+        str2 += String.fromCharCode(u0);
       } else {
         var ch2 = u0 - 65536;
-        str3 += String.fromCharCode(55296 | ch2 >> 10, 56320 | ch2 & 1023);
+        str2 += String.fromCharCode(55296 | ch2 >> 10, 56320 | ch2 & 1023);
       }
     }
-    return str3;
+    return str2;
   };
   var printChar = (stream, curr) => {
     var buffer = printCharBuffers[stream];
@@ -9626,10 +19633,10 @@ function toHexDigit(ch2) {
   }
   return -1;
 }
-function strToInt(str3) {
+function strToInt(str2) {
   let a = 0;
-  for (let i = 0; i < str3.length; i++) {
-    a = a << 8 | str3.charCodeAt(i);
+  for (let i = 0; i < str2.length; i++) {
+    a = a << 8 | str2.charCodeAt(i);
   }
   return a >>> 0;
 }
@@ -10776,7 +20783,7 @@ function compileCharString(charStringCode, cmds, font, glyphId) {
   let x = 0, y = 0;
   let stems = 0;
   let firstPoint = null;
-  function parse2(code3) {
+  function parse(code3) {
     const view = new DataView(code3.buffer, code3.byteOffset, code3.byteLength);
     let i = 0;
     while (i < code3.length) {
@@ -10859,7 +20866,7 @@ function compileCharString(charStringCode, cmds, font, glyphId) {
             subrCode = font.subrs[n + font.subrsBias];
           }
           if (subrCode) {
-            parse2(subrCode);
+            parse(subrCode);
           }
           break;
         case 11:
@@ -11042,7 +21049,7 @@ function compileCharString(charStringCode, cmds, font, glyphId) {
           n = stack.pop() + font.gsubrsBias;
           subrCode = font.gsubrs[n];
           if (subrCode) {
-            parse2(subrCode);
+            parse(subrCode);
           }
           break;
         case 30:
@@ -11108,7 +21115,7 @@ function compileCharString(charStringCode, cmds, font, glyphId) {
       }
     }
   }
-  parse2(charStringCode);
+  parse(charStringCode);
 }
 function isHexDigit(code3) {
   return code3 >= 48 && code3 <= 57 || code3 >= 65 && code3 <= 70 || code3 >= 97 && code3 <= 102;
@@ -11359,8 +21366,8 @@ function writeUint32(bytes, index, value) {
   bytes[index] = value >>> 24;
 }
 function isTrueTypeFile(file) {
-  const header = file.peekBytes(4), str3 = bytesToString(header);
-  return str3 === "\0\0\0" || str3 === "true";
+  const header = file.peekBytes(4), str2 = bytesToString(header);
+  return str2 === "\0\0\0" || str2 === "true";
 }
 function isTrueTypeCollectionFile(file) {
   const header = file.peekBytes(4);
@@ -11847,14 +21854,14 @@ function createNameTable(name, proto) {
   const strings = [proto[0][0] || "Original licence", proto[0][1] || name, proto[0][2] || "Unknown", proto[0][3] || "uniqueID", proto[0][4] || name, proto[0][5] || "Version 0.11", proto[0][6] || createPostscriptName(name), proto[0][7] || "Unknown", proto[0][8] || "Unknown", proto[0][9] || "Unknown"];
   const stringsBytes = strings.map(stringToBytes);
   const stringsUnicodeBytes = new Array(strings.length);
-  let i, ii, j, jj, str3;
+  let i, ii, j, jj, str2;
   for (i = 0, ii = strings.length; i < ii; i++) {
-    str3 = proto[1][i] || strings[i];
+    str2 = proto[1][i] || strings[i];
     const strUnicode = new DataBuilder({
-      exactLength: str3.length * 2
+      exactLength: str2.length * 2
     });
-    for (j = 0, jj = str3.length; j < jj; j++) {
-      strUnicode.setInt16(str3.charCodeAt(j));
+    for (j = 0, jj = str2.length; j < jj; j++) {
+      strUnicode.setInt16(str2.charCodeAt(j));
     }
     stringsUnicodeBytes[i] = strUnicode.data;
   }
@@ -11867,7 +21874,7 @@ function createNameTable(name, proto) {
   for (i = 0, ii = platformsBytes.length; i < ii; i++) {
     const strs = namesBytes[i];
     for (j = 0, jj = strs.length; j < jj; j++) {
-      str3 = strs[j];
+      str2 = strs[j];
       const nameRecord = new DataBuilder({
         exactLength: 6 + platformsBytes[i].length + encodingsBytes[i].length + languagesBytes[i].length
       });
@@ -11875,10 +21882,10 @@ function createNameTable(name, proto) {
       nameRecord.setArray(encodingsBytes[i]);
       nameRecord.setArray(languagesBytes[i]);
       nameRecord.setInt16(j);
-      nameRecord.setInt16(str3.length);
+      nameRecord.setInt16(str2.length);
       nameRecord.setInt16(strOffset);
       nameRecords.push(nameRecord.data);
-      strOffset += str3.length;
+      strOffset += str2.length;
     }
   }
   const namesRecordCount = stringsBytes.length * platformsBytes.length;
@@ -12475,7 +22482,7 @@ function reverseValues(arr, start, end) {
     arr[j] = temp;
   }
 }
-function createBidiText(str3, isLTR, vertical = false) {
+function createBidiText(str2, isLTR, vertical = false) {
   let dir = "ltr";
   if (vertical) {
     dir = "ttb";
@@ -12483,23 +22490,23 @@ function createBidiText(str3, isLTR, vertical = false) {
     dir = "rtl";
   }
   return {
-    str: str3,
+    str: str2,
     dir
   };
 }
-function bidi(str3, startLevel = -1, vertical = false) {
+function bidi(str2, startLevel = -1, vertical = false) {
   let isLTR = true;
-  const strLength = str3.length;
+  const strLength = str2.length;
   if (strLength === 0 || vertical) {
-    return createBidiText(str3, isLTR, vertical);
+    return createBidiText(str2, isLTR, vertical);
   }
   chars.length = strLength;
   types.length = strLength;
   let numBidi = 0;
   let i, ii;
   for (i = 0; i < strLength; ++i) {
-    chars[i] = str3.charAt(i);
-    const charCode = str3.charCodeAt(i);
+    chars[i] = str2.charAt(i);
+    const charCode = str2.charCodeAt(i);
     let charType = "L";
     if (charCode <= 255) {
       charType = baseTypes[charCode];
@@ -12520,7 +22527,7 @@ function bidi(str3, startLevel = -1, vertical = false) {
   }
   if (numBidi === 0) {
     isLTR = true;
-    return createBidiText(str3, isLTR);
+    return createBidiText(str2, isLTR);
   }
   if (startLevel === -1) {
     if (numBidi / strLength < 0.3 && strLength > 4) {
@@ -12702,9 +22709,9 @@ function getStyleToAppend(style) {
   }
   return "";
 }
-function getFamilyName(str3) {
+function getFamilyName(str2) {
   const keywords = /* @__PURE__ */ new Set(["thin", "extralight", "ultralight", "demilight", "semilight", "light", "book", "regular", "normal", "medium", "demibold", "semibold", "bold", "extrabold", "ultrabold", "black", "heavy", "extrablack", "ultrablack", "roman", "italic", "oblique", "ultracondensed", "extracondensed", "condensed", "semicondensed", "normal", "semiexpanded", "expanded", "extraexpanded", "ultraexpanded", "bolditalic"]);
-  return str3.split(/[- ,+]+/g).filter((tok) => !keywords.has(tok.toLowerCase())).join(" ");
+  return str2.split(/[- ,+]+/g).filter((tok) => !keywords.has(tok.toLowerCase())).join(" ");
 }
 function generateFont({
   alias,
@@ -12915,8 +22922,8 @@ function addCachedImageOps(opList, {
     args[0].count++;
   }
 }
-function parseDefaultAppearance(str3) {
-  return new DefaultAppearanceEvaluator(str3).parse();
+function parseDefaultAppearance(str2) {
+  return new DefaultAppearanceEvaluator(str2).parse();
 }
 function parseAppearanceStream(stream, xref, globalColorSpaceCache) {
   return new AppearanceStreamEvaluator(stream, xref, globalColorSpaceCache).parse();
@@ -13266,8 +23273,8 @@ function addChildren(node, nodesToVisit) {
     }
   }
 }
-function stripQuotes(str3) {
-  return str3.startsWith("'") || str3.startsWith('"') ? str3.slice(1, -1) : str3;
+function stripQuotes(str2) {
+  return str2.startsWith("'") || str2.startsWith('"') ? str2.slice(1, -1) : str2;
 }
 function getInteger({
   data,
@@ -13311,12 +23318,12 @@ function getStringOption(data, options) {
     validate: (k) => options.includes(k)
   });
 }
-function getMeasurement(str3, def = "0") {
+function getMeasurement(str2, def = "0") {
   def ||= "0";
-  if (!str3) {
+  if (!str2) {
     return getMeasurement(def);
   }
-  const match = str3.trim().match(measurementPattern);
+  const match = str2.trim().match(measurementPattern);
   if (!match) {
     return getMeasurement(def);
   }
@@ -14023,8 +24030,8 @@ function setFontFamily(xfaFont, node, fontFinder, style) {
     }
   }
 }
-function fixURL(str3) {
-  const absoluteUrl = createValidAbsoluteUrl(str3, null, {
+function fixURL(str2) {
+  const absoluteUrl = createValidAbsoluteUrl(str2, null, {
     addDefaultProtocol: true,
     tryConvertEncoding: true
   });
@@ -14678,12 +24685,12 @@ function calculateMD5(data, offset, length) {
   }
   return new Uint8Array([h0, h0 >> 8, h0 >> 16, h0 >>> 24, h1, h1 >> 8, h1 >> 16, h1 >>> 24, h2, h2 >> 8, h2 >> 16, h2 >>> 24, h3, h3 >> 8, h3 >> 16, h3 >>> 24]);
 }
-function decodeString(str3) {
+function decodeString(str2) {
   try {
-    return stringToUTF8String(str3);
+    return stringToUTF8String(str2);
   } catch (ex) {
     warn(`UTF-8 decoding failed: "${ex}".`);
-    return str3;
+    return str2;
   }
 }
 function ch(result, x, y, z, tmp) {
@@ -14953,9 +24960,9 @@ function calculateSHA256(data, offset, length) {
   }
   return new Uint8Array([h0 >> 24, h0 >> 16, h0 >> 8, h0, h1 >> 24, h1 >> 16, h1 >> 8, h1, h2 >> 24, h2 >> 16, h2 >> 8, h2, h3 >> 24, h3 >> 16, h3 >> 8, h3, h4 >> 24, h4 >> 16, h4 >> 8, h4, h5 >> 24, h5 >> 16, h5 >> 8, h5, h6 >> 24, h6 >> 16, h6 >> 8, h6, h7 >> 24, h7 >> 16, h7 >> 8, h7]);
 }
-function saslPrep(str3) {
+function saslPrep(str2) {
   let mapped = "";
-  for (const char of str3) {
+  for (const char of str2) {
     const code3 = char.codePointAt(0);
     if (NON_ASCII_SPACES.has(code3)) {
       mapped += " ";
@@ -15150,15 +25157,15 @@ function numberToPDFString(value) {
   if (Number.isInteger(value) && Math.abs(value) >= 1e21) {
     return BigInt(value).toString();
   }
-  const str3 = value.toFixed(10);
-  let end = str3.length;
-  while (str3[end - 1] === "0") {
+  const str2 = value.toFixed(10);
+  let end = str2.length;
+  while (str2[end - 1] === "0") {
     end--;
   }
-  if (str3[end - 1] === ".") {
+  if (str2[end - 1] === ".") {
     end--;
   }
-  return str3.slice(0, end);
+  return str2.slice(0, end);
 }
 async function writeValue(value, buffer, transform) {
   if (value instanceof Name) {
@@ -15204,18 +25211,18 @@ function computeMD5(filesize, xrefInfo) {
   const time = Math.floor(Date.now() / 1e3);
   const filename = xrefInfo.filename || "";
   const md5Buffer = [time.toString(), filename, filesize.toString(), ...xrefInfo.infoMap.values()];
-  const md5BufferLen = Math.sumPrecise(md5Buffer.map((str3) => str3.length));
+  const md5BufferLen = Math.sumPrecise(md5Buffer.map((str2) => str2.length));
   const array = new Uint8Array(md5BufferLen);
   let offset = 0;
-  for (const str3 of md5Buffer) {
-    offset = writeString(str3, offset, array);
+  for (const str2 of md5Buffer) {
+    offset = writeString(str2, offset, array);
   }
   return bytesToString(calculateMD5(array, 0, array.length));
 }
-function writeXFADataForAcroform(str3, changes) {
+function writeXFADataForAcroform(str2, changes) {
   const xml = new SimpleXMLParser({
     hasAttributes: true
-  }).parseFromString(str3);
+  }).parseFromString(str2);
   for (const {
     xfa
   } of changes) {
@@ -15479,12 +25486,12 @@ async function incrementalUpdate({
     }
   }
   await (useXrefStream ? getXRefStreamTable(xrefInfo, baseOffset, newRefs, newXref, buffer) : getXRefTable(xrefInfo, baseOffset, newRefs, newXref, buffer));
-  const totalLength = originalData.length + Math.sumPrecise(buffer.map((str3) => str3.length));
+  const totalLength = originalData.length + Math.sumPrecise(buffer.map((str2) => str2.length));
   const array = new Uint8Array(totalLength);
   array.set(originalData);
   let offset = originalData.length;
-  for (const str3 of buffer) {
-    offset = writeString(str3, offset, array);
+  for (const str2 of buffer) {
+    offset = writeString(str2, offset, array);
   }
   return array;
 }
@@ -16000,11 +26007,11 @@ var init_pdf_worker = __esm({
     });
     array_from_constructor_and_list_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var lengthOfArrayLike = length_of_array_like_namespaceFn();
-      module.exports = function(Constructor, list3, $length) {
+      module.exports = function(Constructor, list2, $length) {
         var index = 0;
-        var length = arguments.length > 2 ? $length : lengthOfArrayLike(list3);
+        var length = arguments.length > 2 ? $length : lengthOfArrayLike(list2);
         var result = new Constructor(length);
-        while (length > index) result[index] = list3[index++];
+        while (length > index) result[index] = list2[index++];
         return result;
       };
     });
@@ -17010,7 +27017,7 @@ var init_pdf_worker = __esm({
       var defineProperty = Object.defineProperty;
       var stringSlice = uncurryThis("".slice);
       var replace = uncurryThis("".replace);
-      var join8 = uncurryThis([].join);
+      var join7 = uncurryThis([].join);
       var CONFIGURABLE_LENGTH = DESCRIPTORS && !fails(function() {
         return defineProperty(function() {
         }, "length", { value: 8 }).length !== 8;
@@ -17037,7 +27044,7 @@ var init_pdf_worker = __esm({
         }
         var state = enforceInternalState(value);
         if (!hasOwn(state, "source")) {
-          state.source = join8(TEMPLATE, typeof name == "string" ? name : "");
+          state.source = join7(TEMPLATE, typeof name == "string" ? name : "");
         }
         return value;
       };
@@ -19045,7 +29052,7 @@ var init_pdf_worker = __esm({
       var charAt = uncurryThis("".charAt);
       var Uint8Array2 = globalThis2.Uint8Array;
       var $Array = globalThis2.Array;
-      var join8 = uncurryThis([].join);
+      var join7 = uncurryThis([].join);
       var INCORRECT_BEHAVIOR_OR_DOESNT_EXISTS = !Uint8Array2 || !Uint8Array2.prototype.toBase64 || !(function() {
         try {
           var target = new Uint8Array2();
@@ -19091,7 +29098,7 @@ var init_pdf_worker = __esm({
               result[written++] = "=";
             }
           }
-          return join8(result, "");
+          return join7(result, "");
         }
       });
     });
@@ -19102,7 +29109,7 @@ var init_pdf_worker = __esm({
       var anUint8Array = an_uint8_array_namespaceFn();
       var notDetached = array_buffer_not_detached_namespaceFn();
       var numberToString = uncurryThis(1.1.toString);
-      var join8 = uncurryThis([].join);
+      var join7 = uncurryThis([].join);
       var $Array = Array;
       var Uint8Array2 = globalThis2.Uint8Array;
       var INCORRECT_BEHAVIOR_OR_DOESNT_EXISTS = !Uint8Array2 || !Uint8Array2.prototype.toHex || !(function() {
@@ -19122,7 +29129,7 @@ var init_pdf_worker = __esm({
             var hex = numberToString(this[i], 16);
             result[i] = hex.length === 1 ? "0" + hex : hex;
           }
-          return join8(result, "");
+          return join7(result, "");
         }
       });
     });
@@ -19215,7 +29222,7 @@ var init_pdf_worker = __esm({
       var USE_NATIVE_URL = url_constructor_detection_namespaceFn();
       var URL2 = getBuiltIn("URL");
       $({ target: "URL", stat: true, forced: !USE_NATIVE_URL }, {
-        parse: function parse2(url) {
+        parse: function parse(url) {
           var length = validateArgumentsLength(arguments.length, 1);
           var urlString = toString(url);
           var base = length < 2 || arguments[1] === void 0 ? void 0 : toString(arguments[1]);
@@ -20006,33 +30013,33 @@ var init_pdf_worker = __esm({
     };
     Ref = class _Ref {
       #str;
-      constructor(str3, num3, gen) {
-        this.#str = str3;
+      constructor(str2, num3, gen) {
+        this.#str = str2;
         this.num = num3;
         this.gen = gen;
       }
       toString() {
         return this.#str;
       }
-      static fromString(str3) {
-        let ref = RefCache.get(str3);
+      static fromString(str2) {
+        let ref = RefCache.get(str2);
         if (ref) {
           return ref;
         }
-        const m = /^([1-9]\d*)R([1-9]\d*)?$/.exec(str3);
+        const m = /^([1-9]\d*)R([1-9]\d*)?$/.exec(str2);
         if (!m) {
           return null;
         }
-        ref = new _Ref(str3, parseInt(m[1], 10), !m[2] ? 0 : parseInt(m[2], 10));
-        RefCache.set(str3, ref);
+        ref = new _Ref(str2, parseInt(m[1], 10), !m[2] ? 0 : parseInt(m[2], 10));
+        RefCache.set(str2, ref);
         return ref;
       }
       static get(num3, gen) {
-        const str3 = gen === 0 ? `${num3}R` : `${num3}R${gen}`;
-        let ref = RefCache.get(str3);
+        const str2 = gen === 0 ? `${num3}R` : `${num3}R${gen}`;
+        let ref = RefCache.get(str2);
         if (!ref) {
-          ref = new _Ref(str3, num3, gen);
-          RefCache.set(str3, ref);
+          ref = new _Ref(str2, num3, gen);
+          RefCache.set(str2, ref);
         }
         return ref;
       }
@@ -21052,8 +31059,8 @@ var init_pdf_worker = __esm({
       }
     };
     StringStream = class extends Stream {
-      constructor(str3, dict = null) {
-        super(stringToBytes(str3), NaN, NaN, dict);
+      constructor(str2, dict = null) {
+        super(stringToBytes(str2), NaN, NaN, dict);
       }
     };
     NullStream = class extends Stream {
@@ -23720,22 +33727,22 @@ var init_pdf_worker = __esm({
     };
     Ascii85Stream = class extends DecodeStream {
       #input = new Uint8Array(5);
-      constructor(str3, maybeLength) {
+      constructor(str2, maybeLength) {
         if (maybeLength) {
           maybeLength *= 0.8;
         }
         super(maybeLength);
-        this.stream = str3;
-        this.dict = str3.dict;
+        this.stream = str2;
+        this.dict = str2.dict;
       }
       readBlock() {
         const TILDA_CHAR = 126;
         const Z_LOWER_CHAR = 122;
         const EOF2 = -1;
-        const str3 = this.stream;
-        let c = str3.getByte();
+        const str2 = this.stream;
+        let c = str2.getByte();
         while (isWhiteSpace(c)) {
-          c = str3.getByte();
+          c = str2.getByte();
         }
         if (c === EOF2 || c === TILDA_CHAR) {
           this.eof = true;
@@ -23751,9 +33758,9 @@ var init_pdf_worker = __esm({
           const input2 = this.#input;
           input2[0] = c;
           for (i = 1; i < 5; ++i) {
-            c = str3.getByte();
+            c = str2.getByte();
             while (isWhiteSpace(c)) {
-              c = str3.getByte();
+              c = str2.getByte();
             }
             input2[i] = c;
             if (c === EOF2 || c === TILDA_CHAR) {
@@ -23778,13 +33785,13 @@ var init_pdf_worker = __esm({
       }
     };
     AsciiHexStream = class extends DecodeStream {
-      constructor(str3, maybeLength) {
+      constructor(str2, maybeLength) {
         if (maybeLength) {
           maybeLength *= 0.5;
         }
         super(maybeLength);
-        this.stream = str3;
-        this.dict = str3.dict;
+        this.stream = str2;
+        this.dict = str2.dict;
         this.firstDigit = -1;
       }
       readBlock() {
@@ -25940,11 +35947,11 @@ var init_pdf_worker = __esm({
       }
     };
     CCITTFaxStream = class extends DecodeStream {
-      constructor(str3, maybeLength, params) {
+      constructor(str2, maybeLength, params) {
         super(maybeLength);
-        this.stream = str3;
+        this.stream = str2;
         this.maybeLength = maybeLength;
-        this.dict = str3.dict;
+        this.dict = str2.dict;
         if (!(params instanceof Dict)) {
           params = Dict.empty;
         }
@@ -25988,16 +35995,16 @@ var init_pdf_worker = __esm({
       static #MAX_JS_DECODED_LENGTH = 16384;
       #isAsync = true;
       #decodeInJS = false;
-      constructor(str3, maybeLength) {
+      constructor(str2, maybeLength) {
         super(maybeLength);
-        this.stream = str3;
-        this.dict = str3.dict;
-        if (str3 instanceof Stream && str3.length < _FlateStream.#MIN_NATIVE_COMPRESSED_LENGTH) {
-          util_assert(!str3.isAsync, "Stream sub-classes are never asynchronous");
+        this.stream = str2;
+        this.dict = str2.dict;
+        if (str2 instanceof Stream && str2.length < _FlateStream.#MIN_NATIVE_COMPRESSED_LENGTH) {
+          util_assert(!str2.isAsync, "Stream sub-classes are never asynchronous");
           this.#decodeInJS = true;
         }
-        const cmf = str3.getByte();
-        const flg = str3.getByte();
+        const cmf = str2.getByte();
+        const flg = str2.getByte();
         if (cmf === -1 || flg === -1) {
           throw new FormatError(`Invalid header in flate stream: ${cmf}, ${flg}`);
         }
@@ -26049,12 +36056,12 @@ var init_pdf_worker = __esm({
         return this.#isAsync;
       }
       getBits(bits) {
-        const str3 = this.stream;
+        const str2 = this.stream;
         let codeSize = this.codeSize;
         let codeBuf = this.codeBuf;
         let b;
         while (codeSize < bits) {
-          if ((b = str3.getByte()) === -1) {
+          if ((b = str2.getByte()) === -1) {
             throw new FormatError("Bad encoding in flate stream");
           }
           codeBuf |= b << codeSize;
@@ -26066,14 +36073,14 @@ var init_pdf_worker = __esm({
         return b;
       }
       getCode(table) {
-        const str3 = this.stream;
+        const str2 = this.stream;
         const codes = table[0];
         const maxLen = table[1];
         let codeSize = this.codeSize;
         let codeBuf = this.codeBuf;
         let b;
         while (codeSize < maxLen) {
-          if ((b = str3.getByte()) === -1) {
+          if ((b = str2.getByte()) === -1) {
             break;
           }
           codeBuf |= b << codeSize;
@@ -26132,14 +36139,14 @@ var init_pdf_worker = __esm({
       }
       #readBlock() {
         let buffer, len;
-        const str3 = this.stream;
+        const str2 = this.stream;
         let hdr = this.getBits(3);
         if (hdr & 1) {
           this.eof = true;
         }
         hdr >>= 1;
         if (hdr === 0) {
-          const header = str3.getBytes(4);
+          const header = str2.getBytes(4);
           if (header.length < 4) {
             throw new FormatError("Bad block header in flate stream");
           }
@@ -26151,11 +36158,11 @@ var init_pdf_worker = __esm({
           this.codeBuf = 0;
           this.codeSize = 0;
           if (blockLen === 0) {
-            if (str3.peekByte() === -1) {
+            if (str2.peekByte() === -1) {
               this.eof = true;
             }
           } else {
-            const block = str3.getBytes(blockLen);
+            const block = str2.getBytes(blockLen);
             const bufferLength = this.bufferLength, newLength = bufferLength + block.length;
             buffer = this.ensureBuffer(newLength);
             buffer.set(block, bufferLength);
@@ -26423,10 +36430,10 @@ var init_pdf_worker = __esm({
       }
     };
     LZWStream = class extends DecodeStream {
-      constructor(str3, maybeLength, earlyChange) {
+      constructor(str2, maybeLength, earlyChange) {
         super(maybeLength);
-        this.stream = str3;
-        this.dict = str3.dict;
+        this.stream = str2;
+        this.dict = str2.dict;
         this.cachedData = 0;
         this.bitsCached = 0;
         const maxLzwDictionarySize = 4096;
@@ -26531,21 +36538,21 @@ var init_pdf_worker = __esm({
       }
     };
     PredictorStream = class extends DecodeStream {
-      constructor(str3, maybeLength, params) {
+      constructor(str2, maybeLength, params) {
         super(maybeLength);
         if (!(params instanceof Dict)) {
-          return str3;
+          return str2;
         }
         const predictor = this.predictor = params.get("Predictor") || 1;
         if (predictor <= 1) {
-          return str3;
+          return str2;
         }
         if (predictor !== 2 && (predictor < 10 || predictor > 15)) {
           throw new FormatError(`Unsupported predictor: ${predictor}`);
         }
         this.readBlock = predictor === 2 ? this.readBlockTiff : this.readBlockPng;
-        this.stream = str3;
-        this.dict = str3.dict;
+        this.stream = str2;
+        this.dict = str2.dict;
         const colors = this.colors = params.get("Colors") || 1;
         const bits = this.bits = params.get("BPC", "BitsPerComponent") || 8;
         const columns = this.columns = params.get("Columns") || 1;
@@ -26707,10 +36714,10 @@ var init_pdf_worker = __esm({
       }
     };
     RunLengthStream = class extends DecodeStream {
-      constructor(str3, maybeLength) {
+      constructor(str2, maybeLength) {
         super(maybeLength);
-        this.stream = str3;
-        this.dict = str3.dict;
+        this.stream = str2;
+        this.dict = str2.dict;
       }
       readBlock() {
         const repeatHeader = this.stream.getBytes(2);
@@ -27623,40 +37630,40 @@ var init_pdf_worker = __esm({
             this.nextChar();
             throw new FormatError(`Illegal character: ${ch2}`);
         }
-        let str3 = String.fromCharCode(ch2);
+        let str2 = String.fromCharCode(ch2);
         if (ch2 < 32 || ch2 > 127) {
           const nextCh = this.peekChar();
           if (nextCh >= 32 && nextCh <= 127) {
             this.nextChar();
-            return Cmd.get(str3);
+            return Cmd.get(str2);
           }
         }
         const knownCommands = this.knownCommands;
-        let knownCommandFound = knownCommands?.[str3] !== void 0;
+        let knownCommandFound = knownCommands?.[str2] !== void 0;
         while ((ch2 = this.nextChar()) >= 0 && !specialChars[ch2]) {
-          const possibleCommand = str3 + String.fromCharCode(ch2);
+          const possibleCommand = str2 + String.fromCharCode(ch2);
           if (knownCommandFound && knownCommands[possibleCommand] === void 0) {
             break;
           }
-          if (str3.length === 128) {
-            throw new FormatError(`Command token too long: ${str3.length}`);
+          if (str2.length === 128) {
+            throw new FormatError(`Command token too long: ${str2.length}`);
           }
-          str3 = possibleCommand;
-          knownCommandFound = knownCommands?.[str3] !== void 0;
+          str2 = possibleCommand;
+          knownCommandFound = knownCommands?.[str2] !== void 0;
         }
-        if (str3 === "true") {
+        if (str2 === "true") {
           return true;
         }
-        if (str3 === "false") {
+        if (str2 === "false") {
           return false;
         }
-        if (str3 === "null") {
+        if (str2 === "null") {
           return null;
         }
-        if (str3 === "BI") {
+        if (str2 === "BI") {
           this.beginInlineImagePos = this.stream.pos;
         }
-        return Cmd.get(str3);
+        return Cmd.get(str2);
       }
       skipToNextLine() {
         let ch2 = this.currentChar;
@@ -27794,11 +37801,11 @@ var init_pdf_worker = __esm({
       getMap() {
         return this.#map.clone();
       }
-      readCharCode(str3, offset, out) {
+      readCharCode(str2, offset, out) {
         let c = 0;
         const codespaceRanges = this.codespaceRanges;
         for (let n = 0, nn = codespaceRanges.length; n < nn; n++) {
-          c = (c << 8 | str3.charCodeAt(offset + n)) >>> 0;
+          c = (c << 8 | str2.charCodeAt(offset + n)) >>> 0;
           const codespaceRange = codespaceRanges[n];
           for (let k = 0, kk = codespaceRange.length; k < kk; ) {
             const low = codespaceRange[k++];
@@ -32962,7 +42969,7 @@ var init_pdf_worker = __esm({
           return NaN;
         }
         function parseFloatOperand() {
-          let str3 = "";
+          let str2 = "";
           const eof = 15;
           const lookup2 = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "E", "E-", null, "-"];
           const length = dict.length;
@@ -32973,13 +42980,13 @@ var init_pdf_worker = __esm({
             if (b1 === eof) {
               break;
             }
-            str3 += lookup2[b1];
+            str2 += lookup2[b1];
             if (b2 === eof) {
               break;
             }
-            str3 += lookup2[b2];
+            str2 += lookup2[b2];
           }
-          return parseFloat(str3);
+          return parseFloat(str2);
         }
         let operands = [];
         const entries = [];
@@ -33596,12 +43603,12 @@ var init_pdf_worker = __esm({
         }
         return index - NUM_STANDARD_CFF_STRINGS <= this.strings.length ? this.strings[index - NUM_STANDARD_CFF_STRINGS] : CFFStandardStrings[0];
       }
-      getSID(str3) {
-        let index = CFFStandardStrings.indexOf(str3);
+      getSID(str2) {
+        let index = CFFStandardStrings.indexOf(str2);
         if (index !== -1) {
           return index;
         }
-        index = this.strings.indexOf(str3);
+        index = this.strings.indexOf(str2);
         return index !== -1 ? index + NUM_STANDARD_CFF_STRINGS : -1;
       }
       add(value) {
@@ -41064,8 +51071,8 @@ var init_pdf_worker = __esm({
               }
               const customNames = [];
               while (font.pos < end) {
-                const strLen = font.getByte(), str3 = font.getString(strLen);
-                customNames.push(str3);
+                const strLen = font.getByte(), str2 = font.getString(strLen);
+                customNames.push(str2);
               }
               glyphNames = [];
               for (i = 0; i < numGlyphs2; ++i) {
@@ -41129,11 +51136,11 @@ var init_pdf_worker = __esm({
             font.pos = pos;
             const nameIndex = record.name;
             if (record.encoding) {
-              let str3 = "";
+              let str2 = "";
               for (let j = 0, jj = record.length; j < jj; j += 2) {
-                str3 += String.fromCharCode(font.getUint16());
+                str2 += String.fromCharCode(font.getUint16());
               }
-              names[1][nameIndex] = str3;
+              names[1][nameIndex] = str2;
             } else {
               names[0][nameIndex] = font.getString(record.length);
             }
@@ -42053,13 +52060,13 @@ var init_pdf_worker = __esm({
       get glyphCacheValues() {
         return this.#glyphCache.values();
       }
-      encodeString(str3) {
+      encodeString(str2) {
         const buffers = [];
         const currentBuf = [];
         const hasCurrentBufErrors = () => buffers.length % 2 === 1;
         const getCharCode = this.toUnicode instanceof IdentityToUnicodeMap ? (unicode) => this.toUnicode.charCodeOf(unicode) : (unicode) => this.toUnicode.charCodeOf(String.fromCodePoint(unicode));
-        for (let i = 0, ii = str3.length; i < ii; i++) {
-          const unicode = str3.codePointAt(i);
+        for (let i = 0, ii = str2.length; i < ii; i++) {
+          const unicode = str2.codePointAt(i);
           if (unicode > 65535) {
             i++;
           }
@@ -49509,19 +59516,19 @@ var init_pdf_worker = __esm({
                   if (typeof item === "string") {
                     showSpacedTextBuffer.push(item);
                   } else if (typeof item === "number" && item !== 0) {
-                    const str3 = showSpacedTextBuffer.join("");
+                    const str2 = showSpacedTextBuffer.join("");
                     showSpacedTextBuffer.length = 0;
                     buildTextContentItem({
-                      chars: str3,
+                      chars: str2,
                       extraSpacing: item * spaceFactor
                     });
                   }
                 }
                 if (showSpacedTextBuffer.length > 0) {
-                  const str3 = showSpacedTextBuffer.join("");
+                  const str2 = showSpacedTextBuffer.join("");
                   showSpacedTextBuffer.length = 0;
                   buildTextContentItem({
-                    chars: str3,
+                    chars: str2,
                     extraSpacing: 0
                   });
                 }
@@ -50013,18 +60020,18 @@ var init_pdf_worker = __esm({
               if (token.length % 2 !== 0) {
                 token = "\0" + token;
               }
-              const str3 = [];
+              const str2 = [];
               for (let k = 0; k < token.length; k += 2) {
                 const w1 = token.charCodeAt(k) << 8 | token.charCodeAt(k + 1);
                 if ((w1 & 63488) !== 55296) {
-                  str3.push(w1);
+                  str2.push(w1);
                   continue;
                 }
                 k += 2;
                 const w2 = token.charCodeAt(k) << 8 | token.charCodeAt(k + 1);
-                str3.push(((w1 & 1023) << 10) + (w2 & 1023) + 65536);
+                str2.push(((w1 & 1023) << 10) + (w2 & 1023) + 65536);
               }
-              map.set(charCode, String.fromCodePoint(...str3));
+              map.set(charCode, String.fromCodePoint(...str2));
             });
             return new ToUnicodeMap(map);
           } catch (reason) {
@@ -51369,8 +61376,8 @@ var init_pdf_worker = __esm({
       }
     };
     DefaultAppearanceEvaluator = class extends EvaluatorPreprocessor {
-      constructor(str3) {
-        super(new StringStream(str3));
+      constructor(str2) {
+        super(new StringStream(str2));
       }
       parse() {
         const operation = {
@@ -52333,7 +62340,7 @@ var init_pdf_worker = __esm({
       }
       _repair(data) {
         return data.replace(/^[^<]+/, "").replaceAll(/>\\376\\377([^<]+)/g, function(all, codes) {
-          const bytes = codes.replaceAll(/\\([0-3])([0-7])([0-7])/g, (_, d1, d2, d3) => String.fromCharCode(d1 * 64 + d2 * 8 + d3 * 1)).replaceAll(/&(amp|apos|gt|lt|quot);/g, function(str3, name) {
+          const bytes = codes.replaceAll(/\\([0-3])([0-7])([0-7])/g, (_, d1, d2, d3) => String.fromCharCode(d1 * 64 + d2 * 8 + d3 * 1)).replaceAll(/&(amp|apos|gt|lt|quot);/g, function(str2, name) {
             switch (name) {
               case "amp":
                 return "&";
@@ -55383,8 +65390,8 @@ var init_pdf_worker = __esm({
         const lastFont = this.fontSelector.topFont();
         this.extraHeight += lastFont.paraMargin.top + lastFont.paraMargin.bottom;
       }
-      addString(str3) {
-        if (!str3) {
+      addString(str2) {
+        if (!str2) {
           return;
         }
         const lastFont = this.fontSelector.topFont();
@@ -55399,7 +65406,7 @@ var init_pdf_worker = __esm({
           const firstLineHeight = Math.max(1, noGap) * fontSize;
           const scale = fontSize / 1e3;
           const fallbackWidth = pdfFont.defaultWidth || pdfFont.charsToGlyphs(" ")[0].width;
-          for (const line of str3.split(/[\u2029\n]/)) {
+          for (const line of str2.split(/[\u2029\n]/)) {
             const encodedLine = pdfFont.encodeString(line).join("");
             const glyphs = pdfFont.charsToGlyphs(encodedLine);
             for (const glyph of glyphs) {
@@ -55411,7 +65418,7 @@ var init_pdf_worker = __esm({
           this.glyphs.pop();
           return;
         }
-        for (const line of str3.split(/[\u2029\n]/)) {
+        for (const line of str2.split(/[\u2029\n]/)) {
           for (const char of line.split("")) {
             this.glyphs.push([fontSize, 1.2 * fontSize, fontSize, char, false]);
           }
@@ -56110,8 +66117,8 @@ var init_pdf_worker = __esm({
         this[$appendChild](child);
         return true;
       }
-      [$onText](str3) {
-        this[$content] += str3;
+      [$onText](str2) {
+        this[$content] += str2;
       }
       [$finalize]() {
         if (this[$content] && this[_children].length > 0) {
@@ -60313,11 +70320,11 @@ var init_pdf_worker = __esm({
         warn(`XFA - Invalid content in Text: ${child[$nodeName]}.`);
         return false;
       }
-      [$onText](str3) {
+      [$onText](str2) {
         if (this[$content] instanceof XFAObject) {
           return;
         }
-        super[$onText](str3);
+        super[$onText](str2);
       }
       [$finalize]() {
         if (typeof this[$content] === "string") {
@@ -63375,17 +73382,17 @@ var init_pdf_worker = __esm({
       [$acceptWhitespace]() {
         return !NoWhites.has(this[$nodeName]);
       }
-      [$onText](str3, richText = false) {
+      [$onText](str2, richText = false) {
         if (!richText) {
-          str3 = str3.replaceAll(crlfRegExp, "");
+          str2 = str2.replaceAll(crlfRegExp, "");
           if (!this.style.includes("xfa-spacerun:yes")) {
-            str3 = str3.replaceAll(spacesRegExp, " ");
+            str2 = str2.replaceAll(spacesRegExp, " ");
           }
         } else {
           this[$richText] = true;
         }
-        if (str3) {
-          this[$content] += str3;
+        if (str2) {
+          this[$content] += str2;
         }
       }
       [$pushGlyphs](measure, mustPop = true) {
@@ -64560,10 +74567,10 @@ var init_pdf_worker = __esm({
         return this.data.quadPoints !== null && this.flags !== 0 && this._isPrintable(this.flags);
       }
       _parseStringHelper(data) {
-        const str3 = typeof data === "string" ? stringToPDFString(data) : "";
-        const dir = str3 && bidi(str3).dir === "rtl" ? "rtl" : "ltr";
+        const str2 = typeof data === "string" ? stringToPDFString(data) : "";
+        const dir = str2 && bidi(str2).dir === "rtl" ? "rtl" : "ltr";
         return {
-          str: str3,
+          str: str2,
           dir
         };
       }
@@ -65301,20 +75308,20 @@ var init_pdf_worker = __esm({
         } else {
           path = `0 0 ${width} ${height} re`;
         }
-        let str3 = "";
+        let str2 = "";
         if (this.backgroundColor) {
-          str3 = `${getPdfColor(this.backgroundColor, true)} ${path} f `;
+          str2 = `${getPdfColor(this.backgroundColor, true)} ${path} f `;
         }
         if (borderWidth > 0) {
-          str3 += `${borderWidth} w ${getPdfColor(this.borderColor, false)} ${path} S `;
+          str2 += `${borderWidth} w ${getPdfColor(this.borderColor, false)} ${path} S `;
         }
-        return str3;
+        return str2;
       }
       async getOperatorList(evaluator, task, intent, annotationStorage) {
         if (intent & RenderingIntentFlag.ANNOTATIONS_FORMS && !(this instanceof SignatureWidgetAnnotation) && !this.data.noHTML && !this.data.hasOwnCanvas) {
-          const list3 = this._getOperatorListNoAppearance();
-          list3.separateForm = true;
-          return list3;
+          const list2 = this._getOperatorListNoAppearance();
+          list2.separateForm = true;
+          return list2;
         }
         if (!this._hasText) {
           return super.getOperatorList(evaluator, task, intent, annotationStorage);
@@ -68243,10 +78250,10 @@ var init_pdf_worker = __esm({
     chunkSize = 512;
     DecryptStream = class extends DecodeStream {
       #nextChunk = null;
-      constructor(str3, maybeLength, decrypt2) {
+      constructor(str2, maybeLength, decrypt2) {
         super(maybeLength);
-        this.stream = str3;
-        this.dict = str3.dict;
+        this.stream = str2;
+        this.dict = str2.dict;
         this.decrypt = decrypt2;
       }
       readBlock() {
@@ -70483,12 +80490,12 @@ var init_pdf_worker = __esm({
             do {
               ch2 = stream.getByte();
             } while (isWhiteSpace(ch2));
-            let str3 = "";
+            let str2 = "";
             while (ch2 >= 32 && ch2 <= 57) {
-              str3 += String.fromCharCode(ch2);
+              str2 += String.fromCharCode(ch2);
               ch2 = stream.getByte();
             }
-            startXRef = parseInt(str3, 10);
+            startXRef = parseInt(str2, 10);
             if (isNaN(startXRef)) {
               startXRef = 0;
             }
@@ -70603,9 +80610,9 @@ var init_pdf_worker = __esm({
             continue;
           }
           try {
-            const str3 = stringToUTF8String(stream.getString());
+            const str2 = stringToUTF8String(stream.getString());
             const data = {
-              [key]: str3
+              [key]: str2
             };
             return util_shadow(this, "xfaDatasets", new DatasetReader(data));
           } catch {
@@ -72324,13 +82331,13 @@ var init_pdf_worker = __esm({
         if (!document2) {
           return [];
         }
-        const compile = (list3) => {
-          if (!list3?.length) {
+        const compile = (list2) => {
+          if (!list2?.length) {
             return null;
           }
           const indices = /* @__PURE__ */ new Set();
           const ranges = [];
-          for (const item of list3) {
+          for (const item of list2) {
             if (Array.isArray(item)) {
               ranges.push(item);
             } else {
@@ -75362,8 +85369,8 @@ function updateUrlHash(url, hash, allowRel = false) {
   }
   return "";
 }
-function stripPath2(str3) {
-  return str3.substring(str3.lastIndexOf("/") + 1);
+function stripPath2(str2) {
+  return str2.substring(str2.lastIndexOf("/") + 1);
 }
 function util_shadow2(obj, prop, value, nonSerializable2 = false) {
   Object.defineProperty(obj, prop, {
@@ -75391,26 +85398,26 @@ function bytesToString2(bytes) {
   }
   return strBuf.join("");
 }
-function stringToBytes2(str3) {
-  if (typeof str3 !== "string") {
+function stringToBytes2(str2) {
+  if (typeof str2 !== "string") {
     unreachable2("Invalid argument for stringToBytes");
   }
-  const length = str3.length;
+  const length = str2.length;
   const bytes = new Uint8Array(length);
   for (let i = 0; i < length; ++i) {
-    bytes[i] = str3.charCodeAt(i) & 255;
+    bytes[i] = str2.charCodeAt(i) & 255;
   }
   return bytes;
 }
-function stringToUTF8String2(str3) {
-  return decodeURIComponent(escape(str3));
+function stringToUTF8String2(str2) {
+  return decodeURIComponent(escape(str2));
 }
-function normalizeUnicode2(str3) {
+function normalizeUnicode2(str2) {
   if (!NormalizeRegex2) {
     NormalizeRegex2 = /([\u00a0\u00b5\u037e\u0eb3\u2000-\u200a\u202f\u2126\ufb00-\ufb04\ufb06\ufb20-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufba1\ufba4-\ufba9\ufbae-\ufbb1\ufbd3-\ufbdc\ufbde-\ufbe7\ufbea-\ufbf8\ufbfc\ufbfd\ufc00-\ufc5d\ufc64-\ufcf1\ufcf5-\ufd3d\ufd88\ufdf4\ufdfa\ufdfb\ufe71\ufe77\ufe79\ufe7b\ufe7d]+)|(\ufb05+)/gu;
     NormalizationMap2 = /* @__PURE__ */ new Map([["\uFB05", "\u017Ft"]]);
   }
-  return str3.replaceAll(NormalizeRegex2, (_, p1, p2) => p1 ? p1.normalize("NFKC") : NormalizationMap2.get(p2));
+  return str2.replaceAll(NormalizeRegex2, (_, p1, p2) => p1 ? p1.normalize("NFKC") : NormalizationMap2.get(p2));
 }
 function getUuid() {
   if (typeof crypto.randomUUID === "function") {
@@ -76434,19 +86441,19 @@ function getImageSmoothingEnabled(transform, interpolate2, pixelRatio) {
 function blend(fg, bg, alpha) {
   return Math.round(alpha * fg + (1 - alpha) * bg);
 }
-function isCSSString2(str3) {
-  const quote = str3[0];
-  if (str3.length < 2 || quote !== `"` && quote !== `'` || str3.at(-1) !== quote) {
+function isCSSString2(str2) {
+  const quote = str2[0];
+  if (str2.length < 2 || quote !== `"` && quote !== `'` || str2.at(-1) !== quote) {
     return false;
   }
-  const end = str3.length - 1;
+  const end = str2.length - 1;
   for (let i = 1; i < end; i++) {
-    const char = str3[i];
+    const char = str2[i];
     if (char === quote || CONTROL_CHAR_REGEXP2.test(char)) {
       return false;
     }
     if (char === "\\") {
-      if (++i >= end || CONTROL_CHAR_REGEXP2.test(str3[i])) {
+      if (++i >= end || CONTROL_CHAR_REGEXP2.test(str2[i])) {
         return false;
       }
     }
@@ -76600,12 +86607,12 @@ function createHeaders(isHttp, httpHeaders) {
   }
   return headers;
 }
-function trimHeadersEnd(str3) {
-  let end = str3.length;
-  while (end > 0 && str3[end - 1] !== " " && /\s/.test(str3[end - 1])) {
+function trimHeadersEnd(str2) {
+  let end = str2.length;
+  while (end > 0 && str2[end - 1] !== " " && /\s/.test(str2[end - 1])) {
     end--;
   }
-  return str3.slice(0, end);
+  return str2.slice(0, end);
 }
 function getResponseOrigin(url) {
   return URL.parse(url)?.origin ?? null;
@@ -77006,7 +87013,7 @@ function percentage(value) {
   return `${(value * 100).toFixed(2)}%`;
 }
 var __webpack_modules__2, __webpack_module_cache__2, a_callable_namespaceFn2, a_possible_prototype_namespaceFn2, a_set_namespaceFn2, a_string_namespaceFn2, a_weak_key_namespaceFn2, a_weak_map_namespaceFn2, add_to_unscopables_namespaceFn2, an_instance_namespaceFn2, an_object_or_undefined_namespaceFn2, an_object_namespaceFn2, an_uint8_array_namespaceFn2, array_buffer_basic_detection_namespaceFn2, array_buffer_byte_length_namespaceFn2, array_buffer_is_detached_namespaceFn2, array_buffer_not_detached_namespaceFn2, array_buffer_view_core_namespaceFn2, array_from_constructor_and_list_namespaceFn2, array_includes_namespaceFn2, array_set_length_namespaceFn2, array_slice_namespaceFn2, base64_map_namespaceFn2, call_with_safe_iteration_closing_namespaceFn2, classof_raw_namespaceFn2, classof_namespaceFn2, copy_constructor_properties_namespaceFn2, correct_prototype_getter_namespaceFn2, create_iter_result_object_namespaceFn2, create_non_enumerable_property_namespaceFn2, create_property_descriptor_namespaceFn2, create_property_namespaceFn2, define_built_in_accessor_namespaceFn2, define_built_in_namespaceFn2, define_built_ins_namespaceFn2, define_global_property_namespaceFn2, descriptors_namespaceFn2, document_create_element_namespaceFn2, does_not_exceed_safe_integer_namespaceFn2, dom_exception_constants_namespaceFn, enum_bug_keys_namespaceFn2, environment_user_agent_namespaceFn2, environment_v8_version_namespaceFn2, error_stack_clear_namespaceFn, export_namespaceFn2, fails_namespaceFn2, function_apply_namespaceFn2, function_bind_context_namespaceFn2, function_bind_native_namespaceFn2, function_call_namespaceFn2, function_name_namespaceFn2, function_uncurry_this_accessor_namespaceFn2, function_uncurry_this_clause_namespaceFn2, function_uncurry_this_namespaceFn2, get_alphabet_option_namespaceFn2, get_built_in_namespaceFn2, get_iterator_direct_namespaceFn2, get_iterator_flattenable_namespaceFn2, get_iterator_internal_namespaceFn2, get_iterator_method_internal_namespaceFn2, get_method_namespaceFn2, get_set_record_namespaceFn2, global_this_namespaceFn2, has_own_property_namespaceFn2, hidden_keys_namespaceFn2, html_namespaceFn2, ie8_dom_define_namespaceFn2, indexed_object_namespaceFn2, inherit_if_required_namespaceFn, inspect_source_namespaceFn2, internal_state_namespaceFn2, is_array_iterator_method_namespaceFn2, is_array_namespaceFn2, is_big_int_array_namespaceFn2, is_callable_namespaceFn2, is_forced_namespaceFn2, is_null_or_undefined_namespaceFn2, is_object_namespaceFn2, is_possible_prototype_namespaceFn2, is_pure_namespaceFn2, is_raw_json_namespaceFn2, is_symbol_namespaceFn2, iterate_simple_namespaceFn2, iterate_namespaceFn2, iterator_cleanup_state_namespaceFn2, iterator_close_all_namespaceFn2, iterator_close_namespaceFn2, iterator_create_proxy_namespaceFn2, iterator_helper_throws_on_invalid_iterator_namespaceFn2, iterator_helper_without_closing_on_early_error_namespaceFn2, iterators_core_namespaceFn2, iterators_namespaceFn2, length_of_array_like_namespaceFn2, make_built_in_namespaceFn2, map_helpers_namespaceFn2, native_raw_json_namespaceFn2, new_promise_capability_namespaceFn2, normalize_string_argument_namespaceFn, not_a_nan_namespaceFn, object_create_namespaceFn2, object_define_properties_namespaceFn2, object_define_property_namespaceFn2, object_get_own_property_descriptor_namespaceFn2, object_get_own_property_names_namespaceFn2, object_get_own_property_symbols_namespaceFn2, object_get_prototype_of_namespaceFn2, object_is_prototype_of_namespaceFn2, object_keys_internal_namespaceFn2, object_keys_namespaceFn2, object_property_is_enumerable_namespaceFn2, object_set_prototype_of_namespaceFn2, ordinary_to_primitive_namespaceFn2, own_keys_namespaceFn2, parse_json_string_namespaceFn2, perform_namespaceFn2, promise_resolve_namespaceFn2, require_object_coercible_namespaceFn2, set_clone_namespaceFn2, set_difference_namespaceFn2, set_helpers_namespaceFn2, set_intersection_namespaceFn2, set_is_disjoint_from_namespaceFn2, set_is_subset_of_namespaceFn2, set_is_superset_of_namespaceFn2, set_iterate_namespaceFn2, set_method_accept_set_like_namespaceFn2, set_method_get_keys_before_cloning_detection_namespaceFn2, set_size_namespaceFn2, set_symmetric_difference_namespaceFn2, set_union_namespaceFn2, shared_key_namespaceFn2, shared_store_namespaceFn2, shared_namespaceFn2, symbol_constructor_detection_namespaceFn2, this_number_value_namespaceFn2, to_absolute_index_namespaceFn2, to_big_int_namespaceFn2, to_indexed_object_namespaceFn2, to_integer_or_infinity_namespaceFn2, to_length_namespaceFn2, to_object_namespaceFn2, to_positive_integer_namespaceFn, to_primitive_namespaceFn2, to_property_key_namespaceFn2, to_string_tag_support_namespaceFn2, to_string_namespaceFn2, try_to_string_namespaceFn2, uid_namespaceFn2, uint8_from_base64_namespaceFn2, uint8_from_hex_namespaceFn2, url_constructor_detection_namespaceFn2, use_symbol_as_uid_namespaceFn2, v8_prototype_define_bug_namespaceFn2, validate_arguments_length_namespaceFn2, weak_map_basic_detection_namespaceFn2, weak_map_helpers_namespaceFn2, well_known_symbol_namespaceFn2, es_array_includes_namespaceFn2, es_array_push_namespaceFn2, es_iterator_constructor_namespaceFn2, es_iterator_drop_namespaceFn, es_iterator_every_namespaceFn2, es_iterator_filter_namespaceFn2, es_iterator_find_namespaceFn2, es_iterator_flat_map_namespaceFn2, es_iterator_for_each_namespaceFn2, es_iterator_map_namespaceFn2, es_iterator_some_namespaceFn2, es_iterator_take_namespaceFn, es_iterator_to_array_namespaceFn2, es_json_parse_namespaceFn, es_json_stringify_namespaceFn2, es_map_get_or_insert_computed_namespaceFn2, es_map_get_or_insert_namespaceFn2, es_math_sum_precise_namespaceFn2, es_promise_try_namespaceFn2, es_set_difference_v2_namespaceFn2, es_set_intersection_v2_namespaceFn2, es_set_is_disjoint_from_v2_namespaceFn2, es_set_is_subset_of_v2_namespaceFn2, es_set_is_superset_of_v2_namespaceFn2, es_set_symmetric_difference_v2_namespaceFn2, es_set_union_v2_namespaceFn2, es_typed_array_with_namespaceFn2, es_uint8_array_from_base64_namespaceFn2, es_uint8_array_set_from_base64_namespaceFn2, es_uint8_array_set_from_hex_namespaceFn2, es_uint8_array_to_base64_namespaceFn2, es_uint8_array_to_hex_namespaceFn2, es_weak_map_get_or_insert_computed_namespaceFn2, es_weak_map_get_or_insert_namespaceFn2, web_dom_exception_stack_namespaceFn, web_url_parse_namespaceFn2, isNodeJS2, BBOX_INIT2, F32_BBOX_INIT2, FONT_IDENTITY_MATRIX2, SVG_NS2, RenderingIntentFlag2, AnnotationMode, AnnotationPrefix2, AnnotationEditorPrefix2, AnnotationEditorType2, AnnotationEditorParamsType, PermissionFlag2, TextRenderingMode2, ImageKind2, AnnotationType2, AnnotationBorderStyleType2, VerbosityLevel2, OPS2, DrawOPS2, PasswordResponses2, verbosity2, BaseException2, PasswordException2, UnknownErrorException2, InvalidPDFException2, ResponseException2, FormatError2, AbortException2, FeatureTest2, Util2, NormalizeRegex2, NormalizationMap2, makeArr2, makeMap2, makeObj2, makeSet2, PixelsPerInch, RenderingCancelledException, OutputScale, contrastCache, PageViewport, XfaText, disallowedRichTextStyleRegExp, disallowedEventHandlerAttrRegExp, XfaLayer, PDFDateString, SupportedImageMimeTypes, ColorScheme, CSSConstants, EditorToolbar, FloatingToolbar, INTERNAL_EVT, internalOpt, CurrentPointers, IdManager, ImageManager, CommandManager, KeyboardManager, ColorManager, AnnotationEditorUIManager, AltText, Comment, MIN_TOUCH_SPAN, TouchManager, AnnotationEditor, FakeEditor, SEED2, MASK_HIGH2, MASK_LOW2, MurmurHash3_642, SerializableEmpty, AnnotationStorage, PrintAnnotationStorage, isRefProxy, isNameProxy, isValidExplicitDest2, LoopbackPort, StatTimer, MESH_WGSL, WebGPU, _webGPU, CallbackKind2, StreamKind2, MessageHandler2, BaseBinaryDataFactory, DOMBinaryDataFactory, BaseCanvasFactory, BaseFilterFactory, NodeFilterFactory, NodeCanvasFactory, NodeBinaryDataFactory, FORCED_DEPENDENCY_LABEL, canvas_dependency_tracker_floor, ceil, EMPTY_BBOX, BBoxReader, ensureDebugMetadata, CanvasBBoxTracker, CanvasDependencyTracker, CanvasNestedDependencyTracker, Dependencies, CanvasImagesTracker, PathType, BaseShadingPattern, RadialAxialShadingPattern, MeshShadingPattern, DummyShadingPattern, PaintType, TilingPattern, MIN_FONT_SIZE, MAX_FONT_SIZE, EXECUTION_TIME, EXECUTION_STEPS, FULL_CHUNK_HEIGHT, XY, CanvasExtraState, TransferMapsFallback, LINE_CAP_STYLES, LINE_JOIN_STYLES, NORMAL_CLIP, EO_CLIP, CanvasGraphics, DOMCanvasFactory, DOMFilterFactory, CONTROL_CHAR_REGEXP2, FontLoader, FontFaceObject, BasePDFStream2, BasePDFStreamReader2, BasePDFStreamRangeReader2, PDFFetchStream, PDFFetchStreamReader, PDFFetchStreamRangeReader, PDFDataTransportStream, PDFDataTransportStreamReader, PDFDataTransportStreamRangeReader, OK_RESPONSE, PARTIAL_CONTENT_RESPONSE, PDFNetworkStream, PDFNetworkStreamReader, PDFNetworkStreamRangeReader, PDFNodeStream, PDFNodeStreamReader, PDFNodeStreamRangeReader, GlobalWorkerOptions, Metadata, CSS_FONT_INFO2, SYSTEM_FONT_INFO2, FONT_INFO2, PATTERN_INFO2, InfoUtils2, CssFontInfo, SystemFontInfo, FontInfo2, PatternInfo, FontPathInfo, INITIAL_DATA, dataObj, PDFObjects, ObjectHandler, INTERNAL, OptionalContentGroup, OptionalContentConfig, PagesMapper, PORT_CONNECTION_TIMEOUT, WorkerRenderTask, RendererWorker, MAX_TEXT_DIVS_TO_RENDER, DEFAULT_FONT_SIZE, TextLayer, RENDERING_CANCELLED_TIMEOUT, PDFDocumentLoadingTask, PDFDataRangeTransport, PDFDocumentProxy, PDFPageProxy, PDFWorker, WorkerTransport, RenderTask, InternalRenderTask, api_version, build, ColorPicker, BasicColorPicker, ColorConverters, BaseSVGFactory, DOMSVGFactory, annotation_layer_DEFAULT_FONT_SIZE, GetElementsByNameSet, TIMEZONE_OFFSET, AnnotationElementFactory, AnnotationElement, EditorAnnotationElement, LinkAnnotationElement, TextAnnotationElement, WidgetAnnotationElement, TextWidgetAnnotationElement, SignatureWidgetAnnotationElement, CheckboxWidgetAnnotationElement, RadioButtonWidgetAnnotationElement, PushButtonWidgetAnnotationElement, ChoiceWidgetAnnotationElement, PopupAnnotationElement, PopupElement, FreeTextAnnotationElement, LineAnnotationElement, SquareAnnotationElement, CircleAnnotationElement, PolylineAnnotationElement, PolygonAnnotationElement, CaretAnnotationElement, InkAnnotationElement, HighlightAnnotationElement, UnderlineAnnotationElement, SquigglyAnnotationElement, StrikeOutAnnotationElement, StampAnnotationElement, FileAttachmentAnnotationElement, MediaAnnotationElement, AnnotationLayer, EOL_PATTERN, FreeTextEditor, DrawingOptions, DrawingEditor, Outline, FreeDrawOutliner, FreeDrawOutline, HighlightOutliner, HighlightOutline, FreeHighlightOutliner, FreeHighlightDrawer, FreeHighlightOutline, HighlightDrawingOptions, HighlightEditor, InputSmoother, InkDrawOutliner, InkDrawOutline, InkDrawingOptions, InkEditor, ContourDrawOutline, BASE_HEADER_LENGTH, POINTS_PROPERTIES_NUMBER, SignatureExtractor, SignatureOptions, DrawnSignatureOptions, SignatureEditor, StampEditor, AnnotationEditorLayer, DrawLayer, TextLayerImages;
-var init_pdf = __esm({
+var init_pdf2 = __esm({
   "../node_modules/.pnpm/pdfjs-dist@6.5.438/node_modules/pdfjs-dist/legacy/build/pdf.mjs"() {
     __webpack_modules__2 = {
       /***/
@@ -77565,11 +87572,11 @@ var init_pdf = __esm({
     });
     array_from_constructor_and_list_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var lengthOfArrayLike = length_of_array_like_namespaceFn2();
-      module.exports = function(Constructor, list3, $length) {
+      module.exports = function(Constructor, list2, $length) {
         var index = 0;
-        var length = arguments.length > 2 ? $length : lengthOfArrayLike(list3);
+        var length = arguments.length > 2 ? $length : lengthOfArrayLike(list2);
         var result = new Constructor(length);
-        while (length > index) result[index] = list3[index++];
+        while (length > index) result[index] = list2[index++];
         return result;
       };
     });
@@ -78608,7 +88615,7 @@ var init_pdf = __esm({
       var defineProperty = Object.defineProperty;
       var stringSlice = uncurryThis("".slice);
       var replace = uncurryThis("".replace);
-      var join8 = uncurryThis([].join);
+      var join7 = uncurryThis([].join);
       var CONFIGURABLE_LENGTH = DESCRIPTORS && !fails(function() {
         return defineProperty(function() {
         }, "length", { value: 8 }).length !== 8;
@@ -78635,7 +88642,7 @@ var init_pdf = __esm({
         }
         var state = enforceInternalState(value);
         if (!hasOwn(state, "source")) {
-          state.source = join8(TEMPLATE, typeof name == "string" ? name : "");
+          state.source = join7(TEMPLATE, typeof name == "string" ? name : "");
         }
         return value;
       };
@@ -80364,7 +90371,7 @@ var init_pdf = __esm({
         return 1 / nativeParse("-0 	") !== -Infinity;
       });
       $({ target: "JSON", stat: true, forced: NO_SOURCE_SUPPORT }, {
-        parse: function parse2(text2, reviver) {
+        parse: function parse(text2, reviver) {
           return PROPER_BASE_PARSE && !isCallable(reviver) ? nativeParse(text2) : $parse(text2, reviver);
         }
       });
@@ -81016,7 +91023,7 @@ var init_pdf = __esm({
       var charAt = uncurryThis("".charAt);
       var Uint8Array2 = globalThis2.Uint8Array;
       var $Array = globalThis2.Array;
-      var join8 = uncurryThis([].join);
+      var join7 = uncurryThis([].join);
       var INCORRECT_BEHAVIOR_OR_DOESNT_EXISTS = !Uint8Array2 || !Uint8Array2.prototype.toBase64 || !(function() {
         try {
           var target = new Uint8Array2();
@@ -81062,7 +91069,7 @@ var init_pdf = __esm({
               result[written++] = "=";
             }
           }
-          return join8(result, "");
+          return join7(result, "");
         }
       });
     });
@@ -81073,7 +91080,7 @@ var init_pdf = __esm({
       var anUint8Array = an_uint8_array_namespaceFn2();
       var notDetached = array_buffer_not_detached_namespaceFn2();
       var numberToString = uncurryThis(1.1.toString);
-      var join8 = uncurryThis([].join);
+      var join7 = uncurryThis([].join);
       var $Array = Array;
       var Uint8Array2 = globalThis2.Uint8Array;
       var INCORRECT_BEHAVIOR_OR_DOESNT_EXISTS = !Uint8Array2 || !Uint8Array2.prototype.toHex || !(function() {
@@ -81093,7 +91100,7 @@ var init_pdf = __esm({
             var hex = numberToString(this[i], 16);
             result[i] = hex.length === 1 ? "0" + hex : hex;
           }
-          return join8(result, "");
+          return join7(result, "");
         }
       });
     });
@@ -81205,7 +91212,7 @@ var init_pdf = __esm({
       var USE_NATIVE_URL = url_constructor_detection_namespaceFn2();
       var URL2 = getBuiltIn("URL");
       $({ target: "URL", stat: true, forced: !USE_NATIVE_URL }, {
-        parse: function parse2(url) {
+        parse: function parse(url) {
           var length = validateArgumentsLength(arguments.length, 1);
           var urlString = toString(url);
           var base = length < 2 || arguments[1] === void 0 ? void 0 : toString(arguments[1]);
@@ -81944,20 +91951,20 @@ var init_pdf = __esm({
           if (!node) {
             return;
           }
-          let str3 = null;
+          let str2 = null;
           const name = node.name;
           if (name === "#text") {
-            str3 = node.value;
+            str2 = node.value;
           } else if (!_XfaText.shouldBuildText(name)) {
             return;
           } else if (node?.attributes?.textContent) {
-            str3 = node.attributes.textContent;
+            str2 = node.attributes.textContent;
           } else if (node.value) {
-            str3 = node.value;
+            str2 = node.value;
           }
-          if (str3 !== null) {
+          if (str2 !== null) {
             items.push({
-              str: str3
+              str: str2
             });
           }
           if (!node.children) {
@@ -86745,7 +96752,7 @@ var init_pdf = __esm({
       getData() {
         const {
           comment: {
-            text: str3,
+            text: str2,
             color,
             date,
             opacity,
@@ -86763,7 +96770,7 @@ var init_pdf = __esm({
           rect: this.getPDFRect(),
           richText,
           contentsObj: {
-            str: str3
+            str: str2
           },
           creationDate,
           modificationDate: date || modificationDate,
@@ -108279,9400 +118286,9 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   }
 });
 
-// src/index.ts
-import { appendFileSync, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname as dirname6, join as join7, relative as relative8, resolve as resolve4 } from "node:path";
-
-// ../packages/core/src/bib/cited.ts
-function unescapeXml(s) {
-  return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
-}
-function* auxKeys(text2) {
-  const re = /\\citation\{([^}]*)\}|\\abx@aux@cite\{([^}]*)\}(?:\{([^}]*)\})?/g;
-  for (const m of text2.matchAll(re)) {
-    if (m[1] !== void 0) yield* m[1].split(",");
-    else yield m[3] ?? m[2];
-  }
-}
-function* bcfKeys(text2) {
-  for (const m of text2.matchAll(/<bcf:citekey\b[^>]*>([^<]*)<\/bcf:citekey>/g)) {
-    yield unescapeXml(m[1]);
-  }
-}
-function citedKeys(auxOrBcf) {
-  const isBcf = /<bcf:citekey\b/.test(auxOrBcf);
-  const seen = /* @__PURE__ */ new Set();
-  for (const raw of isBcf ? bcfKeys(auxOrBcf) : auxKeys(auxOrBcf)) {
-    const key = raw.trim();
-    if (key && key !== "*") seen.add(key);
-  }
-  return [...seen];
-}
-function citesAll(auxOrBcf) {
-  const isBcf = /<bcf:citekey\b/.test(auxOrBcf);
-  for (const raw of isBcf ? bcfKeys(auxOrBcf) : auxKeys(auxOrBcf)) {
-    if (raw.trim() === "*") return true;
-  }
-  return false;
-}
-
-// ../packages/core/src/bib/tex.ts
-var SYMBOL_ACCENTS = {
-  "`": "\u0300",
-  "'": "\u0301",
-  "^": "\u0302",
-  "~": "\u0303",
-  "=": "\u0304",
-  ".": "\u0307",
-  '"': "\u0308"
-};
-var LETTER_ACCENTS = {
-  u: "\u0306",
-  v: "\u030C",
-  H: "\u030B",
-  c: "\u0327",
-  k: "\u0328",
-  r: "\u030A",
-  d: "\u0323",
-  b: "\u0331",
-  t: "\u0361"
-};
-var SPECIAL_LETTERS = {
-  ss: "\xDF",
-  o: "\xF8",
-  O: "\xD8",
-  ae: "\xE6",
-  AE: "\xC6",
-  oe: "\u0153",
-  OE: "\u0152",
-  aa: "\xE5",
-  AA: "\xC5",
-  l: "\u0142",
-  L: "\u0141",
-  i: "i",
-  j: "j",
-  dh: "\xF0",
-  DH: "\xD0",
-  th: "\xFE",
-  TH: "\xDE",
-  ng: "\u014B",
-  NG: "\u014A"
-};
-var NAMED_SYMBOLS = {
-  textendash: "\u2013",
-  textemdash: "\u2014",
-  textquoteright: "\u2019",
-  textquoteleft: "\u2018",
-  textquotedblleft: "\u201C",
-  textquotedblright: "\u201D",
-  ldots: "\u2026",
-  dots: "\u2026",
-  textellipsis: "\u2026",
-  textregistered: "\xAE",
-  texttrademark: "\u2122",
-  copyright: "\xA9",
-  textcopyright: "\xA9",
-  S: "\xA7",
-  P: "\xB6",
-  textasciitilde: "~",
-  textbackslash: "\\",
-  textunderscore: "_",
-  times: "\xD7",
-  pm: "\xB1",
-  infty: "\u221E",
-  to: "\u2192",
-  rightarrow: "\u2192",
-  leq: "\u2264",
-  le: "\u2264",
-  geq: "\u2265",
-  ge: "\u2265",
-  neq: "\u2260",
-  approx: "\u2248",
-  cdot: "\xB7",
-  ell: "\u2113",
-  // Spacing commands become a space.
-  quad: " ",
-  qquad: " ",
-  ",": " ",
-  ";": " ",
-  " ": " "
-};
-var GREEK = [
-  "alpha",
-  "beta",
-  "gamma",
-  "delta",
-  "epsilon",
-  "varepsilon",
-  "zeta",
-  "eta",
-  "theta",
-  "vartheta",
-  "iota",
-  "kappa",
-  "lambda",
-  "mu",
-  "nu",
-  "xi",
-  "pi",
-  "varpi",
-  "rho",
-  "varrho",
-  "sigma",
-  "varsigma",
-  "tau",
-  "upsilon",
-  "phi",
-  "varphi",
-  "chi",
-  "psi",
-  "omega",
-  "Gamma",
-  "Delta",
-  "Theta",
-  "Lambda",
-  "Xi",
-  "Pi",
-  "Sigma",
-  "Upsilon",
-  "Phi",
-  "Psi",
-  "Omega"
-];
-var GREEK_CHARS = "\u03B1\u03B2\u03B3\u03B4\u03B5\u03B5\u03B6\u03B7\u03B8\u03D1\u03B9\u03BA\u03BB\u03BC\u03BD\u03BE\u03C0\u03D6\u03C1\u03F1\u03C3\u03C2\u03C4\u03C5\u03C6\u03D5\u03C7\u03C8\u03C9\u0393\u0394\u0398\u039B\u039E\u03A0\u03A3\u03A5\u03A6\u03A8\u03A9";
-var GREEK_MAP = Object.fromEntries(
-  GREEK.map((name, i) => [name, [...GREEK_CHARS][i]])
-);
-var MATH_OPERATORS = /* @__PURE__ */ new Set([
-  "log",
-  "ln",
-  "exp",
-  "sin",
-  "cos",
-  "tan",
-  "lim",
-  "max",
-  "min",
-  "sup",
-  "inf",
-  "det",
-  "dim",
-  "ker",
-  "deg",
-  "gcd",
-  "Pr"
-]);
-var ESCAPES = {
-  "{": "\uE000",
-  "}": "\uE001",
-  $: "\uE002",
-  "&": "&",
-  "%": "%",
-  "#": "#",
-  _: "_"
-};
-var RESTORE = { "\uE000": "{", "\uE001": "}", "\uE002": "$" };
-function accent(base, mark) {
-  const letter = base === "\\i" ? "i" : base === "\\j" ? "j" : base;
-  return (letter + mark).normalize("NFC");
-}
-function replaceAccents(s) {
-  const symbol = /\\([`'^"~=.])\s*(?:\{\s*(\\[ij]|[A-Za-z])\s*\}|(\\[ij])(?![A-Za-z])|([A-Za-z]))/g;
-  const letter = /\\([uvHckrdbt])(?:\s*\{\s*(\\[ij]|[A-Za-z])\s*\}|\s+(\\[ij](?![A-Za-z])|[A-Za-z]))/g;
-  return s.replace(
-    symbol,
-    (_m, cmd, a, b, c) => accent(a ?? b ?? c, SYMBOL_ACCENTS[cmd])
-  ).replace(
-    letter,
-    (_m, cmd, a, b) => accent(a ?? b, LETTER_ACCENTS[cmd])
-  );
-}
-var LOGOS = {
-  TeX: "TeX",
-  LaTeX: "LaTeX",
-  LaTeXe: "LaTeX2\u03B5",
-  BibTeX: "BibTeX",
-  BibLaTeX: "BibLaTeX",
-  XeTeX: "XeTeX",
-  XeLaTeX: "XeLaTeX",
-  LuaTeX: "LuaTeX",
-  LuaLaTeX: "LuaLaTeX",
-  pdfTeX: "pdfTeX",
-  pdfLaTeX: "pdfLaTeX",
-  eTeX: "eTeX",
-  ConTeXt: "ConTeXt",
-  AmS: "AMS",
-  AMS: "AMS",
-  AmSTeX: "AMS-TeX",
-  AMSTeX: "AMS-TeX",
-  AmSLaTeX: "AMS-LaTeX",
-  SliTeX: "SliTeX",
-  METAFONT: "METAFONT",
-  MF: "METAFONT",
-  MP: "MetaPost",
-  MetaPost: "MetaPost"
-};
-function replaceCommands(s) {
-  return s.replace(
-    /\\([A-Za-z]+|[,; ])\*?(\{\})?( ?)/g,
-    (_m, name, empty, space = "") => {
-      if (name in LOGOS) return LOGOS[name] + (empty ? space : "");
-      const keep = (text2) => text2 + space;
-      if (name in SPECIAL_LETTERS) return keep(SPECIAL_LETTERS[name]);
-      if (name in GREEK_MAP) return keep(GREEK_MAP[name]);
-      if (name in NAMED_SYMBOLS) return keep(NAMED_SYMBOLS[name]);
-      if (MATH_OPERATORS.has(name)) return keep(name);
-      return space;
-    }
-  );
-}
-function texToPlain(s) {
-  let out = s.replace(/\\([{}$&%#_])/g, (_m, c) => ESCAPES[c]);
-  out = out.replace(/\\\\/g, " ");
-  out = replaceAccents(out);
-  out = replaceCommands(out);
-  out = out.replace(/---/g, "\u2014").replace(/--/g, "\u2013").replace(/``|''/g, '"').replace(/~/g, " ").replace(/[{}$]/g, "").replace(/[-]/g, (c) => RESTORE[c]);
-  return out.replace(/\s+/g, " ").trim().normalize("NFC");
-}
-
-// ../packages/core/src/bib/names.ts
-function splitTopLevel(s, sep4) {
-  const sticky = new RegExp(sep4.source.replace(/^\^/, ""), `${sep4.flags.replace(/[gy]/g, "")}y`);
-  const leadingSpace = /^\^?\\s/.test(sep4.source);
-  const parts = [];
-  let depth = 0;
-  let last = 0;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (c === "{") depth++;
-    else if (c === "}") depth--;
-    else if (depth === 0) {
-      if (leadingSpace && i > 0 && /\s/.test(s[i - 1] ?? "") && /\s/.test(c ?? "")) continue;
-      sticky.lastIndex = i;
-      const m = sticky.exec(s);
-      if (m) {
-        parts.push(s.slice(last, i));
-        i += m[0].length - 1;
-        last = i + 1;
-      }
-    }
-  }
-  parts.push(s.slice(last));
-  return parts.map((p) => p.trim()).filter(Boolean);
-}
-function parseOne(raw) {
-  const trimmed = raw.trim();
-  if (/^\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}$/.test(trimmed)) {
-    return { family: texToPlain(trimmed), given: "", corporate: true };
-  }
-  const commaParts = splitTopLevel(trimmed, /^,/);
-  if (commaParts.length >= 2) {
-    return {
-      family: texToPlain(commaParts[0]),
-      given: texToPlain(commaParts[commaParts.length - 1]),
-      corporate: false
-    };
-  }
-  const words2 = splitTopLevel(trimmed, /^\s+/);
-  if (words2.length <= 1) return { family: texToPlain(trimmed), given: "", corporate: false };
-  let split = words2.length - 1;
-  for (let i = 1; i < words2.length - 1; i++) {
-    if (/^[a-z]/.test(words2[i])) {
-      split = i;
-      break;
-    }
-  }
-  return {
-    family: texToPlain(words2.slice(split).join(" ")),
-    given: texToPlain(words2.slice(0, split).join(" ")),
-    corporate: false
-  };
-}
-function parseNames(field) {
-  if (!field) return [];
-  return splitTopLevel(field, /^\s+and\s+/i).filter((n) => n.toLowerCase() !== "others").map(parseOne);
-}
-
-// ../packages/core/src/bib/parse.ts
-var MONTHS = {
-  jan: "January",
-  feb: "February",
-  mar: "March",
-  apr: "April",
-  may: "May",
-  jun: "June",
-  jul: "July",
-  aug: "August",
-  sep: "September",
-  oct: "October",
-  nov: "November",
-  dec: "December"
-};
-var ParseError = class extends Error {
-  pos;
-  constructor(message, pos) {
-    super(message);
-    this.pos = pos;
-  }
-};
-var Parser = class {
-  pos = 0;
-  entryStart = 0;
-  lineStarts = [0];
-  macros = { ...MONTHS };
-  entries = [];
-  issues = [];
-  seenKeys = /* @__PURE__ */ new Map();
-  text;
-  constructor(text2) {
-    this.text = text2;
-    for (let i = 0; i < text2.length; i++) if (text2[i] === "\n") this.lineStarts.push(i + 1);
-  }
-  lineOf(pos) {
-    let lo = 0;
-    let hi = this.lineStarts.length - 1;
-    while (lo < hi) {
-      const mid = lo + hi + 1 >> 1;
-      if (this.lineStarts[mid] <= pos) lo = mid;
-      else hi = mid - 1;
-    }
-    return lo + 1;
-  }
-  run() {
-    while (this.skipToAt()) {
-      const start = this.pos;
-      try {
-        this.parseItem(start);
-      } catch (err) {
-        const message = err instanceof ParseError ? err.message : String(err);
-        const at = err instanceof ParseError ? err.pos : start;
-        this.issues.push({ line: this.lineOf(at), message, ...this.keyHint(start) });
-        this.pos = this.resyncFrom(start + 1);
-      }
-    }
-  }
-  /** Outside entries everything is a comment; `%` lines are skipped so `% @article{…` stays inert. */
-  skipToAt() {
-    const t = this.text;
-    while (this.pos < t.length) {
-      const c = t[this.pos];
-      if (c === "@") return true;
-      if (c === "%") {
-        const nl = t.indexOf("\n", this.pos);
-        this.pos = nl < 0 ? t.length : nl + 1;
-      } else this.pos++;
-    }
-    return false;
-  }
-  /** Next `@` at the start of a line (after optional indentation). */
-  resyncFrom(from) {
-    const re = /(^|\n)[ \t]*@/g;
-    re.lastIndex = from;
-    let m = re.exec(this.text);
-    while (m && m.index + m[0].length - 1 < from) m = re.exec(this.text);
-    return m ? m.index + m[0].length - 1 : this.text.length;
-  }
-  keyHint(start) {
-    const m = /^@\s*[A-Za-z]+\s*[{(]\s*([^\s,{}()=]+)\s*,/.exec(
-      this.text.slice(start, start + 300)
-    );
-    return m?.[1] ? { key: m[1] } : {};
-  }
-  parseItem(start) {
-    this.entryStart = start;
-    this.pos++;
-    this.skipWs();
-    const type = this.readWhile(/[A-Za-z_-]/).toLowerCase();
-    if (!type) throw new ParseError("expected an entry type after `@`", this.pos);
-    this.skipWs();
-    if (type === "comment") {
-      this.skipComment();
-      return;
-    }
-    const open = this.text[this.pos];
-    if (open !== "{" && open !== "(") {
-      throw new ParseError(`expected \`{\` after \`@${type}\``, this.pos);
-    }
-    const close = open === "{" ? "}" : ")";
-    this.pos++;
-    if (type === "preamble") {
-      this.parseValue(close);
-      this.expectClose(close, start);
-    } else if (type === "string") {
-      this.parseString(close, start);
-    } else {
-      this.parseEntry(type, close, start);
-    }
-  }
-  skipComment() {
-    const open = this.text[this.pos];
-    if (open === "{" || open === "(") {
-      const close = open === "{" ? "}" : ")";
-      let depth = 0;
-      for (; this.pos < this.text.length; this.pos++) {
-        const c = this.text[this.pos];
-        if (c === open) depth++;
-        else if (c === close && --depth === 0) {
-          this.pos++;
-          return;
-        }
-      }
-      return;
-    }
-    const nl = this.text.indexOf("\n", this.pos);
-    this.pos = nl < 0 ? this.text.length : nl + 1;
-  }
-  parseString(close, start) {
-    this.skipWsAndComments();
-    const name = this.readWhile(/[^\s=#{}(),"]/).toLowerCase();
-    if (!name) throw new ParseError("expected a macro name in `@string`", this.pos);
-    this.skipWsAndComments();
-    if (this.text[this.pos] !== "=") throw new ParseError("expected `=` in `@string`", this.pos);
-    this.pos++;
-    this.macros[name] = this.parseValue(close);
-    this.expectClose(close, start);
-  }
-  parseEntry(type, close, start) {
-    this.skipWs();
-    const key = this.readWhile(close === "}" ? /[^\s,{}]/ : /[^\s,()]/);
-    if (!key) throw new ParseError(`\`@${type}\` entry has no citation key`, this.pos);
-    const fields = {};
-    this.skipWsAndComments();
-    while (this.text[this.pos] === ",") {
-      this.pos++;
-      this.skipWsAndComments();
-      if (this.text[this.pos] === close) break;
-      this.parseField(key, fields, close);
-      this.skipWsAndComments();
-    }
-    this.expectClose(close, start, key);
-    this.addEntry({
-      key,
-      type,
-      fields,
-      line: this.lineOf(start),
-      raw: this.text.slice(start, this.pos)
-    });
-  }
-  parseField(key, fields, close) {
-    const at = this.pos;
-    const name = this.readWhile(/[^\s=,{}()"#%@]/).toLowerCase();
-    if (!name && this.text[this.pos] === "@") {
-      throw new ParseError(
-        `\`${key}\` is not closed (missing \`${close}\` before the next entry)`,
-        this.entryStart
-      );
-    }
-    if (!name) {
-      throw new ParseError(
-        `unexpected \`${this.text[this.pos] ?? "end of file"}\` in \`${key}\``,
-        at
-      );
-    }
-    this.skipWsAndComments();
-    if (this.text[this.pos] !== "=") {
-      throw new ParseError(`field \`${name}\` in \`${key}\` has no \`=\` (missing comma?)`, at);
-    }
-    this.pos++;
-    const value = this.parseValue(close).trim();
-    if (name in fields) {
-      this.issues.push({
-        line: this.lineOf(at),
-        key,
-        message: `duplicate field \`${name}\` in \`${key}\`; the first one is used`
-      });
-      return;
-    }
-    fields[name] = value;
-  }
-  addEntry(entry) {
-    const folded = entry.key.toLowerCase();
-    const previous = this.seenKeys.get(folded);
-    if (previous !== void 0) {
-      this.issues.push({
-        line: entry.line,
-        key: entry.key,
-        message: `duplicate key \`${entry.key}\` (first defined on line ${previous}); this entry is ignored`
-      });
-      return;
-    }
-    this.seenKeys.set(folded, entry.line);
-    this.entries.push(entry);
-  }
-  /** value := part ('#' part)*, part := {…} | "…" | digits | macro */
-  parseValue(close) {
-    let out = "";
-    for (; ; ) {
-      this.skipWsAndComments();
-      out += this.parsePart(close);
-      this.skipWsAndComments();
-      if (this.text[this.pos] !== "#") break;
-      this.pos++;
-    }
-    return out.replace(/\s+/g, " ");
-  }
-  parsePart(close) {
-    const c = this.text[this.pos];
-    if (c === "{") return this.readBraced();
-    if (c === '"') return this.readQuoted();
-    const word = this.readWhile(close === "}" ? /[^\s,#{}"%=]/ : /[^\s,#{}()"%=]/);
-    if (!word) {
-      throw new ParseError(`expected a value, found \`${c ?? "end of file"}\``, this.pos);
-    }
-    if (/^\d+$/.test(word)) return word;
-    const macro = this.macros[word.toLowerCase()];
-    if (macro === void 0) {
-      this.issues.push({
-        line: this.lineOf(this.pos),
-        message: `undefined macro \`${word}\` (kept as text)`
-      });
-      return word;
-    }
-    return macro;
-  }
-  readBraced() {
-    const start = this.pos + 1;
-    let depth = 0;
-    for (; this.pos < this.text.length; this.pos++) {
-      const c = this.text[this.pos];
-      if (c === "\\") {
-        this.pos++;
-        continue;
-      }
-      if (c === "{") depth++;
-      else if (c === "}" && --depth === 0) {
-        this.pos++;
-        return this.text.slice(start, this.pos - 1);
-      }
-    }
-    throw new ParseError("unbalanced braces in field value", start - 1);
-  }
-  readQuoted() {
-    const start = this.pos + 1;
-    let depth = 0;
-    for (this.pos = start; this.pos < this.text.length; this.pos++) {
-      const c = this.text[this.pos];
-      if (c === "\\") {
-        this.pos++;
-        continue;
-      }
-      if (c === "{") depth++;
-      else if (c === "}") depth--;
-      else if (c === '"' && depth === 0) {
-        this.pos++;
-        return this.text.slice(start, this.pos - 1);
-      }
-    }
-    throw new ParseError("unterminated quoted field value", start - 1);
-  }
-  expectClose(close, start, key) {
-    this.skipWsAndComments();
-    if (this.text[this.pos] === close) {
-      this.pos++;
-      return;
-    }
-    const what = key ? `\`${key}\`` : "entry";
-    if (this.pos >= this.text.length || this.text[this.pos] === "@") {
-      throw new ParseError(`${what} is not closed (missing \`${close}\`)`, start);
-    }
-    throw new ParseError(
-      `unexpected \`${this.text[this.pos]}\` in ${what} (missing comma or \`${close}\`?)`,
-      this.pos
-    );
-  }
-  readWhile(re) {
-    const start = this.pos;
-    while (this.pos < this.text.length && re.test(this.text[this.pos])) this.pos++;
-    return this.text.slice(start, this.pos);
-  }
-  skipWs() {
-    while (this.pos < this.text.length && /\s/.test(this.text[this.pos])) this.pos++;
-  }
-  skipWsAndComments() {
-    for (; ; ) {
-      this.skipWs();
-      if (this.text[this.pos] !== "%") return;
-      const nl = this.text.indexOf("\n", this.pos);
-      this.pos = nl < 0 ? this.text.length : nl + 1;
-    }
-  }
-};
-function parseBibWithIssues(text2) {
-  const parser = new Parser(text2);
-  parser.run();
-  return { entries: parser.entries, issues: parser.issues };
-}
-function parseBib(text2) {
-  return parseBibWithIssues(text2).entries;
-}
-
-// ../packages/core/src/types.ts
-var CHECK_IDS = ["build", "output", "references", "accessibility", "venue"];
-function statusOf(problems) {
-  if (problems.some((p) => p.severity === "error")) return "fail";
-  if (problems.some((p) => p.severity === "warning")) return "warn";
-  return "pass";
-}
-function reportStatus(checks) {
-  if (checks.length > 0 && checks.every((c) => c.status === "skipped")) return "skipped";
-  if (checks.some((c) => c.status === "fail")) return "fail";
-  if (checks.some((c) => c.status === "warn")) return "warn";
-  return "pass";
-}
-
-// ../packages/core/src/log/explain-data.ts
-var SIMPLE_EXPLANATIONS = {
-  lonelyItem: {
-    rule: "lonely-item",
-    message: "`\\item` is used outside a list",
-    detail: "`\\item` only works inside `itemize`, `enumerate` or `description`.",
-    fix: "Wrap the items in `\\begin{itemize}` \u2026 `\\end{itemize}` (or `enumerate`)."
-  },
-  missingItem: {
-    rule: "missing-item",
-    message: "LaTeX expected `\\item` here",
-    detail: "Common causes: text inside a list before the first `\\item`, `\\\\` at the start of a paragraph, or an empty `thebibliography`.",
-    fix: "Start each list entry with `\\item`, move text before `\\begin{itemize}`, and remove `\\\\` after blank lines."
-  },
-  noLineToEnd: {
-    rule: "no-line-to-end",
-    message: "`\\\\` is used where there is no line to end",
-    detail: "`\\\\` ends a line inside a paragraph; after a blank line, at the start of a paragraph or after a list there is no line yet.",
-    fix: "Remove the `\\\\`. Use a blank line for a new paragraph and `\\vspace{\u2026}` for vertical space."
-  },
-  invalidUtf8: {
-    rule: "unicode-character",
-    message: "A source file is not saved as UTF-8",
-    detail: "LaTeX expects UTF-8 input, but the file contains bytes from another encoding (often Latin-1 or Windows-1252).",
-    fix: "Re-save the file as UTF-8 in your editor (or convert it with `iconv -f latin1 -t utf-8`)."
-  },
-  notInOuterParMode: {
-    rule: "not-in-outer-par-mode",
-    message: "A float or margin note is inside a box",
-    detail: "`figure`, `table` and `\\marginpar` cannot be placed inside a `minipage`, `\\parbox`, table cell, another float, or similar box.",
-    fix: "Move the float outside the box. Inside a minipage, drop the `figure` environment and use `\\captionof{figure}{\u2026}` (caption package)."
-  },
-  dimensionTooLarge: {
-    rule: "dimension-too-large",
-    message: "A length is larger than TeX allows (about 5.75 m / 16383pt)",
-    detail: "Common causes: a typo in a length (`20000pt`), a pgfplots axis with huge coordinates, or scaling by a very large factor.",
-    fix: "Check the length on this line; for plots, rescale the data or set `restrict y to domain`/`scaled ticks`."
-  },
-  floatsLost: {
-    rule: "not-in-outer-par-mode",
-    message: "Floats were lost",
-    detail: "A `figure` or `table` (or `\\marginpar`) was placed inside a box or another float, so LaTeX dropped it.",
-    fix: "Move floats out of minipages, `\\parbox`es and other floats; use `\\captionof` for captions inside a minipage."
-  }
-};
-var EXPLAINER_PATTERNS = [
-  [/^Undefined control sequence/, "explainUndefinedControlSequence"],
-  [/^Missing \$ inserted/, "explainMissingDollar"],
-  [/^Display math should end with \$\$/, "explainMissingDollar"],
-  [/^Double (subscript|superscript)/, "explainDoubleScript"],
-  [/^Misplaced alignment tab character &/, "explainAlignmentTab"],
-  [/^Missing ([{}]) inserted/, "explainMissingBrace"],
-  [
-    /^(?:Extra \}, or forgotten (?:\$|\\endgroup|\\right)|Too many \}'s|Argument of \S+ has an extra \})/,
-    "explainExtraBrace"
-  ],
-  [
-    /^(Paragraph ended before|File ended while scanning use of|File ended while scanning definition of|Forbidden control sequence found while scanning use of) (\\?[^\s.]+)(?:\s+was complete)?(?:\s*\.)?\s*$/,
-    "explainRunaway"
-  ],
-  [/^(?:LaTeX|Package \S+) Error: File [`'](.+?)' not found/, "explainFileNotFound"],
-  [/^I can't find file [`'](.+?)'/, "explainFileNotFound"],
-  [/^LaTeX Error: Option clash for package (\S+?)\.?$/, "explainOptionClash"],
-  [/^LaTeX Error: Unknown graphics extension: (\.\S+?)\.?$/, "explainGraphicsExtension"],
-  [/^LaTeX Error: Environment (\S+) undefined/, "explainEnvironmentUndefined"],
-  [
-    /^LaTeX Error: \\begin\{([^}]*)\} on input line (\d+) ended by \\end\{([^}]*)\}/,
-    "explainEnvironmentMismatch"
-  ],
-  [/^LaTeX Error: \\begin\{(document)\}() ended by \\end\{([^}]*)\}/, "explainEnvironmentMismatch"],
-  [/^LaTeX Error: Lonely \\item/, "lonelyItem"],
-  [/^LaTeX Error: Something's wrong--perhaps a missing \\item/, "missingItem"],
-  [/^LaTeX Error: There's no line here to end/, "noLineToEnd"],
-  [/^LaTeX Error: Missing \\begin\{document\}/, "explainMissingBeginDocument"],
-  [/^LaTeX Error: Can be used only in preamble/, "explainPreambleOnly"],
-  [
-    /^(?:LaTeX|Package inputenc) Error: Unicode character (\S+) \(U\+([0-9A-Fa-f]+)\)/,
-    "explainUnicode"
-  ],
-  [/^Package inputenc Error: Invalid UTF-8 byte/, "invalidUtf8"],
-  [
-    /^Package fontspec Error: The font "([^"]+)" cannot be found|^Package fontspec Error: [^"]*?font "([^"]+)"[^\n]*?not found/,
-    "explainFontNotFound"
-  ],
-  [/^Font (\S+?)(?:=\S+)? (?:at [\d.]+pt )?not loadable/, "explainTfmFont"],
-  [/^Package biblatex Error: (.*)$/, "explainBiblatex"],
-  [/^Illegal parameter number in definition of (\\\S+?)\.?$/, "explainParameterNumber"],
-  [/^You can't use [`']macro parameter character #' in \w+ mode()/, "explainParameterNumber"],
-  [/^Package xcolor Error: Undefined color [`']([^']+)'/, "explainColor"],
-  [/^LaTeX Error: Not in outer par mode/, "notInOuterParMode"],
-  [/^Dimension too large/, "dimensionTooLarge"],
-  [/^TeX capacity exceeded, sorry \[(.+?)\]/, "explainCapacity"],
-  [/^Package (pgfkeys|tikz|pgf|pgfplots) Error: (.*)$/, "explainTikz"],
-  [/^Package hyperref Error: (.*)$/, "explainHyperref"],
-  [/^LaTeX Error: Command (\\\S+?) already defined/, "explainCommandDefined"],
-  [
-    /^LaTeX Error: Unknown option [`']([^']+)' for (?:package|class) [`']([^']+)'/,
-    "explainUnknownOption"
-  ],
-  [/^LaTeX Error: Float\(s\) lost/, "floatsLost"]
-];
-
-// ../packages/core/src/log/hints.ts
-function words(text2) {
-  return text2.split(/\s+/).filter(Boolean);
-}
-function list(text2) {
-  return text2.split(",").map((item) => item.trim()).filter(Boolean);
-}
-var COMMAND_PACKAGES = {
-  mathbb: "amssymb",
-  mathfrak: "amssymb",
-  checkmark: "amssymb",
-  square: "amssymb",
-  blacksquare: "amssymb",
-  leqslant: "amssymb",
-  geqslant: "amssymb",
-  varnothing: "amssymb",
-  therefore: "amssymb",
-  mathscr: "mathrsfs",
-  eqref: "amsmath",
-  text: "amsmath",
-  dfrac: "amsmath",
-  tfrac: "amsmath",
-  binom: "amsmath",
-  operatorname: "amsmath",
-  DeclareMathOperator: "amsmath",
-  boldsymbol: "amsmath",
-  intertext: "amsmath",
-  numberwithin: "amsmath",
-  bm: "bm",
-  toprule: "booktabs",
-  midrule: "booktabs",
-  bottomrule: "booktabs",
-  cmidrule: "booktabs",
-  includegraphics: "graphicx",
-  graphicspath: "graphicx",
-  rotatebox: "graphicx",
-  scalebox: "graphicx",
-  resizebox: "graphicx",
-  textcolor: "xcolor",
-  color: "xcolor",
-  colorbox: "xcolor",
-  definecolor: "xcolor",
-  rowcolor: "xcolor (with the `table` option)",
-  cellcolor: "xcolor (with the `table` option)",
-  url: "url (or hyperref)",
-  path: "url",
-  href: "hyperref",
-  hypersetup: "hyperref",
-  autoref: "hyperref",
-  texorpdfstring: "hyperref",
-  cref: "cleveref",
-  Cref: "cleveref",
-  crefname: "cleveref",
-  multirow: "multirow",
-  makecell: "makecell",
-  captionof: "caption",
-  captionsetup: "caption",
-  subcaption: "subcaption",
-  subcaptionbox: "subcaption",
-  subfloat: "subfig",
-  lipsum: "lipsum",
-  blindtext: "blindtext",
-  todo: "todonotes",
-  missingfigure: "todonotes",
-  xspace: "xspace",
-  ce: "mhchem",
-  lstinline: "listings",
-  lstset: "listings",
-  mintinline: "minted",
-  tikz: "tikz",
-  usetikzlibrary: "tikz",
-  pgfplotsset: "pgfplots",
-  nicefrac: "nicefrac",
-  sout: "ulem",
-  uline: "ulem",
-  hl: "soul",
-  euro: "eurosym",
-  degree: "gensymb",
-  celsius: "gensymb",
-  addbibresource: "biblatex",
-  printbibliography: "biblatex",
-  parencite: "biblatex",
-  textcite: "biblatex",
-  autocite: "biblatex",
-  footcite: "biblatex",
-  gls: "glossaries",
-  newacronym: "glossaries",
-  acrshort: "glossaries",
-  ac: "acronym",
-  newgeometry: "geometry",
-  geometry: "geometry",
-  setstretch: "setspace",
-  onehalfspacing: "setspace",
-  doublespacing: "setspace",
-  fancyhead: "fancyhdr",
-  fancyfoot: "fancyhdr",
-  pagestyle: "fancyhdr",
-  KOMAoption: "a KOMA-Script class",
-  newtheorem: "amsthm (or the LaTeX kernel)",
-  qedhere: "amsthm",
-  theoremstyle: "amsthm",
-  setmainfont: "fontspec",
-  setsansfont: "fontspec",
-  setmonofont: "fontspec",
-  newfontfamily: "fontspec",
-  setmathfont: "unicode-math",
-  SetKwFunction: "algorithm2e",
-  KwData: "algorithm2e",
-  State: "algpseudocode",
-  Require: "algpseudocode",
-  Ensure: "algpseudocode",
-  If: "algpseudocode",
-  For: "algpseudocode",
-  Procedure: "algpseudocode",
-  enquote: "csquotes",
-  num: "siunitx",
-  qty: "siunitx",
-  unit: "siunitx",
-  ang: "siunitx",
-  qtyrange: "siunitx",
-  numrange: "siunitx",
-  sisetup: "siunitx"
-};
-var NATBIB_TO_BIBLATEX = {
-  citep: "\\parencite",
-  Citep: "\\Parencite",
-  citet: "\\textcite",
-  Citet: "\\Textcite",
-  citealp: "\\cite",
-  citealt: "\\cite",
-  citeyearpar: "\\parencite*",
-  citeauthor: "\\citeauthor",
-  Citeauthor: "\\Citeauthor",
-  citeyear: "\\citeyear",
-  citenum: "\\cite"
-};
-var SIUNITX_V3 = {
-  SI: "\\qty",
-  si: "\\unit",
-  SIrange: "\\qtyrange",
-  SIlist: "\\qtylist",
-  SIproduct: "\\qtyproduct",
-  numrange: "\\numrange"
-};
-var COMMON_COMMANDS = words(`
-  textbf textit texttt textsc textrm textsf emph underline textsuperscript textsubscript
-  section subsection subsubsection paragraph chapter part caption label ref pageref eqref
-  cite footnote footnotetext item begin end includegraphics centering raggedright
-  noindent newline linebreak pagebreak newpage clearpage vspace hspace vfill hfill
-  textwidth linewidth columnwidth tableofcontents listoffigures listoftables maketitle
-  title author date thanks bibliography bibliographystyle printbibliography
-  addbibresource usepackage documentclass newcommand renewcommand small footnotesize
-  scriptsize large Large LARGE huge frac sqrt sum prod int infty alpha beta gamma delta
-  epsilon varepsilon lambda sigma theta omega mathbf mathrm mathit mathcal mathbb left
-  right cdot cdots ldots dots times leq geq neq approx equiv partial nabla rightarrow
-  Rightarrow leftarrow mapsto hline multicolumn toprule midrule bottomrule url href
-  textcolor parencite textcite autocite citep citet autoref cref Cref input include
-  appendix today LaTeX TeX quad qquad mathbb operatorname
-`);
-var ENVIRONMENT_PACKAGES = {
-  align: "amsmath",
-  "align*": "amsmath",
-  aligned: "amsmath",
-  gather: "amsmath",
-  "gather*": "amsmath",
-  multline: "amsmath",
-  "multline*": "amsmath",
-  "equation*": "amsmath",
-  split: "amsmath",
-  cases: "amsmath",
-  pmatrix: "amsmath",
-  bmatrix: "amsmath",
-  vmatrix: "amsmath",
-  matrix: "amsmath",
-  proof: "amsthm",
-  algorithm: "algorithm (or algorithm2e)",
-  algorithmic: "algpseudocode (algorithmicx)",
-  subfigure: "subcaption",
-  subtable: "subcaption",
-  tabularx: "tabularx",
-  longtable: "longtable",
-  tabulary: "tabulary",
-  lstlisting: "listings",
-  minted: "minted",
-  tikzpicture: "tikz",
-  axis: "pgfplots",
-  landscape: "pdflscape",
-  multicols: "multicol",
-  "multicols*": "multicol",
-  wrapfigure: "wrapfig",
-  comment: "comment",
-  frame: "the beamer document class",
-  columns: "the beamer document class",
-  threeparttable: "threeparttable",
-  tcolorbox: "tcolorbox",
-  mdframed: "mdframed",
-  refsection: "biblatex",
-  dmath: "breqn",
-  spacing: "setspace",
-  singlespace: "setspace",
-  CJK: "CJK"
-};
-var THEOREM_LIKE = new Set(
-  words(`
-  theorem lemma corollary proposition definition remark example conjecture claim
-  assumption hypothesis observation notation problem
-`)
-);
-var COMMON_ENVIRONMENTS = words(`
-  itemize enumerate description figure figure* table table* tabular equation center
-  flushleft flushright verbatim quote quotation minipage abstract document
-  thebibliography array eqnarray align align* gather theorem lemma proof definition
-  tikzpicture algorithm algorithmic subfigure tabularx longtable lstlisting appendix
-  titlepage displaymath
-`);
-var MATH_COMMANDS = new Set(
-  words(`
-  alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu
-  nu xi pi rho sigma tau upsilon phi varphi chi psi omega Gamma Delta Theta Lambda Xi Pi
-  Sigma Phi Psi Omega frac dfrac sqrt sum prod int oint lim infty leq geq neq le ge ne
-  approx equiv sim simeq propto pm mp times div cdot cdots circ partial nabla forall
-  exists in notin subset subseteq supset cup cap emptyset rightarrow leftarrow to
-  Rightarrow Leftarrow leftrightarrow mapsto mathbf mathrm mathit mathcal mathbb mathfrak
-  boldsymbol hat bar tilde vec dot ddot overline underbrace overbrace log ln exp sin cos
-  tan max min arg argmax argmin det mid parallel perp angle ell hbar Re Im aleph prime
-  langle rangle lfloor rfloor lceil rceil left right
-`)
-);
-var UNICODE_REPLACEMENTS = {
-  "\u2265": "$\\geq$",
-  "\u2264": "$\\leq$",
-  "\u2260": "$\\neq$",
-  "\u2248": "$\\approx$",
-  "\xB1": "$\\pm$",
-  "\xD7": "$\\times$",
-  "\xF7": "$\\div$",
-  "\u2192": "$\\rightarrow$",
-  "\u2190": "$\\leftarrow$",
-  "\u21D2": "$\\Rightarrow$",
-  "\u2194": "$\\leftrightarrow$",
-  "\u221E": "$\\infty$",
-  "\u2211": "$\\sum$",
-  "\u2208": "$\\in$",
-  "\u2200": "$\\forall$",
-  "\u2203": "$\\exists$",
-  "\u221A": "$\\sqrt{}$",
-  "\u2202": "$\\partial$",
-  "\xB7": "$\\cdot$",
-  "\u2212": "$-$",
-  \u03B1: "$\\alpha$",
-  \u03B2: "$\\beta$",
-  \u03B3: "$\\gamma$",
-  \u03B4: "$\\delta$",
-  \u03B5: "$\\varepsilon$",
-  \u03B8: "$\\theta$",
-  \u03BB: "$\\lambda$",
-  \u03BC: "$\\mu$ (or `\\textmu` from textcomp)",
-  \u03C0: "$\\pi$",
-  \u03C3: "$\\sigma$",
-  \u03C9: "$\\omega$",
-  \u0394: "$\\Delta$",
-  \u03A3: "$\\Sigma$",
-  \u03A9: "$\\Omega$",
-  "\u2713": "$\\checkmark$ (amssymb)",
-  "\u2717": "$\\times$",
-  "\u20AC": "\\euro{} (eurosym)",
-  "\u2122": "\\texttrademark",
-  "\xA0": "~",
-  "\u200B": "nothing (delete the zero-width space)",
-  "\uFEFF": "nothing (delete the byte-order mark)"
-};
-var TIKZ_KEYS = list(`
-  color, draw, fill, line width, thick, thin, very thick, ultra thick, dashed, dotted,
-  densely dashed, solid, opacity, fill opacity, draw opacity, text, font, align, anchor,
-  above, below, left, right, above left, above right, below left, below right,
-  node distance, minimum width, minimum height, minimum size, text width, inner sep,
-  outer sep, rounded corners, sharp corners, scale, rotate, xshift, yshift, shift,
-  xscale, yscale, circle, rectangle, ellipse, label, pin, midway, near start, near end,
-  pos, sloped, bend left, bend right, loop, out, in, looseness, shorten, arrows,
-  line cap, line join, pattern, shading, top color, bottom color, left color,
-  right color, ball color, double, radius, x radius, y radius, samples, domain, smooth,
-  mark, every node, style, name, shape, grow, level distance, sibling distance,
-  remember picture, overlay
-`);
-function editDistance(a, b, max = 3) {
-  if (Math.abs(a.length - b.length) > max) return max + 1;
-  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    const current = [i];
-    let rowMin = i;
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      const value = Math.min(
-        (previous[j] ?? 0) + 1,
-        (current[j - 1] ?? 0) + 1,
-        (previous[j - 1] ?? 0) + cost
-      );
-      current.push(value);
-      rowMin = Math.min(rowMin, value);
-    }
-    if (rowMin > max) return max + 1;
-    previous = current;
-  }
-  return previous[b.length] ?? max + 1;
-}
-function closest(word, candidates) {
-  if (word.length < 3) return void 0;
-  const max = word.length <= 4 ? 1 : 2;
-  let best;
-  let bestDistance = max + 1;
-  for (const candidate of candidates) {
-    if (candidate === word) return void 0;
-    const d = editDistance(word, candidate, max);
-    if (d < bestDistance) {
-      best = candidate;
-      bestDistance = d;
-    }
-  }
-  return best;
-}
-
-// ../packages/core/src/log/paths.ts
-var DISTRIBUTION_DIR = /(?:^|\/)(?:texmf[\w-]*|\.texlive\d*|texlive\/\d{4}|miktex[^/]*)\//i;
-var TEX_EXTENSION_GROUP = "(?:tex|ltx|sty|cls|clo|cfg|def|fd|aux|toc|lof|lot|bbl|out|nav|snm|vrb|ldf|dfu|lua|bst|tikz|pgf|mkii|trsl|dict|xmpi|ins|dtx|tikzstyles)";
-var TEX_EXTENSIONS = new RegExp(`\\.${TEX_EXTENSION_GROUP}$`, "i");
-var SPACED_PATH_SOURCE = `(?:\\.{1,2}/|/|~/|[A-Za-z]:[\\\\/])[^:()[\\]{}<>\\n"]{0,1024}?\\.${TEX_EXTENSION_GROUP}`;
-function spacedPathLength(text2, start) {
-  const m = SPACED_PATH_AT.exec(text2.slice(start, start + 1100));
-  return m ? m[0].length : 0;
-}
-var SPACED_PATH_AT = new RegExp(`^${SPACED_PATH_SOURCE}(?=[\\s()[\\]{}<>"]|$)`, "i");
-function basename(path) {
-  const parts = path.split("/");
-  return parts[parts.length - 1] || path;
-}
-function extension(path) {
-  const name = basename(path);
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
-}
-function cleanRoot(root) {
-  let r = root.replace(/\\/g, "/");
-  while (r.length > 1 && r.endsWith("/")) r = r.slice(0, -1);
-  return r;
-}
-function underRoot(p, root) {
-  if (p.startsWith(`${root}/`)) return true;
-  const drive = /^[A-Za-z]:\//;
-  return drive.test(root) && drive.test(p) && p.length > root.length && p[root.length] === "/" && p.slice(0, root.length).toLowerCase() === root.toLowerCase();
-}
-function normalizePath(path, root) {
-  let p = path.trim().replace(/\\/g, "/");
-  if (p.startsWith('"') && p.endsWith('"') && p.length >= 2) p = p.slice(1, -1);
-  const r = root ? cleanRoot(root) : "";
-  if (r && underRoot(p, r)) p = p.slice(r.length + 1);
-  else if (DISTRIBUTION_DIR.test(p)) return basename(p);
-  p = p.replace(/\/{2,}/g, "/").replace(/\/(?:\.\/)+/g, "/");
-  while (p.startsWith("./")) p = p.slice(2);
-  return p;
-}
-function isFileToken(token) {
-  if (token.length === 0) return false;
-  if (/^(?:\.{1,2}\/|\/|~\/|[A-Za-z]:[\\/])/.test(token)) return token.length > 2;
-  return /^[\w-][\w.\-/]*$/.test(token) && TEX_EXTENSIONS.test(token);
-}
-
-// ../packages/core/src/log/explain.ts
-var code = (text2) => `\`${text2}\``;
-function sourceText(error) {
-  if (!error.source) return "";
-  return (error.source.before.replace(/^\.\.\./, "") + error.source.after).trim();
-}
-function firstContextBefore(error) {
-  const first2 = error.context[0] ?? "";
-  return first2.replace(/^l\.\d+ /, "").replace(/^<[^>]*> ?/, "");
-}
-function trailingControlSequence(text2) {
-  return /\\([A-Za-z@]+|[^A-Za-z@\s])\s*$/.exec(text2)?.[1];
-}
-function wordAtStop(error) {
-  if (!error.source) return "";
-  const before = /(\S*)$/.exec(error.source.before)?.[1] ?? "";
-  const after = /^\s*(\S*)/.exec(error.source.after)?.[1] ?? "";
-  return (before + after).replace(/[.,;:!?)]+$/, "");
-}
-function textNearStop(error, length = 40) {
-  const before = (error.source?.before ?? "").replace(/^\.\.\./, "").trim();
-  return before.length > length ? `\u2026${before.slice(-length)}` : before;
-}
-function escapeSpecials(text2) {
-  return text2.replace(/\\?([_&#%$])/g, "\\$1").replace(/\^/g, "\\^{}");
-}
-function loadAdvice(pkg) {
-  const m = /^([a-z][\w-]*)(.*)$/.exec(pkg);
-  if (!m) return `Load ${pkg}.`;
-  return `Add ${code(`\\usepackage{${m[1]}}`)}${m[2]} to the preamble.`;
-}
-function hasPackage(ctx, name) {
-  return ctx.packages.has(name);
-}
-function windowsPathIn(text2) {
-  const braced = /\{([^{}]*\\[^{}]*)\}/.exec(text2)?.[1];
-  if (braced && /(?:^[A-Za-z]:\\|\\[\w.-]+\\|\\[\w-]+\.[A-Za-z]{2,4}$)/.test(braced)) return braced;
-  return void 0;
-}
-function undefinedInGraphicsPath(path) {
-  const name = path.split("\\").pop() ?? path;
-  return {
-    rule: "undefined-control-sequence",
-    check: "build",
-    message: `Backslashes in the file path ${code(path)} are read as commands`,
-    detail: "TeX treats every `\\` as the start of a command, so a Windows-style path breaks into undefined commands. TeX paths always use forward slashes.",
-    fix: `Use a forward-slash path relative to the main file, e.g. ${code(`\\includegraphics{figures/${name}}`)}, and copy the file into the project.`,
-    data: { path }
-  };
-}
-function natbibAdvice(cs, ctx) {
-  const replacement = NATBIB_TO_BIBLATEX[cs];
-  if (!replacement) return void 0;
-  if (hasPackage(ctx, "biblatex")) {
-    return {
-      rule: "undefined-control-sequence",
-      check: "build",
-      message: `${code(`\\${cs}`)} is a natbib command, but this document uses biblatex`,
-      detail: "biblatex has its own citation commands and does not define the natbib ones by default.",
-      fix: `Write ${code(`${replacement}{\u2026}`)} instead, or load biblatex with ${code("\\usepackage[natbib=true]{biblatex}")} to keep the natbib names.`,
-      data: { command: `\\${cs}`, replacement }
-    };
-  }
-  if (hasPackage(ctx, "natbib")) return void 0;
-  return {
-    rule: "undefined-control-sequence",
-    check: "build",
-    message: `${code(`\\${cs}`)} needs a citation package (natbib or biblatex)`,
-    detail: `${code(`\\${cs}`)} is not part of plain LaTeX; it is defined by natbib (and, for some names, by biblatex).`,
-    fix: `Add ${code("\\usepackage{natbib}")} to the preamble, or with biblatex write ${code(`${replacement}{\u2026}`)}.`,
-    data: { command: `\\${cs}`, package: "natbib" }
-  };
-}
-function siunitxAdvice(cs, ctx) {
-  const v3 = SIUNITX_V3[cs];
-  if (v3 && !hasPackage(ctx, "siunitx")) {
-    return {
-      rule: "undefined-control-sequence",
-      check: "build",
-      message: `${code(`\\${cs}`)} comes from the siunitx package, which is not loaded`,
-      detail: `${code(`\\${cs}`)} is the siunitx version 2 name; siunitx version 3 calls it ${code(v3)}.`,
-      fix: `Add ${code("\\usepackage{siunitx}")} to the preamble and prefer the current name ${code(v3)}.`,
-      data: { command: `\\${cs}`, package: "siunitx", replacement: v3 }
-    };
-  }
-  if (["qty", "unit", "qtyrange", "qtylist"].includes(cs) && hasPackage(ctx, "siunitx")) {
-    return {
-      rule: "undefined-control-sequence",
-      check: "build",
-      message: `${code(`\\${cs}`)} needs siunitx version 3, but an older siunitx is installed`,
-      detail: "siunitx version 3 (2021) introduced `\\qty` and `\\unit`; older versions only have `\\SI` and `\\si`.",
-      fix: "Update TeX Live (or use the Overfull Docker image), or write `\\SI{\u2026}{\u2026}` and `\\si{\u2026}`.",
-      data: { command: `\\${cs}`, package: "siunitx" }
-    };
-  }
-  return void 0;
-}
-function packageAdvice(cs, ctx) {
-  if (cs === "mathbb" || cs === "mathfrak") {
-    if (hasPackage(ctx, "amssymb") || hasPackage(ctx, "unicode-math")) return void 0;
-    return {
-      rule: "undefined-control-sequence",
-      check: "build",
-      message: `${code(`\\${cs}`)} needs the amssymb package`,
-      detail: `${code(`\\${cs}`)} (blackboard bold letters such as \u211D) is not part of plain LaTeX math.`,
-      fix: `Add ${code("\\usepackage{amssymb}")} to the preamble. With LuaLaTeX or XeLaTeX, ${code("\\usepackage{unicode-math}")} also provides it.`,
-      data: { command: `\\${cs}`, package: "amssymb" }
-    };
-  }
-  const pkg = COMMAND_PACKAGES[cs];
-  if (!pkg) return void 0;
-  const name = pkg.split(" ")[0] ?? pkg;
-  if (/^[a-z][\w-]*$/.test(name) && hasPackage(ctx, name)) return void 0;
-  const load = loadAdvice(pkg);
-  return {
-    rule: "undefined-control-sequence",
-    check: "build",
-    message: `${code(`\\${cs}`)} needs the ${pkg} package`,
-    detail: `${code(`\\${cs}`)} is defined by ${pkg}, which this document does not load.`,
-    fix: load,
-    data: { command: `\\${cs}`, package: pkg }
-  };
-}
-var explainUndefinedControlSequence = (_m, error, ctx) => {
-  const path = windowsPathIn(sourceText(error)) ?? windowsPathIn(error.context.join(" "));
-  if (path) return undefinedInGraphicsPath(path);
-  const cs = trailingControlSequence(firstContextBefore(error));
-  const fromBib = extension(error.file ?? "") === "bbl";
-  if (!cs) {
-    return {
-      rule: "undefined-control-sequence",
-      check: "build",
-      message: "A command on this line is not defined",
-      detail: sourceText(error) ? `TeX stopped in ${code(sourceText(error))}.` : void 0,
-      fix: "Check the spelling of each command on the line, and load the package that defines it."
-    };
-  }
-  const specific = natbibAdvice(cs, ctx) ?? siunitxAdvice(cs, ctx) ?? packageAdvice(cs, ctx);
-  if (specific) return specific;
-  const command = `\\${cs}`;
-  const internal = cs.includes("@");
-  const suggestion = internal ? void 0 : closest(cs, COMMON_COMMANDS);
-  if (suggestion) {
-    return {
-      rule: "undefined-control-sequence",
-      check: "build",
-      message: `Unknown command ${code(command)} (did you mean ${code(`\\${suggestion}`)}?)`,
-      detail: `${code(command)} is not defined by LaTeX or any loaded package; it looks like a typo of ${code(`\\${suggestion}`)}.`,
-      fix: `Replace ${code(command)} with ${code(`\\${suggestion}`)}.`,
-      data: { command, suggestion: `\\${suggestion}` }
-    };
-  }
-  return {
-    rule: "undefined-control-sequence",
-    check: "build",
-    message: `Unknown command ${code(command)}`,
-    detail: fromBib ? `The command comes from a field in your .bib file (via the .bbl file), not from the .tex sources.` : internal ? `${code(command)} is an internal command of a package or class; this usually follows an earlier error or a package conflict.` : `${code(command)} is not defined by LaTeX or by any package this document loads.`,
-    fix: fromBib ? `Find ${code(command)} in the .bib file and replace it, or define it in the preamble.` : internal ? "Fix the first error in the log first; if this is the only error, check for two packages that conflict." : `Check the spelling, load the package that defines ${code(command)}, or define it with ${code(`\\newcommand{${command}}{\u2026}`)}.`,
-    data: { command }
-  };
-};
-function mathyScript(word) {
-  return /^\$?[A-Za-z]{1,2}[_^]\{?[A-Za-z0-9]{1,3}\}?\$?$/.test(word);
-}
-var explainMissingDollar = (_m, error) => {
-  const before = error.source?.before ?? "";
-  const word = wordAtStop(error);
-  const script = /([_^])\s*$/.exec(before)?.[1];
-  if (script && word) {
-    const math = mathyScript(word) || script === "^" && !/[./]/.test(word);
-    const name = script === "_" ? "underscore `_`" : "caret `^`";
-    if (math) {
-      return {
-        rule: "missing-dollar",
-        check: "build",
-        message: `${code(word)} uses ${script === "_" ? "a subscript" : "a superscript"} outside math mode`,
-        detail: `The ${name} only works inside a formula, so TeX inserted a ${code("$")} and continued in math mode.`,
-        fix: `Write ${code(`$${word.replace(/\$/g, "")}$`)}.`,
-        data: { text: word, char: script }
-      };
-    }
-    const escaped = escapeSpecials(word);
-    return {
-      rule: "missing-dollar",
-      check: "build",
-      message: `The ${name} in ${code(word)} needs escaping`,
-      detail: `In running text ${code(script)} starts a ${script === "_" ? "subscript" : "superscript"}, which only works in math mode, so TeX inserted a ${code("$")} and typeset the rest as a formula.`,
-      fix: `Write ${code(escaped)}, or for file names and identifiers use ${code(`\\path{${word}}`)} (url package) or ${code(`\\texttt{${escaped}}`)}.`,
-      data: { text: word, char: script, replacement: escaped }
-    };
-  }
-  const cs = trailingControlSequence(before);
-  if (cs && MATH_COMMANDS.has(cs)) {
-    return {
-      rule: "missing-dollar",
-      check: "build",
-      message: `${code(`\\${cs}`)} is a math command used outside math mode`,
-      detail: `${code(`\\${cs}`)} only works inside a formula, so TeX inserted a ${code("$")}.`,
-      fix: `Write ${code(`$\\${cs}$`)} (or put the whole expression in ${code("$\u2026$")}).`,
-      data: { command: `\\${cs}` }
-    };
-  }
-  if (error.context.some((line) => /\\par\b/.test(line)) || before.trim() === "") {
-    return {
-      rule: "missing-dollar",
-      check: "build",
-      message: "A formula is interrupted by a blank line or is not closed",
-      detail: "Formulas cannot contain blank lines (paragraph breaks), and every `$` or `\\(` must be closed in the same paragraph.",
-      fix: "Remove blank lines inside the equation environment or `\\[ \u2026 \\]`, and check that every `$` has a matching `$`."
-    };
-  }
-  return {
-    rule: "missing-dollar",
-    check: "build",
-    message: `Math-only text outside math mode near ${code(textNearStop(error))}`,
-    detail: "TeX met a symbol that only works in formulas (such as `_`, `^` or a math command), or a formula that is not closed.",
-    fix: "Put the formula inside `$\u2026$`, escape `_` as `\\_` in text, and check that every `$` is closed."
-  };
-};
-var explainDoubleScript = (m, error) => {
-  const which2 = m[1] === "subscript" ? "subscript" : "superscript";
-  const word = wordAtStop(error).replace(/\$/g, "");
-  const sym = which2 === "subscript" ? "_" : "^";
-  const parts = word.split(sym);
-  const grouped = parts.length >= 3 ? `${parts[0]}${sym}{${parts.slice(1).join("")}}` : void 0;
-  return {
-    rule: "double-script",
-    check: "build",
-    message: word ? `${code(word)} has two ${which2}s` : `A symbol has two ${which2}s`,
-    detail: `TeX allows one ${which2} per symbol; ${code(`${sym}a${sym}b`)} is ambiguous.`,
-    fix: grouped ? `Group them: ${code(grouped)}${which2 === "subscript" ? ` or ${code(`${parts[0]}_{${parts.slice(1).join(",")}}`)}` : ""}.` : `Group the ${which2}s in braces, e.g. ${code(`x${sym}{ab}`)} or ${code(`{x${sym}a}${sym}b`)}.`,
-    data: word ? { text: word } : void 0
-  };
-};
-var explainAlignmentTab = (_m, error) => {
-  const before = (error.source?.before ?? "").replace(/&\s*$/, "");
-  const prev = /(\S+)\s*$/.exec(before)?.[1] ?? "";
-  const next = /^\s*(\S+)/.exec(error.source?.after ?? "")?.[1] ?? "";
-  const phrase = prev && next ? `${prev} & ${next}` : "";
-  const fromBib = extension(error.file ?? "") === "bbl";
-  return {
-    rule: "misplaced-alignment-tab",
-    check: "build",
-    message: phrase ? `Unescaped ${code("&")} in ${code(phrase)}` : `Unescaped ${code("&")} outside a table`,
-    detail: fromBib ? "`&` separates table columns; this one comes from a .bib field (often a journal or publisher name)." : "`&` separates table columns and cannot appear in running text.",
-    fix: phrase ? `Write ${code(`${prev} \\& ${next}`)}${fromBib ? " in the .bib file" : ""}.` : "Write `\\&` for a literal ampersand.",
-    data: phrase ? { text: phrase } : void 0
-  };
-};
-var explainMissingBrace = (m, error) => {
-  const near = textNearStop(error);
-  const inMath = /\$|\\\]|\\\)/.test(near) || /\$/.test(error.source?.after ?? "");
-  return {
-    rule: "missing-brace",
-    check: "build",
-    message: `A ${code(m[1] === "{" ? "{" : "}")} is missing near ${code(near || sourceText(error))}`,
-    detail: inMath ? "A `{` group opened inside a formula is still open when the formula ends; braces and `$` must nest properly." : "Braces are unbalanced: a group was closed in the wrong order or not at all.",
-    fix: inMath ? "Close every `{` before the closing `$`, e.g. write `$x^{2}$` instead of `$x^{2$`." : "Check that every `{` on this line has a matching `}`."
-  };
-};
-var explainExtraBrace = (m, error) => {
-  const near = textNearStop(error);
-  const forgottenDollar = /forgotten \$/.test(m[0]);
-  return {
-    rule: "extra-brace",
-    check: "build",
-    message: near ? `A ${code("}")} has no matching ${code("{")} near ${code(near)}` : `A ${code("}")} has no matching ${code("{")}`,
-    detail: forgottenDollar ? "TeX found a `}` that closes nothing, often a typo or a `$` that ends a formula too early." : "There are more closing braces than opening ones, so TeX ignored the extra `}`.",
-    fix: "Delete the extra `}` or add the missing `{`; check that each formula opens and closes with `$`."
-  };
-};
-var explainRunaway = (m, error) => {
-  const command = m[2] ?? "";
-  const arg = (error.runaway ?? "").replace(/\\par\b.*$/, "").trimEnd().replace(/\\ETC\.$/, "").trim();
-  const fileEnded = m[1]?.startsWith("File ended");
-  const definition = /definition/.test(m[1] ?? "");
-  return {
-    rule: "runaway-argument",
-    check: "build",
-    message: definition ? `The definition of ${code(command)} is never closed` : `The argument of ${code(command)} is never closed${arg ? `: ${code(`${command}${arg}`)}` : ""}`,
-    detail: fileEnded ? `TeX read to the end of the file looking for the ${code("}")} that closes ${code(command)}.` : `TeX reached a blank line (paragraph end) while still reading the argument of ${code(command)}, so a ${code("}")} is missing before it.`,
-    fix: arg ? `Add the missing ${code("}")}; search for ${code(`${command}${arg.slice(0, 30)}`)} in the source.` : `Add the missing ${code("}")} after the argument of ${code(command)}.`,
-    data: { command, ...arg ? { argument: arg } : {} }
-  };
-};
-var IMAGE_EXTENSIONS = /\.(?:pdf|png|jpe?g|eps|ps|svg|gif|tiff?|bmp|webp|jbig2|jb2|mps)$/i;
-var explainFileNotFound = (m, error) => {
-  const file = m[1] ?? "";
-  const ext = extension(file);
-  if (ext === "sty" || ext === "cls") {
-    const name = file.replace(/\.(?:sty|cls)$/, "");
-    const kind = ext === "sty" ? "package" : "document class";
-    return {
-      rule: "missing-package",
-      check: "build",
-      message: `The ${kind} ${code(name)} is not installed`,
-      detail: `TeX could not find ${code(file)}. Either the name is misspelled or the ${kind} is not part of this TeX installation.`,
-      fix: `Check the spelling of ${code(name)}. If it is correct, install it with ${code(`tlmgr install ${name}`)} (TeX Live) or the MiKTeX console, or build with the Overfull Docker image, which has the full TeX Live. A custom ${kind} must sit next to the main .tex file.`,
-      data: { file, package: name }
-    };
-  }
-  const graphics = /\\includegraphics|draft setting/.test(`${error.message} ${error.context.join(" ")}`) || error.help.some((line) => /extensions:/.test(line)) || IMAGE_EXTENSIONS.test(file);
-  if (graphics) {
-    const tried = error.help.find((line) => /^\.\w+,/.test(line));
-    return {
-      rule: "missing-figure",
-      check: "output",
-      message: `Figure file ${code(file)} not found`,
-      detail: `${code("\\includegraphics")} could not find ${code(file)}${tried ? ` with any of the extensions ${tried.split(",").slice(0, 4).join(", ")}\u2026` : ""}. The PDF has an empty box instead of the figure.`,
-      fix: "Check the path and the file name, including upper/lower case (CI runs on Linux, where case matters). Paths are relative to the main .tex file or to `\\graphicspath`.",
-      data: { file }
-    };
-  }
-  return {
-    rule: "missing-file",
-    check: "build",
-    message: `File ${code(file)} not found`,
-    detail: `TeX could not open ${code(file)}, so the build stopped there.`,
-    fix: "Check the path and spelling in `\\input`/`\\include`. Paths are relative to the main .tex file, and case matters on Linux.",
-    data: { file }
-  };
-};
-var explainOptionClash = (m, error) => {
-  const pkg = m[1] ?? "";
-  const help = error.help.join("\n");
-  const first2 = /already been loaded with options:\s*\n?\s*\[([^\]]*)\]/.exec(help)?.[1];
-  const second = /load it with options\s*\n?\s*\[([^\]]*)\]/.exec(help)?.[1];
-  const options = [first2, second].flatMap((o) => (o ?? "").split(",")).map((o) => o.trim()).filter(Boolean);
-  const merged = [...new Set(options)].join(",");
-  const shown = first2 !== void 0 && second !== void 0 ? ` (${code(`[${first2}]`)} and ${code(`[${second}]`)})` : "";
-  const arxiv = pkg === "hyperref" ? " Note that arXiv and many classes load hyperref themselves; use `\\hypersetup{\u2026}` for options instead of loading it again." : "";
-  return {
-    rule: "option-clash",
-    check: "build",
-    message: `${code(pkg)} is loaded twice with different options${shown}`,
-    detail: `A package can be loaded only once. It was loaded again (by you, the class, or another package) with options it was not first loaded with.${arxiv}`,
-    fix: merged ? `Load it once with all options: ${code(`\\usepackage[${merged}]{${pkg}}`)}. If the class or another package loads it first, put ${code(`\\PassOptionsToPackage{${merged}}{${pkg}}`)} before ${code("\\documentclass")}.` : `Remove the second ${code(`\\usepackage{${pkg}}`)} and merge its options into the first; use ${code("\\PassOptionsToPackage")} before ${code("\\documentclass")} if a class loads it.`,
-    data: {
-      package: pkg,
-      ...first2 !== void 0 ? { firstOptions: first2 } : {},
-      ...second !== void 0 ? { secondOptions: second } : {}
-    }
-  };
-};
-var explainGraphicsExtension = (m, error) => {
-  const ext = (m[1] ?? "").toLowerCase();
-  const path = /\{([^{}]+\.\w+)\}/.exec(sourceText(error))?.[1];
-  const target = path ? path.replace(/\.\w+$/, ".pdf") : `figure.pdf`;
-  let fix;
-  if (ext === ".svg") {
-    fix = `Convert it to PDF (e.g. ${code(`inkscape ${path ?? "figure.svg"} --export-filename=${target}`)}) and include ${code(target)}, or use the svg package's ${code("\\includesvg")}.`;
-  } else if (ext === ".eps" || ext === ".ps") {
-    fix = `Convert it to PDF with ${code(`epstopdf ${path ?? "figure.eps"}`)} and include the .pdf, or load ${code("\\usepackage{epstopdf}")}.`;
-  } else {
-    fix = `Convert it to PNG (photos: JPEG, drawings: PDF) and include that file instead.`;
-  }
-  return {
-    rule: "unknown-graphics-extension",
-    check: "build",
-    message: `${code("\\includegraphics")} cannot use ${code(ext)} files${path ? `: ${code(path)}` : ""}`,
-    detail: "pdfLaTeX, LuaLaTeX and XeLaTeX include PDF, PNG and JPEG images (and EPS via conversion). Other formats must be converted first.",
-    fix,
-    data: { extension: ext, ...path ? { file: path } : {} }
-  };
-};
-var explainEnvironmentUndefined = (m) => {
-  const env = m[1] ?? "";
-  const base = {
-    rule: "environment-undefined",
-    check: "build",
-    data: { environment: env }
-  };
-  if (THEOREM_LIKE.has(env)) {
-    const title = env.charAt(0).toUpperCase() + env.slice(1);
-    return {
-      ...base,
-      message: `The ${code(env)} environment is not defined`,
-      detail: "Theorem-like environments do not exist until you declare them.",
-      fix: `Declare it in the preamble: ${code("\\usepackage{amsthm}")} and ${code(`\\newtheorem{${env}}{${title}}`)}.`
-    };
-  }
-  const pkg = ENVIRONMENT_PACKAGES[env];
-  if (pkg) {
-    return {
-      ...base,
-      message: `The ${code(env)} environment needs the ${pkg} package`,
-      detail: `${code(env)} is defined by ${pkg}, which this document does not load.`,
-      fix: loadAdvice(pkg),
-      data: { environment: env, package: pkg }
-    };
-  }
-  const suggestion = closest(env, COMMON_ENVIRONMENTS);
-  return {
-    ...base,
-    message: suggestion ? `Unknown environment ${code(env)} (did you mean ${code(suggestion)}?)` : `Unknown environment ${code(env)}`,
-    detail: `No loaded package defines ${code(`\\begin{${env}}`)}.`,
-    fix: suggestion ? `Change ${code(`\\begin{${env}}`)} and its ${code("\\end")} to ${code(suggestion)}.` : `Check the spelling, load the package that defines ${code(env)}, or define it with ${code("\\newenvironment")}.`
-  };
-};
-var explainEnvironmentMismatch = (m) => {
-  const opened = m[1] ?? "";
-  const openedLine = m[2] ?? "";
-  const closed = m[3] ?? "";
-  if (opened === "document") {
-    return {
-      rule: "environment-mismatch",
-      check: "build",
-      message: `${code(`\\end{${closed}}`)} has no matching ${code(`\\begin{${closed}}`)}`,
-      detail: `LaTeX found ${code(`\\end{${closed}}`)} while no ${code(closed)} environment was open.`,
-      fix: `Remove ${code(`\\end{${closed}}`)} or add the missing ${code(`\\begin{${closed}}`)}.`,
-      data: { opened, closed }
-    };
-  }
-  return {
-    rule: "environment-mismatch",
-    check: "build",
-    message: `${code(`\\begin{${opened}}`)} (line ${openedLine}) is closed by ${code(`\\end{${closed}}`)}`,
-    detail: "Environments must be closed in the reverse order they were opened.",
-    fix: `Change ${code(`\\end{${closed}}`)} to ${code(`\\end{${opened}}`)}, or add the missing ${code(`\\end{\u2026}`)} of an inner environment.`,
-    data: { opened, closed, openedLine: Number(openedLine) }
-  };
-};
-var simple = (rule, message, detail, fix) => () => ({ rule, check: "build", message, detail, fix });
-var explainMissingBeginDocument = (_m, error) => {
-  const text2 = sourceText(error);
-  return {
-    rule: "missing-begin-document",
-    check: "build",
-    message: text2 ? `Text in the preamble before ${code("\\begin{document}")}: ${code(text2.slice(0, 60))}` : `Text appears before ${code("\\begin{document}")}`,
-    detail: "Only definitions and package settings may appear in the preamble. Typeset text (or a stray character, often from a broken package or a byte-order mark) starts the document too early.",
-    fix: "Move the text after `\\begin{document}` or comment it out with `%`.",
-    ...text2 ? { data: { text: text2 } } : {}
-  };
-};
-var explainPreambleOnly = (_m, error) => {
-  const cs = trailingControlSequence(error.source?.before ?? "");
-  const statement = cs ? `\\${cs}${/^\s*(\[[^\]]*\])?\{[^}]*\}/.exec(error.source?.after ?? "")?.[0].trim() ?? ""}` : "";
-  return {
-    rule: "preamble-only",
-    check: "build",
-    message: statement ? `${code(statement)} must come before ${code("\\begin{document}")}` : `A preamble-only command is used after ${code("\\begin{document}")}`,
-    detail: "Commands such as `\\usepackage` and `\\documentclass` options only work in the preamble.",
-    fix: statement ? `Move ${code(statement)} above ${code("\\begin{document}")}.` : "Move the command above `\\begin{document}`.",
-    ...statement ? { data: { command: statement } } : {}
-  };
-};
-var explainUnicode = (m) => {
-  const char = m[1] ?? "";
-  const codePoint = m[2] ?? "";
-  const replacement = UNICODE_REPLACEMENTS[char];
-  return {
-    rule: "unicode-character",
-    check: "build",
-    message: `pdfLaTeX cannot typeset the character ${code(char)} (U+${codePoint})`,
-    detail: "pdfLaTeX only knows the Unicode characters its font encodings define. LuaLaTeX and XeLaTeX handle any character the font has.",
-    fix: replacement ? `Write ${code(replacement)} instead, or compile with LuaLaTeX (\`latexmk -lualatex\`).` : `Compile with LuaLaTeX (\`latexmk -lualatex\`), or replace the character with a LaTeX command, or declare it with ${code(`\\DeclareUnicodeCharacter{${codePoint}}{\u2026}`)}.`,
-    data: { char, code: `U+${codePoint}`, ...replacement ? { replacement } : {} }
-  };
-};
-var explainFontNotFound = (m) => {
-  const font = (m[1] ?? m[2] ?? "").trim();
-  return {
-    rule: "font-not-found",
-    check: "build",
-    message: `The font ${code(font)} is not installed`,
-    detail: "fontspec looks fonts up by name among the fonts installed on this machine (or in the TeX tree). CI machines and Docker images rarely have commercial fonts.",
-    fix: `Use a font that ships with TeX Live (e.g. ${code("TeX Gyre Termes")}, ${code("TeX Gyre Heros")}, ${code("Latin Modern Roman")}), or add the font files to the project and load them by file name: ${code("\\setmainfont{MyFont-Regular.otf}[Path=fonts/]")}. List installed names with ${code("luaotfload-tool --list=*")} or ${code("fc-list")}.`,
-    data: { font }
-  };
-};
-var explainTfmFont = (m) => ({
-  rule: "font-not-found",
-  check: "build",
-  message: `The font ${code(m[1] ?? "")} cannot be loaded`,
-  detail: "TeX found no metric file for this font: the font package is missing from the installation, or a font name is wrong.",
-  fix: "Install the font package that provides it (`tlmgr install \u2026`), or switch to LuaLaTeX with fontspec and an installed font.",
-  data: { font: m[1] }
-});
-var explainBiblatex = (m) => {
-  const what = m[1] ?? "";
-  const base = { rule: "biblatex-error", check: "build", data: { message: what } };
-  if (/'\\bibliographystyle' invalid/.test(what)) {
-    return {
-      ...base,
-      message: `${code("\\bibliographystyle")} cannot be used with biblatex`,
-      detail: "`\\bibliographystyle` belongs to BibTeX. biblatex chooses its style with a package option.",
-      fix: "Delete `\\bibliographystyle{\u2026}` and set the style when loading biblatex, e.g. `\\usepackage[style=numeric]{biblatex}`."
-    };
-  }
-  const incompatible = /Incompatible package '([^']+)'/.exec(what);
-  if (incompatible) {
-    const pkg = incompatible[1] ?? "";
-    return {
-      ...base,
-      message: `${code(pkg)} cannot be used together with biblatex`,
-      detail: `${code(pkg)} is a BibTeX-era citation package; biblatex replaces it.`,
-      fix: pkg === "natbib" ? "Remove `\\usepackage{natbib}`. To keep `\\citep`/`\\citet`, load `\\usepackage[natbib=true]{biblatex}`." : `Remove ${code(`\\usepackage{${pkg}}`)}.`
-    };
-  }
-  if (/backend|created by biblatex|wrong format version|bbl/.test(what)) {
-    return {
-      ...base,
-      message: "The bibliography file does not match the biblatex backend or version",
-      detail: `biblatex reported: ${what}. The .bbl was written by a different backend (BibTeX vs. Biber) or biblatex version.`,
-      fix: "Delete the .bbl file (or run `latexmk -C`), then build again so Biber regenerates it. Use `backend=biber` (the default) unless you know you need BibTeX."
-    };
-  }
-  return {
-    ...base,
-    message: `biblatex: ${what}`,
-    detail: "biblatex stopped with an error; the bibliography may be missing or incomplete.",
-    fix: "Read the message, check the biblatex options and the .bib file, then rebuild."
-  };
-};
-var explainParameterNumber = (m) => {
-  const macro = m[1];
-  if (macro) {
-    return {
-      rule: "illegal-parameter-number",
-      check: "build",
-      message: `The definition of ${code(macro)} uses a ${code("#")} argument it does not have`,
-      detail: `Inside ${code(macro)}, a ${code("#n")} refers to an argument number larger than the declared number of arguments (or a literal ${code("#")} appears in the definition).`,
-      fix: `Declare enough arguments, e.g. ${code(`\\newcommand{${macro}}[2]{\u2026#1\u2026#2\u2026}`)}, or write a literal hash sign as ${code("\\#")}.`,
-      data: { command: macro }
-    };
-  }
-  return {
-    rule: "illegal-parameter-number",
-    check: "build",
-    message: `A literal ${code("#")} appears in the text`,
-    detail: "`#` marks macro arguments in TeX and cannot be typeset directly.",
-    fix: "Write `\\#` (for example `issue \\#42`)."
-  };
-};
-var explainColor = (m) => {
-  const color = m[1] ?? "";
-  return {
-    rule: "undefined-color",
-    check: "build",
-    message: `Color ${code(color)} is not defined`,
-    detail: `xcolor knows only a few base color names unless more are loaded or defined.`,
-    fix: `Define it, e.g. ${code(`\\definecolor{${color}}{RGB}{139,0,0}`)}, or load ${code("\\usepackage[dvipsnames,svgnames]{xcolor}")} for named colors (such as ${code("DarkRed")} or ${code("BrickRed")}), or use a base name like ${code("red")}.`,
-    data: { color }
-  };
-};
-var explainCapacity = (m, error) => {
-  const what = m[1] ?? "";
-  const cs = trailingControlSequence(error.source?.before ?? "");
-  const recursion = /grouping levels|input stack size|save size|parameter stack|expansion depth|semantic nest/.test(
-    what
-  );
-  return {
-    rule: "tex-capacity-exceeded",
-    check: "build",
-    message: recursion ? `TeX ran out of ${what.replace(/=.*$/, "")}: probably a command that calls itself${cs ? ` (${code(`\\${cs}`)})` : ""}` : `TeX ran out of memory (${what})`,
-    detail: recursion ? `This almost always means infinite recursion: a macro whose definition uses itself${cs ? `, such as ${code(`\\newcommand{\\${cs}}{\u2026\\${cs}\u2026}`)}` : ""}, or a redefinition of a command in terms of itself.` : "Very large TikZ/pgfplots figures or huge tables can exhaust pdfLaTeX memory.",
-    fix: recursion ? `Check the definition of ${cs ? code(`\\${cs}`) : "the command on this line"}; to extend an existing command, save it first with ${code("\\let\\oldcmd\\cmd")} or use ${code("\\NewCommandCopy")}.` : "Compile with LuaLaTeX (dynamic memory), externalize large TikZ figures, or reduce plotted data points.",
-    data: { capacity: what, ...cs ? { command: `\\${cs}` } : {} }
-  };
-};
-var explainTikz = (m) => {
-  const what = m[2] ?? "";
-  const key = /I do not know the key '([^']+)'(?:, to which you passed '([^']*)')?/.exec(what);
-  if (key) {
-    const full = key[1] ?? "";
-    const name = full.split("/").pop() ?? full;
-    const family = full.split("/")[1] ?? "tikz";
-    const suggestion = family === "tikz" ? closest(name, TIKZ_KEYS) : void 0;
-    const value = key[2] ? `=${key[2]}` : "";
-    return {
-      rule: "tikz-error",
-      check: "build",
-      message: `${family === "tikz" ? "TikZ" : family} does not know the option ${code(name)}${suggestion ? ` (did you mean ${code(suggestion)}?)` : ""}`,
-      detail: `The key ${code(full)} is not defined; it is misspelled, belongs to a library that is not loaded, or needs a newer ${family} version.`,
-      fix: suggestion ? `Write ${code(`${suggestion}${value}`)} instead of ${code(`${name}${value}`)}.` : `Check the spelling, or load the TikZ library that defines it with ${code("\\usetikzlibrary{\u2026}")}.`,
-      data: { key: full, ...suggestion ? { suggestion } : {} }
-    };
-  }
-  if (/Giving up on this path\. Did you forget a semicolon/.test(what)) {
-    return {
-      rule: "tikz-error",
-      check: "build",
-      message: "A TikZ path does not end with a semicolon",
-      detail: "Every `\\draw`, `\\node`, `\\path` and `\\fill` command must end with `;`.",
-      fix: "Add the missing `;` at the end of the previous TikZ command."
-    };
-  }
-  const shape = /No shape named [`']?([^`'\s]+)'? is known/.exec(what);
-  if (shape) {
-    return {
-      rule: "tikz-error",
-      check: "build",
-      message: `TikZ node ${code(shape[1] ?? "")} does not exist`,
-      detail: "A path refers to a node name that was never defined (or is defined later, or in another picture).",
-      fix: `Check the spelling of ${code(`(${shape[1]})`)} and define the node before it is used; across pictures use ${code("remember picture")}.`,
-      data: { node: shape[1] }
-    };
-  }
-  return {
-    rule: "tikz-error",
-    check: "build",
-    message: `${m[1] ?? "TikZ"}: ${what}`,
-    detail: "TikZ/PGF stopped with an error; the figure may be incomplete.",
-    fix: "Check the TikZ code on this line against the PGF/TikZ manual."
-  };
-};
-var explainHyperref = (m) => ({
-  rule: "hyperref-error",
-  check: "build",
-  message: `hyperref: ${m[1] ?? ""}`,
-  detail: "hyperref reported an error; links or PDF metadata may be wrong. hyperref should normally be loaded last.",
-  fix: "Load hyperref after other packages (except cleveref), pass options with `\\hypersetup{\u2026}`, and use `\\texorpdfstring{\u2026}{\u2026}` for math or commands in headings."
-});
-var explainCommandDefined = (m) => {
-  const cs = m[1] ?? "";
-  return {
-    rule: "command-already-defined",
-    check: "build",
-    message: `${code(cs)} is already defined`,
-    detail: `${code("\\newcommand")} refuses to overwrite an existing command; ${code(cs)} is already defined by LaTeX, a package, or earlier in your preamble.`,
-    fix: `Pick a different name, or use ${code(`\\renewcommand{${cs}}`)} if you really mean to replace it. If two packages clash over ${code(cs)}, load only one of them.`,
-    data: { command: cs }
-  };
-};
-var explainUnknownOption = (m) => {
-  const option = m[1] ?? "";
-  const pkg = m[2] ?? "";
-  return {
-    rule: "unknown-package-option",
-    check: "build",
-    message: `${code(pkg)} has no option ${code(option)}`,
-    detail: `The option ${code(option)} is misspelled or is not supported by the installed version of ${code(pkg)}.`,
-    fix: `Check the spelling against the ${pkg} documentation (\`texdoc ${pkg}\`) and remove or correct ${code(option)}.`,
-    data: { package: pkg, option }
-  };
-};
-var HANDLERS = {
-  explainUndefinedControlSequence,
-  explainMissingDollar,
-  explainDoubleScript,
-  explainAlignmentTab,
-  explainMissingBrace,
-  explainExtraBrace,
-  explainRunaway,
-  explainFileNotFound,
-  explainOptionClash,
-  explainGraphicsExtension,
-  explainEnvironmentUndefined,
-  explainEnvironmentMismatch,
-  explainMissingBeginDocument,
-  explainPreambleOnly,
-  explainUnicode,
-  explainFontNotFound,
-  explainTfmFont,
-  explainBiblatex,
-  explainParameterNumber,
-  explainColor,
-  explainCapacity,
-  explainTikz,
-  explainHyperref,
-  explainCommandDefined,
-  explainUnknownOption
-};
-var EXPLAINERS = EXPLAINER_PATTERNS.map(([pattern, key]) => {
-  const fixed = SIMPLE_EXPLANATIONS[key];
-  if (fixed) return [pattern, simple(fixed.rule, fixed.message, fixed.detail, fixed.fix)];
-  const handler = HANDLERS[key];
-  if (!handler) throw new Error(`explain: no handler named ${key}`);
-  return [pattern, handler];
-});
-function explainError(error, ctx) {
-  for (const [pattern, explain] of EXPLAINERS) {
-    const m = pattern.exec(error.message);
-    if (m) return explain(m, error, ctx);
-  }
-  const near = sourceText(error);
-  return {
-    rule: "tex-error",
-    check: "build",
-    message: error.message.replace(/\.$/, ""),
-    detail: near ? `TeX stopped while reading ${code(near)}.` : void 0,
-    fix: "Read the message and the source line it points to; fix the first error in the log first, later ones often follow from it."
-  };
-}
-
-// ../packages/core/src/log/lines.ts
-var MAX_PRINT_LINE = 79;
-var STARTS_FRESH = /^(?:! |(?:[A-Za-z]:[\\/])?[^\s:()]+\.[A-Za-z0-9]+:\d+: |(?:LaTeX|LaTeX3|Package|Class|Module) .*?(?:Warning|Error|Info)|LaTeX Font |Package: |File: |Document Class: |Overfull \\|Underfull \\|Missing character: |Runaway |\([\w@.-]+\) {2,}|l\.\d+ |No file |Output written on |No pages of output|\\[A-Za-z@]+=\\)/;
-var SPACED_FILE_LINE = new RegExp(`^${SPACED_PATH_SOURCE}:\\d+: `, "i");
-function engineFamily(firstLine) {
-  if (/^This is (?:Lua(?:HB|HBJIT|JIT)?TeX)/.test(firstLine)) return "luatex";
-  if (/^This is XeTeX/.test(firstLine)) return "xetex";
-  if (/^This is (?:pdf|e-|)TeX/.test(firstLine)) return "pdftex";
-  return "unknown";
-}
-function utf8Bytes(text2) {
-  let bytes = 0;
-  for (let i = 0; i < text2.length; i++) {
-    const code3 = text2.charCodeAt(i);
-    if (code3 < 128) bytes += 1;
-    else if (code3 < 2048) bytes += 2;
-    else if (code3 >= 55296 && code3 <= 56319) {
-      bytes += 4;
-      i++;
-    } else bytes += 3;
-  }
-  return bytes;
-}
-function isAscii(text2) {
-  for (let i = 0; i < text2.length; i++) if (text2.charCodeAt(i) >= 128) return false;
-  return true;
-}
-function isFullWidth(line, engine) {
-  if (line.length < MAX_PRINT_LINE - 4 * 4) return false;
-  if (isAscii(line)) {
-    if (line.length === MAX_PRINT_LINE) return true;
-    return line.length === MAX_PRINT_LINE + 1 && (engine === "luatex" || engine === "unknown");
-  }
-  const chars2 = [...line].length;
-  if (engine === "xetex") return chars2 === MAX_PRINT_LINE;
-  if (chars2 === MAX_PRINT_LINE) return true;
-  const bytes = utf8Bytes(line);
-  return bytes >= MAX_PRINT_LINE - 3 && bytes <= MAX_PRINT_LINE + 2 || line.endsWith("\uFFFD");
-}
-var LineReader = class {
-  lines;
-  engine;
-  index = 0;
-  constructor(text2) {
-    this.lines = text2.split(/\r?\n/);
-    if (this.lines.length > 0 && this.lines[this.lines.length - 1] === "") this.lines.pop();
-    this.engine = engineFamily(this.lines[0] ?? "");
-  }
-  get done() {
-    return this.index >= this.lines.length;
-  }
-  peek(offset = 0) {
-    return this.lines[this.index + offset];
-  }
-  /** Next physical line, without joining. */
-  nextRaw() {
-    return this.lines[this.index++] ?? "";
-  }
-  /** Next logical line: physical lines joined while TeX wrapped them. */
-  next() {
-    const start = this.index;
-    let segment = this.nextRaw();
-    let text2 = segment;
-    while (isFullWidth(segment, this.engine) && this.index < this.lines.length) {
-      const following = this.lines[this.index] ?? "";
-      if (following === "") {
-        this.index++;
-        break;
-      }
-      if (STARTS_FRESH.test(following) || SPACED_FILE_LINE.test(following)) break;
-      text2 += following;
-      segment = following;
-      this.index++;
-    }
-    return { text: text2, start };
-  }
-};
-
-// ../packages/core/src/log/parse.ts
-var ERROR_START = /^! (.*)$/;
-var FILE_LINE_ERROR = new RegExp(
-  `^(${SPACED_PATH_SOURCE}|(?:[A-Za-z]:)?[^\\s:()]*\\.[A-Za-z0-9]+):(\\d+): (.*)$`,
-  "i"
-);
-var RUNAWAY = /^Runaway (?:argument|definition|preamble|text)\?$/;
-var CONTEXT_BEFORE = /^(?:<[^>]*>|\\\S|\s?\.\.\.)/;
-var SOURCE_LINE = /^l\.(\d+)(?: (.*))?$/;
-var TERMINAL_CONTEXT = /^<(?:\*|read [^>]*|insert)>/;
-var ERROR_BOILERPLATE = /^(?:See the .* for explanation\.|Type {1,2}H <return> {1,2}for immediate help\.)$/;
-var BANNER = /^This is (\S+), Version (\S+)\s*\(([^)]*)\)(?:\s+\((?:preloaded )?format=([^\s)]+)[^)]*\))?/;
-var OUTPUT = /^Output written on (.+?) \((\d+) pages?(?:, (\d+) bytes)?\)\.?$/;
-var BOX = /^(Overfull|Underfull) \\([hv]box) \((?:(-?[\d.]+)pt too (?:wide|high)|badness (\d+))\)(.*)$/;
-var MISSING_CHAR = /^Missing character: There is no (\S+) (?:\((U\+[0-9A-Fa-f]+)\) )?in font (.*?)!?$/;
-var NO_FILE = /^No file (.+?)\.$/;
-var MAX_ERROR_LINES = 60;
-var MAX_MESSAGE_LENGTH = 4096;
-var HAS_TEX_EXTENSION = new RegExp(`\\.${TEX_EXTENSION_GROUP}$`, "i");
-function escapeRegExp(text2) {
-  return text2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-function messageHeader(text2) {
-  let m = /^LaTeX(?:3)? (Font )?(Warning|Info): ?(.*)$/.exec(text2);
-  if (m) {
-    const font = Boolean(m[1]);
-    return {
-      source: font ? "Font" : "LaTeX",
-      body: m[3] ?? "",
-      info: m[2] === "Info",
-      continuation: font ? /^\(Font\)\s+(.*)$/ : /^ {8,}(\S.*)$/
-    };
-  }
-  m = /^(?:Package|Class|Module) (\S+) (Warning|Info): ?(.*)$/.exec(text2);
-  if (m) {
-    const name = m[1] ?? "";
-    return {
-      source: name,
-      body: m[3] ?? "",
-      info: m[2] === "Info",
-      continuation: new RegExp(`^\\(${escapeRegExp(name)}\\)\\s*(.*)$`)
-    };
-  }
-  return void 0;
-}
-var PLAIN_MESSAGE = /^(?:Package: |File: |Document Class: |Language: |Dictionary: |\\[A-Za-z@]+=\\|\\openout\d+ = |\([\w@.-]+\) {2,})/;
-function joinParts(parts) {
-  return parts.join(" ").replace(/\s+/g, " ").trim().slice(0, MAX_MESSAGE_LENGTH);
-}
-var FileStack = class {
-  /** `null` marks a parenthesis that did not open a file. */
-  entries = [];
-  lastClosed;
-  opened = [];
-  /** Last page number shipped out (`[12]`). */
-  page = 0;
-  root;
-  constructor(root) {
-    this.root = root;
-  }
-  current() {
-    for (let i = this.entries.length - 1; i >= 0; i--) {
-      const entry = this.entries[i];
-      if (entry) return entry;
-    }
-    return this.lastClosed;
-  }
-  scan(text2) {
-    for (let i = 0; i < text2.length; i++) {
-      const c = text2[i];
-      if (c === "(") i = this.open(text2, i + 1) - 1;
-      else if (c === ")") this.close();
-      else if (c === "[") this.maybePage(text2, i);
-    }
-  }
-  open(text2, start) {
-    let end = start;
-    if (text2[start] === '"') {
-      const close = text2.indexOf('"', start + 1);
-      end = close === -1 ? text2.length : close + 1;
-    } else {
-      while (end < text2.length && !/[\s()[\]{}<>"]/.test(text2[end] ?? "")) end++;
-      if (end < text2.length && /\s/.test(text2[end] ?? "") && !HAS_TEX_EXTENSION.test(text2.slice(start, end))) {
-        const spaced = spacedPathLength(text2, start);
-        if (spaced > end - start) end = start + spaced;
-      }
-    }
-    const token = text2.slice(start, end);
-    const unquoted = token.startsWith('"') ? token.slice(1, -1) : token;
-    if (isFileToken(unquoted)) {
-      const path = normalizePath(unquoted, this.root);
-      this.entries.push(path);
-      this.opened.push(path);
-      return end;
-    }
-    this.entries.push(null);
-    return start;
-  }
-  close() {
-    const entry = this.entries.pop();
-    if (entry) this.lastClosed = entry;
-  }
-  maybePage(text2, i) {
-    const before = i === 0 ? " " : text2[i - 1] ?? " ";
-    if (!/[\s\]})]/.test(before)) return;
-    const m = /^\[(\d+)/.exec(text2.slice(i, i + 12));
-    if (m) this.page = Number(m[1]);
-  }
-};
-var Parser2 = class {
-  reader;
-  stack;
-  runaway;
-  result = {
-    errors: [],
-    warnings: [],
-    noPages: false,
-    fatal: false,
-    rerunNeeded: { latex: false, biber: false, bibtex: false },
-    files: []
-  };
-  root;
-  constructor(text2, root) {
-    this.root = root;
-    this.reader = new LineReader(text2);
-    this.stack = new FileStack(root);
-  }
-  run() {
-    while (!this.reader.done) this.handle(this.reader.next());
-    this.result.files = [...new Set(this.stack.opened)];
-    return this.result;
-  }
-  handle(line) {
-    const text2 = line.text;
-    if (line.start === 0 && this.banner(text2)) return;
-    if (ERROR_START.test(text2) || this.fileLineError(text2)) {
-      this.error(line);
-      return;
-    }
-    if (RUNAWAY.test(text2)) {
-      this.runaway = this.reader.done ? "" : this.reader.next().text;
-      return;
-    }
-    const header = messageHeader(text2);
-    if (header) {
-      this.message(line, header);
-      return;
-    }
-    if (BOX.test(text2)) {
-      this.box(line);
-      return;
-    }
-    if (MISSING_CHAR.test(text2)) {
-      this.missingChar(line);
-      return;
-    }
-    if (this.output(text2)) return;
-    const noFile = NO_FILE.exec(text2);
-    if (noFile) {
-      this.warn(line, "no-file", "TeX", text2, { file: normalizePath(noFile[1] ?? "", this.root) });
-      return;
-    }
-    if (PLAIN_MESSAGE.test(text2)) return;
-    this.stack.scan(text2);
-  }
-  banner(text2) {
-    const m = BANNER.exec(text2);
-    if (!m) return false;
-    this.result.engine = `${m[1]} ${m[2]} (${m[3]})`;
-    if (m[4]) this.result.format = m[4];
-    return true;
-  }
-  fileLineError(text2) {
-    const m = FILE_LINE_ERROR.exec(text2);
-    if (!m) return null;
-    return isFileToken(m[1] ?? "") || /^[\w./-]+$/.test(m[1] ?? "") ? m : null;
-  }
-  output(text2) {
-    const m = OUTPUT.exec(text2);
-    if (m) {
-      this.result.outputFile = { name: m[1] ?? "", pages: Number(m[2]) };
-      if (m[3]) this.result.outputFile.bytes = Number(m[3]);
-      return true;
-    }
-    if (text2.startsWith("No pages of output")) {
-      this.result.noPages = true;
-      return true;
-    }
-    return false;
-  }
-  /**
-   * Reads continuation lines matching `pattern`; returns their captured text. All
-   * continuation lines are consumed, but the text kept is capped at
-   * MAX_MESSAGE_LENGTH characters (and the raw evidence at MAX_ERROR_LINES lines) so a
-   * pathological log cannot make later matching slow.
-   */
-  continuation(pattern, raw) {
-    const parts = [];
-    let length = raw.reduce((n, r) => n + r.length, 0);
-    while (!this.reader.done) {
-      const peek = this.reader.peek() ?? "";
-      if (!pattern.test(peek)) break;
-      const next = this.reader.next().text;
-      if (length >= MAX_MESSAGE_LENGTH) continue;
-      length += next.length;
-      if (raw.length < MAX_ERROR_LINES) raw.push(next);
-      parts.push(pattern.exec(next)?.[1] ?? next);
-    }
-    return parts;
-  }
-  error(first2) {
-    const raw = [first2.text];
-    const fle = this.fileLineError(first2.text);
-    let message = (fle ? fle[3] ?? "" : (ERROR_START.exec(first2.text)?.[1] ?? "").trim()).slice(
-      0,
-      MAX_MESSAGE_LENGTH
-    );
-    const pkg = /^(?:Package|Class|Module) (\S+) Error:/.exec(message);
-    if (pkg) {
-      const pattern = new RegExp(`^\\(${escapeRegExp(pkg[1] ?? "")}\\)\\s*(.*)$`);
-      message = joinParts([message, ...this.continuation(pattern, raw)]);
-    } else if (/^LaTeX Error:/.test(message)) {
-      message = joinParts([message, ...this.continuation(/^ {4,}(\S.*)$/, raw)]);
-    }
-    const error = {
-      message,
-      context: [],
-      help: [],
-      raw: "",
-      logLine: first2.start + 1
-    };
-    if (this.runaway !== void 0) {
-      error.runaway = this.runaway;
-      this.runaway = void 0;
-    }
-    this.errorBody(error, raw);
-    error.raw = raw.join("\n");
-    if (fle) {
-      error.file = normalizePath(fle[1] ?? "", this.root);
-      error.line = Number(fle[2]);
-    } else {
-      const file = this.stack.current();
-      if (file) error.file = file;
-    }
-    if (/^(?:Emergency stop|==> Fatal error occurred|TeX capacity exceeded|Interruption)/.test(
-      message
-    )) {
-      this.result.fatal = true;
-    }
-    this.result.errors.push(error);
-  }
-  /** Reads the context and help text that follow an error message. */
-  errorBody(error, raw) {
-    let blanks = 0;
-    let contextDone = false;
-    let sawSourceLine = false;
-    while (!this.reader.done && raw.length < MAX_ERROR_LINES) {
-      const peek = this.reader.peek() ?? "";
-      if (ERROR_START.test(peek) || this.fileLineError(peek)) return;
-      if (peek === "") {
-        raw.push(this.reader.nextRaw());
-        if (contextDone || ++blanks >= 2) return;
-        continue;
-      }
-      const source = SOURCE_LINE.exec(peek);
-      if (source && !sawSourceLine) {
-        raw.push(this.reader.nextRaw());
-        const after = this.reader.done ? "" : this.reader.nextRaw();
-        raw.push(after);
-        const before = source[2] ?? "";
-        error.context.push(peek, after);
-        error.source = { before, after: after.slice(Math.min(peek.length, after.length)) };
-        error.line = Number(source[1]);
-        sawSourceLine = true;
-        contextDone = true;
-        continue;
-      }
-      if (!contextDone && CONTEXT_BEFORE.test(peek)) {
-        raw.push(this.reader.nextRaw());
-        const after = this.reader.done ? "" : this.reader.nextRaw();
-        raw.push(after);
-        error.context.push(peek, after);
-        if (TERMINAL_CONTEXT.test(peek)) contextDone = true;
-        continue;
-      }
-      raw.push(this.reader.nextRaw());
-      if (!ERROR_BOILERPLATE.test(peek)) error.help.push(peek);
-    }
-  }
-  message(line, header) {
-    const raw = [line.text];
-    const parts = [header.body, ...this.continuation(header.continuation, raw)];
-    if (header.info) return;
-    const message = joinParts(parts);
-    const { kind, data } = classifyWarning(header.source, message);
-    this.warn(line, kind, header.source, message, data, raw);
-  }
-  warn(line, kind, source, message, data, raw = [line.text]) {
-    const warning = {
-      kind,
-      message,
-      source,
-      data,
-      raw: raw.join("\n"),
-      logLine: line.start + 1
-    };
-    const file = this.stack.current();
-    if (file) warning.file = file;
-    const inputLine = /on input line (\d+)/.exec(message);
-    if (inputLine) warning.line = Number(inputLine[1]);
-    const page = /on page (\d+)/.exec(message);
-    if (page) warning.page = Number(page[1]);
-    this.result.warnings.push(warning);
-    this.noteRerun(kind);
-    return warning;
-  }
-  noteRerun(kind) {
-    const rerun = this.result.rerunNeeded;
-    if (kind === "labels-changed" || kind === "rerun-latex") rerun.latex = true;
-    if (kind === "rerun-biber") rerun.biber = true;
-    if (kind === "rerun-bibtex") rerun.bibtex = true;
-  }
-  box(line) {
-    const m = BOX.exec(line.text);
-    if (!m) return;
-    const raw = [line.text];
-    while (!this.reader.done && raw.length < 40) {
-      const next = this.reader.nextRaw();
-      if (next === "") break;
-      raw.push(next);
-    }
-    const where = m[5] ?? "";
-    const lines = /lines? (\d+)(?:--(\d+))?/.exec(where);
-    const data = { box: m[2], where: where.trim() };
-    if (m[3] !== void 0) data.amountPt = Number(m[3]);
-    if (m[4] !== void 0) data.badness = Number(m[4]);
-    if (lines) data.lines = [Number(lines[1]), Number(lines[2] ?? lines[1])];
-    const kind = m[1] === "Overfull" ? "overfull" : "underfull";
-    const warning = this.warn(line, kind, "TeX", line.text, data, raw);
-    if (lines) {
-      const [from, to] = [Number(lines[1]), Number(lines[2] ?? lines[1])];
-      warning.line = Math.min(from, to);
-      if (from > to) data.spansFiles = true;
-    }
-    warning.page = this.stack.page + 1;
-  }
-  missingChar(line) {
-    const m = MISSING_CHAR.exec(line.text);
-    if (!m) return;
-    const data = { char: m[1], font: (m[3] ?? "").trim() };
-    if (m[2]) data.code = m[2].toUpperCase();
-    this.warn(line, "missing-glyph", "TeX", line.text, data);
-  }
-};
-function classifyWarning(source, message) {
-  let m = /^(Citation|Reference) [`']([^']+)' on page (\d+) undefined/.exec(message);
-  if (m) {
-    return m[1] === "Citation" ? { kind: "undefined-citation", data: { key: m[2] } } : { kind: "undefined-reference", data: { label: m[2] } };
-  }
-  if (/^There were undefined (?:references|citations)/.test(message)) {
-    return { kind: "undefined-references-summary", data: {} };
-  }
-  m = /^Label [`']([^']+)' multiply defined/.exec(message);
-  if (m) return { kind: "duplicate-label", data: { label: m[1] } };
-  if (/^Label\(s\) may have changed/.test(message)) return { kind: "labels-changed", data: {} };
-  if (/Please \(re\)run Biber/i.test(message)) return { kind: "rerun-biber", data: {} };
-  if (/Please \(re\)run BibTeX/i.test(message)) return { kind: "rerun-bibtex", data: {} };
-  m = /^The following entry could not be found in the database: (\S+)/.exec(message);
-  if (m) return { kind: "bib-entry-not-found", data: { key: m[1] } };
-  if (/^Empty bibliography/.test(message)) return { kind: "empty-bibliography", data: {} };
-  if (/Rerun to get|Please rerun LaTeX|Rerun LaTeX|Temporary extra page added/i.test(message)) {
-    return { kind: "rerun-latex", data: {} };
-  }
-  m = /^Font shape [`']([^']+)' undefined using [`']([^']+)' instead/.exec(message);
-  if (m) return { kind: "font-substitution", data: { from: m[1], to: m[2] } };
-  if (message.startsWith("Token not allowed in a PDF string")) {
-    m = /removing [`']([^']+)'/.exec(message);
-    if (m) return { kind: "pdf-string-token", data: { token: m[1] } };
-  }
-  if (source === "fontspec" && /does not contain requested|not available|cannot be found/.test(message)) {
-    return { kind: "font-feature", data: {} };
-  }
-  m = /^Float too large for page by ([\d.]+)pt/.exec(message);
-  if (m) return { kind: "float-too-large", data: { amountPt: Number(m[1]) } };
-  return { kind: "other", data: {} };
-}
-function parseLog(text2, options = {}) {
-  return new Parser2(text2, options.root).run();
-}
-
-// ../packages/core/src/log/analyze.ts
-var CASCADE_LINES = 3;
-var MAX_EVIDENCE_LINES = 40;
-var DEFAULT_OVERFULL_PT = 10;
-var code2 = (text2) => `\`${text2}\``;
-var plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
-function location(file, line, page) {
-  const loc = {};
-  if (file) loc.file = file;
-  if (line !== void 0) loc.line = line;
-  if (page !== void 0) loc.page = page;
-  return Object.keys(loc).length > 0 ? loc : void 0;
-}
-function evidence(lines) {
-  const all = lines.join("\n").split("\n");
-  if (all.length <= MAX_EVIDENCE_LINES) return all.join("\n");
-  return [
-    ...all.slice(0, MAX_EVIDENCE_LINES),
-    `\u2026 (${all.length - MAX_EVIDENCE_LINES} more lines)`
-  ].join("\n");
-}
-function compact(value) {
-  for (const key of Object.keys(value)) {
-    if (value[key] === void 0) delete value[key];
-  }
-  return value;
-}
-function isTerminationNotice(error) {
-  return /^(?:Emergency stop|==> Fatal error occurred|\s*==> Fatal error occurred)/.test(
-    error.message.trim()
-  );
-}
-function paragraphEnd(error) {
-  const before = (error.source?.before ?? "").trim();
-  return before === "" || /^(?:\.\.\.)?\\(?:par|end)\b/.test(before);
-}
-function atEndDocument(error) {
-  return /^\s*(?:\.\.\.)?\\end\s*\{document\}/.test(error.source?.before ?? "");
-}
-var CONSEQUENCE_RULES = /* @__PURE__ */ new Set([
-  "missing-dollar",
-  "missing-brace",
-  "extra-brace",
-  "runaway-argument",
-  "environment-mismatch",
-  "misplaced-alignment-tab",
-  "double-script",
-  "illegal-parameter-number",
-  "tex-error"
-]);
-function isFollower(error, rule, check2, group) {
-  if (!group) return false;
-  if (isTerminationNotice(error)) return true;
-  const { root, problem: problem3 } = group;
-  if (rule === "runaway-argument" && problem3.rule === "missing-dollar" && isInternalRunaway(error)) {
-    return true;
-  }
-  if (problem3.rule === "undefined-control-sequence" && rule === "missing-dollar") {
-    return atEndDocument(error);
-  }
-  if (atEndDocument(error) && check2 === problem3.check) return true;
-  if (rule === "missing-dollar" && problem3.rule === "missing-dollar" && paragraphEnd(error) && error.logLine > root.logLine) {
-    return true;
-  }
-  if (error.file !== root.file || error.line === void 0 || root.line === void 0) return false;
-  if (error.line === root.line) return true;
-  if (check2 !== problem3.check) return false;
-  if (error.line < root.line || error.line - root.line > CASCADE_LINES) return false;
-  const sideEffect = CONSEQUENCE_RULES.has(rule) || rule === "undefined-control-sequence" && problem3.rule !== rule;
-  return rule === problem3.rule || sideEffect;
-}
-function isInternalRunaway(error) {
-  return /\\__[A-Za-z]/.test(error.message);
-}
-function bySourcePosition(groups, files) {
-  const order = new Map(files.map((f, i) => [f, i]));
-  const key = (g) => {
-    const loc = g.problem.location;
-    const file = loc?.file !== void 0 ? order.get(loc.file) ?? files.length : files.length + 1;
-    return [file, loc?.line ?? Number.POSITIVE_INFINITY];
-  };
-  return groups.map((g, i) => ({ g, k: key(g), i })).sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1] || a.i - b.i).map(({ g }) => g);
-}
-function errorProblems(parsed, ctx) {
-  const groups = [];
-  let last;
-  for (const error of parsed.errors) {
-    const explanation = explainError(error, ctx);
-    if (last && isFollower(error, explanation.rule, explanation.check, last)) {
-      last.followers.push(error);
-      continue;
-    }
-    const problem3 = compact({
-      rule: explanation.rule,
-      check: explanation.check,
-      severity: "error",
-      message: explanation.message,
-      location: location(error.file, error.line),
-      detail: explanation.detail,
-      fix: explanation.fix,
-      data: { ...explanation.data, tex: error.message }
-    });
-    last = { root: error, problem: problem3, followers: [] };
-    groups.push(last);
-  }
-  return bySourcePosition(groups, parsed.files).map(({ root, problem: problem3, followers }) => {
-    if (followers.length > 0) problem3.related = followers.length;
-    const lined = followers.find((f) => f.line !== void 0 && f.file === root.file);
-    if (root.line === void 0 && lined?.line !== void 0 && problem3.location && problem3.rule !== "missing-package") {
-      problem3.location.line = lined.line;
-    }
-    problem3.evidence = evidence([root.raw, ...followers.map((f) => f.raw)]);
-    return problem3;
-  });
-}
-function fatalWithoutError(parsed, problems) {
-  if (problems.some((p) => p.check === "build") || !(parsed.fatal || parsed.noPages)) return [];
-  return [
-    {
-      rule: "tex-error",
-      check: "build",
-      severity: "error",
-      message: parsed.noPages ? "The build produced no pages" : "The build stopped before finishing",
-      detail: parsed.noPages ? "TeX finished without typesetting anything, so there is no PDF." : "TeX aborted the run; the PDF is missing or incomplete.",
-      fix: "Check that the document has content between `\\begin{document}` and `\\end{document}`, then read the end of the log."
-    }
-  ];
-}
-function indexWarnings(warnings) {
-  const map = /* @__PURE__ */ new Map();
-  for (const w of warnings) {
-    const list3 = map.get(w.kind);
-    if (list3) list3.push(w);
-    else map.set(w.kind, [w]);
-  }
-  return { get: (kind) => map.get(kind) ?? [] };
-}
-function groupBy(warnings, key) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const w of warnings) {
-    const value = String(w.data[key] ?? "");
-    const list3 = groups.get(value);
-    if (list3) list3.push(w);
-    else groups.set(value, [w]);
-  }
-  return groups;
-}
-function occurrences(list3) {
-  return list3.map((w) => compact({ file: w.file, line: w.line, page: w.page }));
-}
-function undefinedCitations(list3, notInBib) {
-  return [...groupBy(list3, "key")].map(([key, items]) => {
-    const first2 = items[0];
-    const missing = notInBib.has(key);
-    return compact({
-      rule: "undefined-citation",
-      check: "output",
-      severity: "error",
-      message: `Citation ${code2(key)} is undefined${items.length > 1 ? ` (cited ${items.length} times)` : ""}`,
-      location: location(first2.file, first2.line, first2.page),
-      detail: missing ? `The key ${code2(key)} is not in any loaded .bib file, so the PDF shows it in bold or as [?].` : `No bibliography entry has the key ${code2(key)}, so the PDF shows it in bold or as [?].`,
-      fix: `Check the spelling of ${code2(key)} against the .bib file, or add the entry (\`overfull cite <doi>\` can fetch it), then rebuild; or remove the \`\\cite\` if the source is not known.`,
-      evidence: evidence(items.map((w) => w.raw)),
-      data: { key, count: items.length, occurrences: occurrences(items) }
-    });
-  });
-}
-function undefinedReferences(list3) {
-  return [...groupBy(list3, "label")].map(([label, items]) => {
-    const first2 = items[0];
-    return compact({
-      rule: "undefined-reference",
-      check: "output",
-      severity: "error",
-      message: `Reference to ${code2(label)} is undefined${items.length > 1 ? ` (used ${items.length} times)` : ""}`,
-      location: location(first2.file, first2.line, first2.page),
-      detail: `There is no ${code2(`\\label{${label}}`)}, so the PDF shows ?? where it is referenced.`,
-      fix: `Add ${code2(`\\label{${label}}`)} after the caption or heading it should point to, or fix the spelling in ${code2(`\\ref{${label}}`)}.`,
-      evidence: evidence(items.map((w) => w.raw)),
-      data: { label, count: items.length, occurrences: occurrences(items) }
-    });
-  });
-}
-function staleState(parsed, w) {
-  const noBbl = w.get("no-file").some((x) => extension(String(x.data.file)) === "bbl");
-  const stale = parsed.rerunNeeded.biber || parsed.rerunNeeded.bibtex;
-  return {
-    bibliography: noBbl ? "missing" : stale ? "stale" : void 0,
-    bibTool: parsed.rerunNeeded.bibtex && !parsed.rerunNeeded.biber ? "BibTeX" : "Biber",
-    references: parsed.rerunNeeded.latex
-  };
-}
-function bibliographyProblem(state, citations, raw) {
-  const keys = [...new Set(citations.map((c) => String(c.data.key)))];
-  const tool = state.bibTool;
-  const command = tool === "Biber" ? "`biber main`" : "`bibtex main`";
-  const missing = state.bibliography === "missing";
-  const suffix = keys.length > 0 ? ` (${plural(keys.length, "citation")} ${keys.length === 1 ? "shows" : "show"} as [?])` : "";
-  return compact({
-    rule: missing ? "bibliography-missing" : "bibliography-stale",
-    check: "output",
-    severity: missing || keys.length > 0 ? "error" : "warning",
-    message: missing ? `The bibliography has not been built: ${tool} was not run${suffix}` : `The bibliography is out of date: ${tool} needs to run again${suffix}`,
-    detail: missing ? `There is no .bbl file yet, so every citation is undefined and the bibliography is empty. This is expected after a single LaTeX run.` : `The citations changed since ${tool} last ran.`,
-    fix: `Build with \`latexmk\` (it runs ${tool} and LaTeX as often as needed), or run ${command} and then LaTeX twice.`,
-    related: keys.length > 0 ? keys.length : void 0,
-    evidence: evidence(raw),
-    data: keys.length > 0 ? { tool, keys } : { tool }
-  });
-}
-function rerunProblem(references2, raw) {
-  const labels = [...new Set(references2.map((r) => String(r.data.label)))];
-  return compact({
-    rule: "rerun-needed",
-    check: "output",
-    severity: labels.length > 0 ? "error" : "warning",
-    message: labels.length > 0 ? `Cross-references are out of date: rerun LaTeX (${plural(labels.length, "reference")} ${labels.length === 1 ? "shows" : "show"} as ??)` : "Cross-references may be out of date: rerun LaTeX",
-    detail: "Labels changed during this run, so page numbers and references in the PDF may be wrong until LaTeX runs again.",
-    fix: "Build with `latexmk`, which reruns LaTeX until references settle, or run LaTeX once more.",
-    related: labels.length > 0 ? labels.length : void 0,
-    evidence: evidence(raw),
-    data: labels.length > 0 ? { labels } : void 0
-  });
-}
-function duplicateLabels(list3) {
-  return [...groupBy(list3, "label")].map(([label, items]) => {
-    const first2 = items[0];
-    return compact({
-      rule: "duplicate-label",
-      check: "output",
-      severity: "warning",
-      message: `Label ${code2(label)} is defined more than once`,
-      // LaTeX notices duplicates while reading the .aux file, which says nothing about the source.
-      location: extension(first2.file ?? "") === "aux" ? void 0 : location(first2.file, first2.line, first2.page),
-      detail: `References to ${code2(label)} point to whichever definition LaTeX saw last, which may be the wrong one.`,
-      fix: `Search for ${code2(`\\label{${label}}`)} and give each one a unique name.`,
-      evidence: evidence(items.map((w) => w.raw)),
-      data: { label }
-    });
-  });
-}
-function boxText(raw) {
-  const dump = raw.split("\n").slice(1).join("");
-  return dump.replace(/\\[A-Z0-9]+\/[\w/.-]+(?:\(\d+\))?\/\d+(?:\.\d+)?\s?/g, "").replace(/\[\]/g, " ").replace(/\$/g, "").replace(/(\w)-(\w)/g, "$1$2").replace(/\s+/g, " ").trim().slice(0, 80);
-}
-function overlapsError(box, errors) {
-  const lines = box.data.lines;
-  if (!lines) return false;
-  return errors.some(
-    (e) => e.file === box.file && e.line !== void 0 && e.line >= lines[0] && e.line <= lines[1]
-  );
-}
-function overfullBoxes(list3, thresholdPt, errors) {
-  const significant2 = list3.filter(
-    (w) => Number(w.data.amountPt ?? 0) > thresholdPt && !overlapsError(w, errors)
-  );
-  const byFile = /* @__PURE__ */ new Map();
-  for (const w of significant2) {
-    const key = w.file ?? "";
-    const group = byFile.get(key);
-    if (group) group.push(w);
-    else byFile.set(key, [w]);
-  }
-  return [...byFile.values()].map((items) => {
-    const worst = items.reduce(
-      (a, b) => Number(b.data.amountPt) > Number(a.data.amountPt) ? b : a
-    );
-    const amount = Number(worst.data.amountPt);
-    const lines = worst.data.lines;
-    const vertical = worst.data.box === "vbox";
-    const others = items.length - 1;
-    const text2 = vertical ? "" : boxText(worst.raw);
-    const where = lines ? lines[0] === lines[1] ? `line ${lines[0]}` : `lines ${lines[0]}\u2013${lines[1]}` : "";
-    return compact({
-      rule: "overfull-box",
-      check: "output",
-      severity: "warning",
-      message: vertical ? `Content is ${amount.toFixed(1)}pt too tall for the page${where ? ` (${where})` : ""}` : `Text sticks ${amount.toFixed(1)}pt into the margin${where ? ` (${where})` : ""}${others > 0 ? `; ${plural(others, "more overfull box")} in this file` : ""}`,
-      location: location(worst.file, worst.line, worst.page),
-      detail: vertical ? "A page or box holds more material than fits vertically." : `TeX could not break the line without exceeding the text width${text2 ? `: ${code2(text2)}` : ""}. Long URLs, code, file names and unhyphenated words are the usual cause.`,
-      fix: vertical ? "Shrink the float or table, allow it to break across pages, or move material." : "Rephrase or allow a break: use `\\url{}`/`\\path{}` for URLs and identifiers, `\\-` to suggest hyphenation, or load `microtype` for finer spacing. Wide tables and figures: scale them to `\\linewidth`.",
-      evidence: evidence([worst.raw]),
-      data: compact({ amountPt: amount, box: worst.data.box, lines, others, thresholdPt })
-    });
-  });
-}
-function fontSubstitutions(list3) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const w of list3) {
-    const key = `${w.data.from}\u2192${w.data.to}`;
-    const group = groups.get(key);
-    if (group) group.push(w);
-    else groups.set(key, [w]);
-  }
-  return [...groups.values()].map((items) => {
-    const first2 = items[0];
-    const from = String(first2.data.from);
-    const to = String(first2.data.to);
-    const shape = from.split("/").slice(2).join("/");
-    return compact({
-      rule: "font-substitution",
-      check: "output",
-      severity: "warning",
-      message: `Font shape ${code2(from)} is not available; ${code2(to)} was used instead`,
-      location: location(first2.file, first2.line, first2.page),
-      detail: `The font has no ${code2(shape)} variant (for example bold small caps), so the PDF shows a different style than the source asks for.`,
-      fix: "Use a font family that has this shape (with pdfLaTeX, `\\usepackage[T1]{fontenc}` gives Computer Modern bold small caps), or avoid combining these styles.",
-      evidence: evidence(items.map((w) => w.raw)),
-      data: { from, to, count: items.length }
-    });
-  });
-}
-function missingGlyphs(list3) {
-  const byFont = /* @__PURE__ */ new Map();
-  for (const w of list3) {
-    const font = String(w.data.font);
-    const group = byFont.get(font);
-    if (group) group.push(w);
-    else byFont.set(font, [w]);
-  }
-  return [...byFont].map(([font, items]) => {
-    const chars2 = [...new Set(items.map((w) => String(w.data.char)))];
-    const first2 = items[0];
-    const fontName = /^\[?([^\]:]+)/.exec(font)?.[1] ?? font;
-    return compact({
-      rule: "missing-glyph",
-      check: "output",
-      severity: "error",
-      message: `${plural(chars2.length, "character")} missing from the font ${code2(fontName)}: ${chars2.slice(0, 12).join(" ")}`,
-      location: location(first2.file, first2.line, first2.page),
-      detail: "The font has no glyph for these characters, so they are silently left out of the PDF.",
-      fix: "Switch to a font that covers them (for CJK text: `\\usepackage{xeCJK}` or `luatexja`, or `\\setmainfont{Noto Serif CJK SC}`), or use a fallback font for these characters.",
-      evidence: evidence(items.slice(0, 5).map((w) => w.raw)),
-      data: { font, chars: chars2, count: items.length }
-    });
-  });
-}
-function pdfStringTokens(list3) {
-  const first2 = list3[0];
-  if (!first2) return [];
-  const tokens = [...new Set(list3.map((w) => String(w.data.token)))];
-  return [
-    compact({
-      rule: "pdf-string-token",
-      check: "output",
-      severity: "info",
-      message: `Math or commands in a heading were dropped from the PDF bookmarks (${tokens.map(code2).join(", ")})`,
-      location: location(first2.file, first2.line, first2.page),
-      detail: "hyperref turns headings into PDF bookmarks, which are plain text; it removed what it could not convert.",
-      fix: "Give a plain-text alternative: `\\section{\\texorpdfstring{$\\alpha < 1$}{alpha < 1}}`.",
-      related: list3.length > 1 ? list3.length - 1 : void 0,
-      evidence: evidence(list3.slice(0, 4).map((w) => w.raw)),
-      data: { tokens }
-    })
-  ];
-}
-function simpleWarnings(w) {
-  const problems = [];
-  for (const float of w.get("float-too-large")) {
-    problems.push(
-      compact({
-        rule: "float-too-large",
-        check: "output",
-        severity: "warning",
-        message: `A figure or table is ${Number(float.data.amountPt).toFixed(1)}pt taller than the page`,
-        location: location(float.file, float.line),
-        detail: "The float does not fit on a page, so it runs into the bottom margin.",
-        fix: "Scale it down (`height=0.8\\textheight`), split a long table (`longtable`), or shrink its font.",
-        evidence: float.raw
-      })
-    );
-  }
-  for (const font of w.get("font-feature")) {
-    problems.push(
-      compact({
-        rule: "font-feature-missing",
-        check: "output",
-        severity: "warning",
-        message: `fontspec: ${font.message}`,
-        location: location(font.file, font.line),
-        detail: "The selected font lacks a requested feature or script, so text may look different than intended.",
-        fix: "Choose a font that supports the feature/script, or remove the option from `\\setmainfont`.",
-        evidence: font.raw
-      })
-    );
-  }
-  return problems;
-}
-function missingIncludes(w) {
-  return w.get("no-file").filter((x) => extension(String(x.data.file)) === "tex").map(
-    (x) => compact({
-      rule: "missing-file",
-      check: "output",
-      severity: "error",
-      message: `File ${code2(String(x.data.file))} not found; its content is missing from the PDF`,
-      location: location(x.file),
-      detail: "`\\include` skips files it cannot find, so the build continues without that part.",
-      fix: "Check the path and spelling in `\\include{\u2026}` (relative to the main file, case-sensitive).",
-      evidence: x.raw,
-      data: { file: x.data.file }
-    })
-  );
-}
-function warningProblems(parsed, buildFailed2, thresholdPt) {
-  const w = indexWarnings(parsed.warnings);
-  const state = staleState(parsed, w);
-  const problems = [];
-  const notInBib = new Set(w.get("bib-entry-not-found").map((x) => String(x.data.key)));
-  let citations = w.get("undefined-citation");
-  if (state.bibliography) {
-    const raw = [...w.get("no-file"), ...w.get("rerun-biber"), ...w.get("rerun-bibtex")].filter((x) => x.kind !== "no-file" || extension(String(x.data.file)) === "bbl").map((x) => x.raw);
-    if (!buildFailed2) problems.push(bibliographyProblem(state, citations, raw));
-    citations = citations.filter((c) => notInBib.has(String(c.data.key)));
-  }
-  problems.push(...undefinedCitations(citations, notInBib));
-  let references2 = w.get("undefined-reference");
-  if (state.references) {
-    const raw = [...w.get("labels-changed"), ...w.get("rerun-latex")].map((x) => x.raw);
-    if (!buildFailed2) problems.push(rerunProblem(references2, raw));
-    references2 = [];
-  }
-  problems.push(...undefinedReferences(references2));
-  const anyUndefined = w.get("undefined-citation").length + w.get("undefined-reference").length > 0;
-  const summary = w.get("undefined-references-summary")[0];
-  if (summary && !anyUndefined && !state.bibliography && !state.references) {
-    problems.push({
-      rule: "undefined-reference",
-      check: "output",
-      severity: "error",
-      message: "Some references or citations are undefined",
-      detail: "LaTeX reported undefined references without naming them.",
-      fix: "Rebuild with `latexmk`; if the warning stays, check `\\ref`/`\\cite` keys against labels and the .bib file.",
-      evidence: summary.raw
-    });
-  }
-  if (!state.bibliography) {
-    for (const empty of w.get("empty-bibliography")) {
-      problems.push(
-        compact({
-          rule: "empty-bibliography",
-          check: "output",
-          severity: "warning",
-          message: "The bibliography is empty",
-          location: location(empty.file, empty.line),
-          detail: "`\\printbibliography` printed nothing: there are no citations, or no cited key was found in the .bib files.",
-          fix: "Cite sources with `\\cite{\u2026}`, check `\\addbibresource{\u2026}` points at the right .bib file, or use `\\nocite{*}` to list everything.",
-          evidence: empty.raw
-        })
-      );
-    }
-  }
-  problems.push(...duplicateLabels(w.get("duplicate-label")));
-  problems.push(...overfullBoxes(w.get("overfull"), thresholdPt, parsed.errors));
-  problems.push(...fontSubstitutions(w.get("font-substitution")));
-  const glyphs = w.get("missing-glyph").filter((x) => !(buildFailed2 && x.data.font === "nullfont"));
-  problems.push(...missingGlyphs(glyphs));
-  problems.push(...pdfStringTokens(w.get("pdf-string-token")));
-  problems.push(...simpleWarnings(w));
-  problems.push(...missingIncludes(w));
-  return problems;
-}
-function packagesOf(parsed) {
-  return new Set(
-    parsed.files.filter((f) => extension(f) === "sty").map((f) => f.replace(/^.*\//, "").replace(/\.sty$/, ""))
-  );
-}
-function buildSummary(problems, parsed) {
-  const errors = problems.filter((p) => p.severity === "error").length;
-  const pdf = parsed.outputFile ? `${parsed.outputFile.name}, ${plural(parsed.outputFile.pages, "page")}` : "no PDF produced";
-  if (errors === 0) return `Build succeeded (${pdf})`;
-  return `${plural(errors, "error")} (${pdf})`;
-}
-function outputSummary(problems) {
-  if (problems.length === 0) return "No problems found in the output";
-  const counts = /* @__PURE__ */ new Map();
-  for (const p of problems) counts.set(p.rule, (counts.get(p.rule) ?? 0) + 1);
-  return [...counts].map(([rule, n]) => `${n} \xD7 ${rule}`).join(", ");
-}
-function skipped(check2, reason) {
-  return { check: check2, status: "skipped", problems: [], skippedReason: reason };
-}
-function analyzeLog(text2, opts = {}) {
-  const parsed = parseLog(text2, { root: opts.root });
-  if (text2.trim() === "") {
-    return {
-      build: skipped("build", "The log file is empty"),
-      output: skipped("output", "The log file is empty"),
-      parsed
-    };
-  }
-  const threshold = opts.overfullThresholdPt ?? DEFAULT_OVERFULL_PT;
-  const fromErrors = errorProblems(parsed, { packages: packagesOf(parsed) });
-  const buildProblems = [
-    ...fromErrors.filter((p) => p.check === "build"),
-    ...fatalWithoutError(parsed, fromErrors)
-  ];
-  const buildFailed2 = buildProblems.length > 0;
-  const outputProblems = [
-    ...fromErrors.filter((p) => p.check === "output"),
-    ...warningProblems(parsed, buildFailed2, threshold)
-  ];
-  const build2 = {
-    check: "build",
-    status: statusOf(buildProblems),
-    problems: buildProblems,
-    summary: buildSummary(buildProblems, parsed),
-    stats: {
-      errors: buildProblems.length,
-      texErrors: parsed.errors.length,
-      warnings: parsed.warnings.length,
-      ...parsed.outputFile ? { pages: parsed.outputFile.pages } : {}
-    }
-  };
-  const output = {
-    check: "output",
-    status: statusOf(outputProblems),
-    problems: outputProblems,
-    summary: outputSummary(outputProblems),
-    stats: {
-      errors: outputProblems.filter((p) => p.severity === "error").length,
-      warnings: outputProblems.filter((p) => p.severity === "warning").length
-    }
-  };
-  return { build: build2, output, parsed };
-}
-
-// ../packages/core/src/log/bibliography.ts
-function bblEntries(text2) {
-  const out = [];
-  const re = /\\(?:bibitem\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}|entry\s*\{([^}]+)\})/g;
-  for (let m = re.exec(text2); m; m = re.exec(text2)) {
-    const key = (m[1] ?? m[2] ?? "").trim();
-    if (!key) continue;
-    out.push({ key, offset: m.index, line: text2.slice(0, m.index).split("\n").length });
-  }
-  return out;
-}
-function argumentSnippet(evidence2) {
-  const m = /^<argument> (.+)$/m.exec(evidence2 ?? "");
-  const text2 = m?.[1]?.replace(/[&_^#$%\\]+\s*$/, "").trim();
-  return text2 && text2.length >= 8 ? text2 : void 0;
-}
-var sameFile = (a, b) => a.replace(/^\.\//, "") === b.replace(/^\.\//, "") || a.split("/").pop() === b.split("/").pop();
-function attributeBibliography(problems, src) {
-  if (!src.bbl) return problems;
-  const entries = bblEntries(src.bbl.text);
-  if (!entries.length) return problems;
-  let bibIndex;
-  const bibLocation = (key) => {
-    if (!bibIndex) {
-      bibIndex = /* @__PURE__ */ new Map();
-      for (const b of src.bibs) {
-        for (const e of parseBib(b.text)) {
-          if (!bibIndex.has(e.key)) bibIndex.set(e.key, { file: b.file, line: e.line });
-        }
-      }
-    }
-    return bibIndex.get(key);
-  };
-  return problems.map((p) => {
-    if (p.data?.bibKey) return p;
-    let key;
-    const loc = p.location;
-    if (loc?.file && loc.line && sameFile(loc.file, src.bbl?.path ?? "")) {
-      key = [...entries].reverse().find((e) => e.line <= loc.line)?.key;
-    } else {
-      const snippet2 = argumentSnippet(p.evidence);
-      const at = snippet2 ? src.bbl?.text.indexOf(snippet2) ?? -1 : -1;
-      if (at >= 0) key = [...entries].reverse().find((e) => e.offset <= at)?.key;
-    }
-    if (!key) return p;
-    const where = bibLocation(key);
-    return {
-      ...p,
-      message: `${p.message} in the bibliography entry \`${key}\``,
-      ...where ? { location: { file: where.file, line: where.line } } : {},
-      data: { ...p.data ?? {}, bibKey: key, ...loc ? { reportedAt: loc } : {} }
-    };
-  });
-}
-
-// ../packages/core/src/log/rules.ts
-var logRules = [
-  // build
-  {
-    id: "undefined-control-sequence",
-    check: "build",
-    severity: "error",
-    title: "Unknown command",
-    summary: "The document uses a command that no loaded package defines: a typo, a missing package, or a command from another citation package.",
-    fix: "Fix the spelling or load the package that defines the command.",
-    corpus: "undefined-control-sequence"
-  },
-  {
-    id: "missing-dollar",
-    check: "build",
-    severity: "error",
-    title: "Math symbol outside math mode",
-    summary: "A `_`, `^` or math command appears in running text, or a formula is not closed, so TeX inserted a `$`.",
-    fix: "Escape `_` as `\\_` in text, or put the formula inside `$\u2026$`.",
-    corpus: "underscore-in-text"
-  },
-  {
-    id: "missing-brace",
-    check: "build",
-    severity: "error",
-    title: "Missing brace",
-    summary: "A `{` group is still open where TeX needs it closed, for example at the end of a formula.",
-    fix: "Close every `{` before the formula or environment ends.",
-    corpus: "missing-brace-inserted"
-  },
-  {
-    id: "extra-brace",
-    check: "build",
-    severity: "error",
-    title: "Extra closing brace",
-    summary: "A `}` closes nothing: there are more closing braces than opening ones.",
-    fix: "Delete the extra `}` or add the missing `{`.",
-    corpus: "too-many-braces"
-  },
-  {
-    id: "runaway-argument",
-    check: "build",
-    severity: "error",
-    title: "Unclosed command argument",
-    summary: "The argument of a command is never closed, so TeX read to the end of the paragraph or file.",
-    fix: "Add the missing `}` after the argument.",
-    corpus: "unclosed-brace"
-  },
-  {
-    id: "missing-package",
-    check: "build",
-    severity: "error",
-    title: "Package or class not installed",
-    summary: "A `\\usepackage` or `\\documentclass` names a file that is not in the TeX installation.",
-    fix: "Check the spelling, install it with `tlmgr install <name>`, or build in the Overfull Docker image.",
-    corpus: "missing-package"
-  },
-  {
-    id: "missing-file",
-    check: "build",
-    severity: "error",
-    title: "Input file not found",
-    summary: "An `\\input` or `\\include` points to a file that does not exist.",
-    fix: "Fix the path; it is relative to the main file and case-sensitive.",
-    corpus: "missing-input-file"
-  },
-  {
-    id: "option-clash",
-    check: "build",
-    severity: "error",
-    title: "Package loaded twice with different options",
-    summary: "A package was loaded again with options it was not first loaded with.",
-    fix: "Load it once with all options, or use `\\PassOptionsToPackage` before `\\documentclass`.",
-    corpus: "option-clash"
-  },
-  {
-    id: "unknown-graphics-extension",
-    check: "build",
-    severity: "error",
-    title: "Unsupported image format",
-    summary: "`\\includegraphics` was given a format such as SVG or GIF that the engine cannot embed.",
-    fix: "Convert the image to PDF, PNG or JPEG.",
-    corpus: "unknown-graphics-extension"
-  },
-  {
-    id: "environment-undefined",
-    check: "build",
-    severity: "error",
-    title: "Unknown environment",
-    summary: "A `\\begin{\u2026}` names an environment that is not defined (theorem environments must be declared).",
-    fix: "Load the package that defines it, declare it with `\\newtheorem`, or fix the spelling.",
-    corpus: "environment-undefined"
-  },
-  {
-    id: "environment-mismatch",
-    check: "build",
-    severity: "error",
-    title: "Environment closed with the wrong \\end",
-    summary: "A `\\begin{a}` is closed by `\\end{b}`.",
-    fix: "Make each `\\end{\u2026}` match the innermost open `\\begin{\u2026}`.",
-    corpus: "environment-mismatch"
-  },
-  {
-    id: "lonely-item",
-    check: "build",
-    severity: "error",
-    title: "\\item outside a list",
-    summary: "`\\item` is used outside `itemize`, `enumerate` or `description`.",
-    fix: "Wrap the items in a list environment.",
-    corpus: "lonely-item"
-  },
-  {
-    id: "missing-item",
-    check: "build",
-    severity: "error",
-    title: "Missing \\item",
-    summary: "LaTeX expected `\\item`, typically because text appears in a list before the first item.",
-    fix: "Start each entry with `\\item` and move other text out of the list.",
-    corpus: "missing-item"
-  },
-  {
-    id: "no-line-to-end",
-    check: "build",
-    severity: "error",
-    title: "Line break with no line to end",
-    summary: "`\\\\` is used after a blank line or at the start of a paragraph.",
-    fix: "Remove the `\\\\`; use a blank line or `\\vspace` for spacing."
-  },
-  {
-    id: "missing-begin-document",
-    check: "build",
-    severity: "error",
-    title: "Text in the preamble",
-    summary: "Typeset text appears before `\\begin{document}`.",
-    fix: "Move the text after `\\begin{document}` or comment it out.",
-    corpus: "missing-begin-document"
-  },
-  {
-    id: "preamble-only",
-    check: "build",
-    severity: "error",
-    title: "Preamble command in the document body",
-    summary: "A command such as `\\usepackage` is used after `\\begin{document}`.",
-    fix: "Move it above `\\begin{document}`.",
-    corpus: "usepackage-after-begin-document"
-  },
-  {
-    id: "unicode-character",
-    check: "build",
-    severity: "error",
-    title: "Unicode character pdfLaTeX cannot typeset",
-    summary: "The source contains a character pdfLaTeX does not know, or is not saved as UTF-8.",
-    fix: "Compile with LuaLaTeX, or replace the character with a LaTeX command.",
-    corpus: "inputenc-unicode"
-  },
-  {
-    id: "font-not-found",
-    check: "build",
-    severity: "error",
-    title: "Font not installed",
-    summary: "A font requested with fontspec (or a font package) is not available on this machine.",
-    fix: "Use a font shipped with TeX Live, or add the font files to the project and load them by file name.",
-    corpus: "fontspec-font-not-found"
-  },
-  {
-    id: "biblatex-error",
-    check: "build",
-    severity: "error",
-    title: "biblatex error",
-    summary: "biblatex stopped: BibTeX commands used with biblatex, an incompatible package, or a backend/version mismatch.",
-    fix: "Use biblatex options instead of BibTeX commands; delete the .bbl and rebuild on mismatches.",
-    corpus: "biblatex-bibliographystyle"
-  },
-  {
-    id: "illegal-parameter-number",
-    check: "build",
-    severity: "error",
-    title: "Misused # character",
-    summary: "A macro definition uses `#n` beyond its declared arguments, or a literal `#` appears in text.",
-    fix: "Declare enough arguments, or write `\\#` for a hash sign.",
-    corpus: "illegal-parameter-number"
-  },
-  {
-    id: "double-script",
-    check: "build",
-    severity: "error",
-    title: "Double subscript or superscript",
-    summary: "A symbol has two subscripts (or superscripts), such as `w_i_j`.",
-    fix: "Group them in braces: `w_{ij}`.",
-    corpus: "double-subscript"
-  },
-  {
-    id: "misplaced-alignment-tab",
-    check: "build",
-    severity: "error",
-    title: "Unescaped & in text",
-    summary: "`&` separates table columns and cannot appear in running text or a .bib field unescaped.",
-    fix: "Write `\\&`.",
-    corpus: "ampersand-in-text"
-  },
-  {
-    id: "undefined-color",
-    check: "build",
-    severity: "error",
-    title: "Undefined color",
-    summary: "A color name is used that xcolor does not know.",
-    fix: "Define it with `\\definecolor`, or load xcolor with `dvipsnames`/`svgnames`.",
-    corpus: "undefined-color"
-  },
-  {
-    id: "not-in-outer-par-mode",
-    check: "build",
-    severity: "error",
-    title: "Float inside a box",
-    summary: "A figure, table or margin note is placed inside a minipage, parbox or another float.",
-    fix: "Move the float out, or use `\\captionof` inside a minipage.",
-    corpus: "figure-in-minipage"
-  },
-  {
-    id: "dimension-too-large",
-    check: "build",
-    severity: "error",
-    title: "Length too large",
-    summary: "A length exceeds TeX\u2019s maximum of about 16383pt (5.75 m).",
-    fix: "Fix the length or rescale plot data.",
-    corpus: "dimension-too-large"
-  },
-  {
-    id: "tex-capacity-exceeded",
-    check: "build",
-    severity: "error",
-    title: "TeX ran out of capacity",
-    summary: "Usually infinite recursion (a command that calls itself); otherwise a very large figure.",
-    fix: "Check recent `\\newcommand`/`\\renewcommand` definitions; for big figures use LuaLaTeX or externalize them.",
-    corpus: "infinite-recursion"
-  },
-  {
-    id: "tikz-error",
-    check: "build",
-    severity: "error",
-    title: "TikZ/PGF error",
-    summary: "TikZ stopped on an unknown option, a missing semicolon, or an undefined node.",
-    fix: "Fix the option spelling, end paths with `;`, or load the needed TikZ library.",
-    corpus: "tikz-unknown-key"
-  },
-  {
-    id: "hyperref-error",
-    check: "build",
-    severity: "error",
-    title: "hyperref error",
-    summary: "hyperref reported an error, typically a driver or option conflict.",
-    fix: "Load hyperref last and set options with `\\hypersetup`."
-  },
-  {
-    id: "command-already-defined",
-    check: "build",
-    severity: "error",
-    title: "Command already defined",
-    summary: "`\\newcommand` tried to define a name that already exists.",
-    fix: "Choose another name, or use `\\renewcommand` deliberately."
-  },
-  {
-    id: "unknown-package-option",
-    check: "build",
-    severity: "error",
-    title: "Unknown package option",
-    summary: "A package or class was given an option it does not support.",
-    fix: "Check the option against the package documentation."
-  },
-  {
-    id: "tex-error",
-    check: "build",
-    severity: "error",
-    title: "TeX error",
-    summary: "TeX reported an error Overfull has no specific explanation for; the original message is shown.",
-    fix: "Read the message and fix the first error in the log first."
-  },
-  // output
-  {
-    id: "undefined-citation",
-    check: "output",
-    severity: "error",
-    title: "Undefined citation",
-    summary: "A cited key has no bibliography entry, so the PDF shows the key or [?].",
-    fix: "Fix the key or add the entry to the .bib file, then rebuild; or remove the `\\cite` if the source is not known.",
-    corpus: "biblatex-undefined-citation"
-  },
-  {
-    id: "undefined-reference",
-    check: "output",
-    severity: "error",
-    title: "Undefined reference",
-    summary: "A `\\ref` points to a label that does not exist, so the PDF shows ??.",
-    fix: "Add the `\\label` or fix the spelling in `\\ref`.",
-    corpus: "undefined-reference"
-  },
-  {
-    id: "bibliography-missing",
-    check: "output",
-    severity: "error",
-    title: "Bibliography not built",
-    summary: "Biber or BibTeX was never run, so all citations are undefined and the bibliography is empty.",
-    fix: "Build with `latexmk`, or run biber/bibtex and then LaTeX twice.",
-    corpus: "biblatex-rerun-biber"
-  },
-  {
-    id: "bibliography-stale",
-    check: "output",
-    severity: "warning",
-    title: "Bibliography out of date",
-    summary: "Citations changed since Biber or BibTeX last ran.",
-    fix: "Build with `latexmk`, or rerun biber/bibtex and LaTeX."
-  },
-  {
-    id: "rerun-needed",
-    check: "output",
-    severity: "warning",
-    title: "LaTeX needs another run",
-    summary: "Labels changed during the run; references and page numbers may be wrong until LaTeX runs again.",
-    fix: "Build with `latexmk`, which reruns LaTeX as needed.",
-    corpus: "labels-changed"
-  },
-  {
-    id: "empty-bibliography",
-    check: "output",
-    severity: "warning",
-    title: "Empty bibliography",
-    summary: "The bibliography printed no entries.",
-    fix: "Cite sources, check `\\addbibresource`, or use `\\nocite{*}`.",
-    corpus: "empty-bibliography"
-  },
-  {
-    id: "missing-figure",
-    check: "output",
-    severity: "error",
-    title: "Figure file not found",
-    summary: "An `\\includegraphics` file does not exist, so the PDF has an empty box.",
-    fix: "Fix the path and file name (case-sensitive).",
-    corpus: "missing-figure"
-  },
-  {
-    id: "duplicate-label",
-    check: "output",
-    severity: "warning",
-    title: "Label defined twice",
-    summary: "Two `\\label`s share a name, so references may point to the wrong place.",
-    fix: "Give each label a unique name.",
-    corpus: "duplicate-label"
-  },
-  {
-    id: "overfull-box",
-    check: "output",
-    severity: "warning",
-    title: "Text in the margin",
-    summary: "A line is wider than the text block by more than the threshold (default 10pt). The worst box per file is reported.",
-    fix: "Rephrase, use `\\url`/`\\path` for long identifiers, or scale wide material to `\\linewidth`.",
-    corpus: "overfull-hbox"
-  },
-  {
-    id: "font-substitution",
-    check: "output",
-    severity: "warning",
-    title: "Font shape substituted",
-    summary: "The font lacks a requested shape (e.g. bold small caps) and another one was used.",
-    fix: "Use a font family that has the shape, or avoid the combination.",
-    corpus: "font-shape-substitution"
-  },
-  {
-    id: "missing-glyph",
-    check: "output",
-    severity: "error",
-    title: "Characters missing from the font",
-    summary: "The font has no glyph for some characters, which are silently dropped from the PDF.",
-    fix: "Use a font that covers the characters (e.g. a CJK font with xeCJK or luatexja).",
-    corpus: "missing-glyph"
-  },
-  {
-    id: "pdf-string-token",
-    check: "output",
-    severity: "info",
-    title: "Heading simplified in PDF bookmarks",
-    summary: "hyperref removed math or commands from a heading when making the PDF bookmark.",
-    fix: "Use `\\texorpdfstring{TeX}{plain text}` in the heading.",
-    corpus: "math-in-pdf-bookmark"
-  },
-  {
-    id: "float-too-large",
-    check: "output",
-    severity: "warning",
-    title: "Float taller than the page",
-    summary: "A figure or table does not fit on a page.",
-    fix: "Scale it down or split it."
-  },
-  {
-    id: "font-feature-missing",
-    check: "output",
-    severity: "warning",
-    title: "Font lacks a requested feature",
-    summary: "fontspec could not apply a requested OpenType feature or script.",
-    fix: "Pick a font that supports it or drop the option."
-  }
-];
-
-// ../packages/core/src/venue/tex.ts
-function stripComments(content) {
-  return content.split("\n").map((line) => {
-    for (let i = 0; i < line.length; i++) {
-      if (line[i] === "\\") {
-        i++;
-        continue;
-      }
-      if (line[i] === "%") return line.slice(0, i);
-    }
-    return line;
-  }).join("\n");
-}
-function readGroup(s, open) {
-  if (s[open] !== "{") return null;
-  let depth = 0;
-  for (let i = open; i < s.length; i++) {
-    const c = s[i];
-    if (c === "\\") {
-      i++;
-      continue;
-    }
-    if (c === "{") depth++;
-    else if (c === "}") {
-      depth--;
-      if (depth === 0) return { value: s.slice(open + 1, i), end: i + 1 };
-    }
-  }
-  return null;
-}
-function lineCounter(s) {
-  let pos = 0;
-  let line = 1;
-  return (index) => {
-    if (index < pos) {
-      pos = 0;
-      line = 1;
-    }
-    for (; pos < index; pos++) if (s.charCodeAt(pos) === 10) line++;
-    return line;
-  };
-}
-function braceMatches(s) {
-  const close = new Int32Array(s.length).fill(-1);
-  const stack = [];
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c === 92) {
-      i++;
-    } else if (c === 123) {
-      stack.push(i);
-    } else if (c === 125) {
-      const open = stack.pop();
-      if (open !== void 0) close[open] = i;
-    }
-  }
-  return close;
-}
-var MAX_OPTIONAL = 4096;
-function findCommands(files, names) {
-  const out = [];
-  const re = new RegExp(`\\\\(${names.join("|")})\\*?(?![A-Za-z@])`, "g");
-  for (const f of files) {
-    const src = stripComments(f.content);
-    const lineAt = lineCounter(src);
-    let braces;
-    re.lastIndex = 0;
-    for (let m = re.exec(src); m; m = re.exec(src)) {
-      let i = m.index + m[0].length;
-      while (src[i] === " " || src[i] === "\n") i++;
-      let optional;
-      if (src[i] === "[") {
-        let close = src.slice(i, i + MAX_OPTIONAL).indexOf("]");
-        if (close < 0) continue;
-        close += i;
-        optional = src.slice(i + 1, close);
-        i = close + 1;
-        while (src[i] === " " || src[i] === "\n") i++;
-      }
-      if (src[i] !== "{") continue;
-      braces ??= braceMatches(src);
-      const end = braces[i] ?? -1;
-      if (end < 0) continue;
-      const use = {
-        file: f.path,
-        line: lineAt(m.index),
-        name: m[1],
-        arg: src.slice(i + 1, end)
-      };
-      if (optional !== void 0) use.optional = optional;
-      out.push(use);
-    }
-  }
-  return out;
-}
-function grepTex(files, re) {
-  const out = [];
-  const flags = re.flags.includes("g") ? re.flags : `${re.flags}g`;
-  const g = new RegExp(re.source, flags);
-  for (const f of files) {
-    const src = stripComments(f.content);
-    const lineAt = lineCounter(src);
-    g.lastIndex = 0;
-    for (let m = g.exec(src); m; m = g.exec(src)) {
-      out.push({ file: f.path, line: lineAt(m.index), match: m[0] });
-      if (m[0].length === 0) g.lastIndex++;
-    }
-  }
-  return out;
-}
-var CITE_COMMAND = /\\([A-Za-z]{0,12}cite[A-Za-z]{0,8})\*?(?![A-Za-z@])/g;
-function citeLocations(files, keys) {
-  const wanted = keys ? new Set(keys) : void 0;
-  const out = /* @__PURE__ */ new Map();
-  for (const f of files) {
-    const src = stripComments(f.content);
-    const lineAt = lineCounter(src);
-    CITE_COMMAND.lastIndex = 0;
-    for (let m = CITE_COMMAND.exec(src); m; m = CITE_COMMAND.exec(src)) {
-      let i = m.index + m[0].length;
-      for (let opt = 0; opt < 2; opt++) {
-        while (src[i] === " " || src[i] === "\n") i++;
-        if (src[i] !== "[") break;
-        const close2 = src.slice(i, i + MAX_OPTIONAL).indexOf("]");
-        if (close2 < 0) break;
-        i += close2 + 1;
-      }
-      while (src[i] === " " || src[i] === "\n") i++;
-      if (src[i] !== "{") continue;
-      const close = src.slice(i, i + MAX_OPTIONAL).indexOf("}");
-      if (close < 0) continue;
-      const body = src.slice(i + 1, i + close);
-      if (body.includes("{")) continue;
-      for (const raw of body.split(",")) {
-        const key = raw.trim();
-        if (!key || out.has(key) || wanted && !wanted.has(key)) continue;
-        out.set(key, { file: f.path, line: lineAt(m.index) });
-      }
-    }
-  }
-  return out;
-}
-
-// ../packages/core/src/pdf/rules.ts
-var pdfRules = [
-  {
-    id: "pdf-unresolved-reference",
-    check: "output",
-    severity: "error",
-    title: "Unresolved reference in the PDF",
-    summary: 'The PDF shows "??" where a figure, table, section or equation number belongs.',
-    fix: "Make sure every `\\ref` has a matching `\\label` (same spelling), then rebuild with latexmk."
-  },
-  {
-    id: "pdf-unresolved-citation",
-    check: "output",
-    severity: "error",
-    title: "Unresolved citation in the PDF",
-    summary: 'The PDF shows "[?]" where a citation number belongs.',
-    fix: "Add the cited key to the .bib file or fix its spelling, then rebuild so biber/bibtex runs."
-  },
-  {
-    id: "pdf-not-tagged",
-    check: "accessibility",
-    severity: "error",
-    title: "PDF is not tagged",
-    summary: "The PDF has no structure tags, so screen readers cannot tell headings, paragraphs, lists and figures apart.",
-    fix: "Add `\\DocumentMetadata{lang=en, pdfstandard=ua-2, pdfversion=2.0, tagging=on}` as the first line of main.tex and compile with LuaLaTeX. An untagged PDF also fails most veraPDF clauses; they are folded into this problem."
-  },
-  {
-    id: "pdf-missing-language",
-    check: "accessibility",
-    severity: "error",
-    title: "Document language not set",
-    summary: "The PDF does not declare its language, so assistive technology may read it with the wrong voice.",
-    fix: "Set `lang=` in `\\DocumentMetadata{...}` (for example `lang=en-US`)."
-  },
-  {
-    id: "pdf-missing-title",
-    check: "accessibility",
-    severity: "error",
-    title: "Document title missing or not displayed",
-    summary: "The PDF has no title in its metadata, or viewers are not told to show it instead of the file name (DisplayDocTitle).",
-    fix: "Set `\\hypersetup{pdftitle={...}, pdfdisplaydoctitle=true}` (or `title=` in `\\DocumentMetadata`)."
-  },
-  {
-    id: "figure-missing-alt",
-    check: "accessibility",
-    severity: "error",
-    title: "Figure without alternative text",
-    summary: "A tagged figure has no alt text, so its content is invisible to screen-reader users.",
-    fix: "Describe what the figure shows: `\\includegraphics[alt={...}]{file}`, or `\\begin{tikzpicture}[alt={...}]` for TikZ; use `artifact` instead of `alt` for purely decorative images."
-  },
-  {
-    id: "font-not-embedded",
-    check: "accessibility",
-    severity: "error",
-    title: "Font not embedded",
-    summary: "A font is referenced but not embedded, so the PDF may render differently elsewhere and fails PDF/UA and most venue checks.",
-    fix: "Use OpenType or Type 1 fonts (LuaLaTeX with fontspec embeds them); re-export figures with fonts embedded."
-  },
-  {
-    id: "pdfua-not-claimed",
-    check: "accessibility",
-    severity: "info",
-    title: "PDF/UA conformance not claimed",
-    summary: "The XMP metadata does not claim PDF/UA, so validators and archives will not treat it as accessible.",
-    fix: "Add `pdfstandard=ua-2` to `\\DocumentMetadata{...}`."
-  },
-  {
-    id: "verapdf-not-run",
-    check: "accessibility",
-    severity: "warning",
-    title: "veraPDF validation not run",
-    summary: "veraPDF was not available, so only Overfull\u2019s own accessibility checks ran (no full PDF/UA validation). A warning when the profile requires accessibility (thesis, paper) and the CLI could have run it (Docker is available); otherwise, including in the browser and the GitHub Action, a note.",
-    fix: "Install veraPDF (https://verapdf.org) and put `verapdf` on PATH, run `overfull check --engine docker`, or run the check in the Overfull Docker image."
-  },
-  {
-    id: "verapdf-error",
-    check: "accessibility",
-    severity: "warning",
-    title: "veraPDF could not validate the PDF",
-    summary: "veraPDF ran but did not produce a validation result.",
-    fix: "Run `verapdf --flavour ua2 <file.pdf>` by hand to see the error; the PDF may be damaged."
-  },
-  {
-    id: "verapdf",
-    check: "accessibility",
-    severity: "error",
-    title: "PDF/UA requirement failed (veraPDF)",
-    summary: "veraPDF found a PDF/UA violation. Rule ids are `verapdf-<clause>`, e.g. `verapdf-8-2-5-26` for clause 8.2.5.26 of ISO 14289.",
-    fix: "Read the clause description in the message; most failures come from untagged content, missing alt text or metadata."
-  }
-];
-var veraPdfClauses = [
-  {
-    clause: "8.2.2",
-    title: "Content is neither tagged nor marked as an artifact",
-    summary: "Every piece of page content must belong to the structure tree or be marked as an artifact (page numbers, running headers, decorative rules). Untagged content is invisible or confusing to screen readers. Usually caused by packages or drawing code that tagging does not yet support, or by a PDF built without tagging.",
-    fix: "Build with `\\DocumentMetadata{\u2026 tagging=on}` and LuaLaTeX; update TeX Live (tagging support improves every year). Wrap decorative material in `\\tagmcbegin{artifact}`\u2026`\\tagmcend` or use the package\u2019s `artifact` option; include images with `alt=` or `artifact`."
-  },
-  {
-    clause: "8.2.5",
-    title: "Structure element used where the standard does not allow it",
-    summary: "The structure tree breaks a nesting rule of the PDF 2.0 namespace (for example a `Caption` outside a `Figure`/`Table`, or a list item outside `L`). Usually caused by a package or class that tags its output in its own way.",
-    fix: "Update TeX Live and the class; remove manual `\\tagstructbegin` code or packages known to break tagging (check https://latex3.github.io/tagging-project/tagging-status/). The evidence lists the offending structure elements."
-  },
-  {
-    clause: "7.1",
-    title: "Tagging and general PDF/UA requirements",
-    summary: "The PDF is not tagged, marks content inconsistently, or lacks basic PDF/UA properties (MarkInfo, DisplayDocTitle, the PDF/UA identification in XMP).",
-    fix: "Add `\\DocumentMetadata{lang=en, pdfstandard=ua-2, pdfversion=2.0, tagging=on}` as the first line of main.tex, set `\\hypersetup{pdftitle={\u2026}, pdfdisplaydoctitle=true}`, and build with LuaLaTeX."
-  },
-  {
-    clause: "7.18",
-    title: "Annotation or link not accessible",
-    summary: "Links and other annotations must be tagged (inside a `Link` structure element) and carry a text description (`Contents`). hyperref links from an untagged or partly tagged build fail this.",
-    fix: "Build with tagging on (`\\DocumentMetadata{\u2026 tagging=on}`) so hyperref tags its links; avoid packages that draw their own link annotations."
-  },
-  {
-    clause: "7.21",
-    title: "Font problem (embedding, encoding or Unicode mapping)",
-    summary: "A font is not embedded, has no Unicode mapping (ToUnicode), or its widths disagree with the embedded program. Screen readers then cannot extract the text. Common with Type 3 bitmap fonts and figures exported with non-embedded fonts.",
-    fix: "Compile with LuaLaTeX and OpenType fonts (fontspec); re-export PDF/EPS figures with fonts embedded (or as outlines). Avoid bitmap (Type 3) fonts."
-  },
-  {
-    clause: "7.3",
-    title: "Figure without alternative text",
-    summary: "A `Figure` structure element has no `Alt` (or `ActualText`) description.",
-    fix: "Give every figure alt text: `\\includegraphics[alt={\u2026}]{file}`, `\\begin{tikzpicture}[alt={\u2026}]`; use `artifact` for purely decorative images."
-  }
-];
-function veraPdfClauseInfo(clause) {
-  const c = clause.trim();
-  return veraPdfClauses.filter((i) => c === i.clause || c.startsWith(`${i.clause}.`)).sort((a, b) => b.clause.length - a.clause.length)[0];
-}
-
-// ../packages/core/src/pdf/accessibility.ts
-var DOCUMENT_METADATA_LINE = "\\DocumentMetadata{lang=en, pdfstandard=ua-2, pdfversion=2.0, tagging=on}";
-var FIGURE_ALT_FIX = "Describe what the figure shows: `\\includegraphics[alt={...}]{file}`, or `\\begin{tikzpicture}[alt={...}]` for TikZ; use `artifact` instead of `alt` for purely decorative images";
-function hasAltKey(options) {
-  return options !== void 0 && /(?:^|[,\s])(?:alt\s*=|artifact\b)/.test(options);
-}
-function figureAltSourceProblems(texFiles, severity) {
-  const problems = [];
-  for (const use of findCommands(texFiles, ["includegraphics"])) {
-    if (hasAltKey(use.optional)) continue;
-    problems.push({
-      rule: "figure-missing-alt",
-      check: "accessibility",
-      severity,
-      message: `\`\\includegraphics{${use.arg.trim()}}\` has no alt text`,
-      location: { file: use.file, line: use.line },
-      fix: FIGURE_ALT_FIX,
-      data: { kind: "includegraphics", file: use.arg.trim() }
-    });
-  }
-  const begin = /\\begin\s*\{tikzpicture\}/g;
-  for (const f of texFiles) {
-    const src = stripComments(f.content);
-    const lineAt = lineCounter(src);
-    begin.lastIndex = 0;
-    for (let m = begin.exec(src); m; m = begin.exec(src)) {
-      let i = m.index + m[0].length;
-      while (src[i] === " " || src[i] === "\n") i++;
-      let options;
-      if (src[i] === "[") {
-        const close = src.slice(i, i + 4096).indexOf("]");
-        if (close > 0) options = src.slice(i + 1, i + close);
-      }
-      if (hasAltKey(options)) continue;
-      problems.push({
-        rule: "figure-missing-alt",
-        check: "accessibility",
-        severity,
-        message: "`tikzpicture` has no alt text",
-        location: { file: f.path, line: lineAt(m.index) },
-        fix: FIGURE_ALT_FIX,
-        data: { kind: "tikzpicture" }
-      });
-    }
-  }
-  return problems;
-}
-function veraPdfRuleId(clause) {
-  const slug = clause.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return slug ? `verapdf-${slug}` : "verapdf";
-}
-function plural2(n, one, many = `${one}s`) {
-  return `${n} ${n === 1 ? one : many}`;
-}
-function isMissingAlt(alt) {
-  if (!alt?.trim()) return true;
-  return /^[\w./\\-]+\.(pdf|png|jpe?g|eps|svg|gif|tiff?|webp|bmp)$/i.test(alt.trim());
-}
-function figureProblems(facts, sev) {
-  const byPage = /* @__PURE__ */ new Map();
-  for (const f of facts.figures) {
-    if (!isMissingAlt(f.alt)) continue;
-    const e = byPage.get(f.page) ?? { count: 0, placeholder: 0 };
-    e.count++;
-    if (f.alt) e.placeholder++;
-    byPage.set(f.page, e);
-  }
-  return [...byPage.entries()].map(([page, { count, placeholder }]) => ({
-    rule: "figure-missing-alt",
-    check: "accessibility",
-    severity: sev,
-    message: `${plural2(count, "figure")} without alt text${placeholder ? " (LaTeX used the file name)" : ""}`,
-    location: { page },
-    fix: `On this page: ${FIGURE_ALT_FIX}`,
-    data: { count }
-  }));
-}
-function fontProblems(facts, sev) {
-  const missing = (facts.fonts ?? []).filter((f) => !f.embedded);
-  if (missing.length === 0) return [];
-  const names = [...new Set(missing.map((f) => f.name || "(unnamed)"))];
-  return [
-    {
-      rule: "font-not-embedded",
-      check: "accessibility",
-      severity: sev,
-      message: `${plural2(names.length, "font")} not embedded: ${names.slice(0, 5).join(", ")}${names.length > 5 ? ", \u2026" : ""}`,
-      fix: "Embed all fonts: compile with LuaLaTeX and re-export figures (PDF/EPS) with fonts embedded",
-      data: { fonts: names }
-    }
-  ];
-}
-function pagesText(pages2) {
-  if (!pages2.length) return "";
-  const shown = pages2.slice(0, 8).join(", ");
-  return ` on ${pages2.length === 1 ? "page" : "pages"} ${shown}${pages2.length > 8 ? ", \u2026" : ""}`;
-}
-function veraPdfProblems(v, sev) {
-  if (v.error) {
-    return [
-      {
-        rule: "verapdf-error",
-        check: "accessibility",
-        severity: "warning",
-        message: `veraPDF could not validate the PDF: ${v.error}`,
-        fix: "Run `verapdf --flavour ua2 <file.pdf>` by hand to see the full error"
-      }
-    ];
-  }
-  const groups = /* @__PURE__ */ new Map();
-  for (const f of v.failures) {
-    const rule = veraPdfRuleId(f.clause);
-    const prev = groups.get(rule);
-    if (prev) {
-      prev.count += f.failedChecks;
-      if (f.testNumber !== void 0) prev.tests.push(f.testNumber);
-      for (const p of f.pages ?? []) prev.pages.add(p);
-      if (f.contexts.length && !prev.problem.evidence)
-        prev.problem.evidence = f.contexts.join("\n");
-      continue;
-    }
-    const desc = f.description.replace(/\s+/g, " ").trim();
-    const info3 = veraPdfClauseInfo(f.clause);
-    const problem3 = {
-      rule,
-      check: "accessibility",
-      severity: sev,
-      message: "",
-      detail: info3 ? `${desc}. ${info3.summary}` : desc,
-      fix: info3 ? `${info3.fix} (\`overfull explain ${rule}\`)` : "See `overfull explain verapdf`; the clause names the PDF/UA requirement that failed"
-    };
-    if (f.contexts.length) problem3.evidence = f.contexts.join("\n");
-    groups.set(rule, {
-      problem: problem3,
-      spec: f.specification,
-      clause: f.clause,
-      desc,
-      count: f.failedChecks,
-      tests: f.testNumber === void 0 ? [] : [f.testNumber],
-      pages: new Set(f.pages ?? [])
-    });
-  }
-  if (!v.compliant && groups.size === 0) {
-    return [
-      {
-        rule: "verapdf",
-        check: "accessibility",
-        severity: "warning",
-        message: "veraPDF reported the file non-compliant but listed no failed rules",
-        fix: "Run `verapdf --flavour ua2 --format text <file.pdf>` by hand to see why validation failed",
-        data: { compliant: false }
-      }
-    ];
-  }
-  return [...groups.values()].map((g) => {
-    const pages2 = [...g.pages].sort((a, b) => a - b);
-    const p = g.problem;
-    p.message = `${g.spec} \xA7${g.clause}: ${g.desc} (${plural2(g.count, "failed check")}${pagesText(pages2)})`;
-    if (pages2.length) p.location = { page: pages2[0] };
-    p.data = {
-      specification: g.spec,
-      clause: g.clause,
-      count: g.count,
-      tests: g.tests,
-      ...pages2.length ? { pages: pages2 } : {}
-    };
-    return p;
-  });
-}
-function groupVeraPdf(problems, vera, buildFailed2) {
-  const clauses = vera.filter((p) => p.rule.startsWith("verapdf-") && p.rule !== "verapdf-error");
-  const untagged = problems.find((p) => p.rule === "pdf-not-tagged");
-  if (untagged && clauses.length) {
-    const failedChecks = clauses.reduce((n, p) => n + Number(p.data?.count ?? 1), 0);
-    untagged.related = (untagged.related ?? 0) + clauses.length;
-    untagged.message = `${untagged.message}; this also causes ${plural2(clauses.length, "veraPDF failure")} (${plural2(failedChecks, "failed check")})`;
-    untagged.evidence = clauses.map((p) => p.message).join("\n");
-    untagged.data = {
-      ...untagged.data ?? {},
-      verapdf: clauses.map((p) => ({ rule: p.rule, ...p.data ?? {} }))
-    };
-    return vera.filter((p) => !clauses.includes(p));
-  }
-  if (buildFailed2) {
-    return vera.map(
-      (p) => clauses.includes(p) ? {
-        ...p,
-        severity: "info",
-        message: `${p.message} \u2014 fix build errors first; a broken build produces these`,
-        fix: `Fix build errors first; a broken build produces these. ${p.fix ?? ""}`.trim()
-      } : p
-    );
-  }
-  return vera;
-}
-function accessibilityCheck(facts, opts = {}) {
-  const level = opts.level ?? "required";
-  if (level === "off") {
-    return {
-      check: "accessibility",
-      status: "skipped",
-      problems: [],
-      skippedReason: "Accessibility is off for this venue profile"
-    };
-  }
-  const sev = level === "required" ? "error" : "warning";
-  const problems = [];
-  if (!facts.tagged) {
-    problems.push({
-      rule: "pdf-not-tagged",
-      check: "accessibility",
-      severity: sev,
-      message: "PDF is not tagged (no structure for screen readers)",
-      fix: `Add \`${DOCUMENT_METADATA_LINE}\` as the first line of main.tex and build with LuaLaTeX`
-    });
-  }
-  if (!facts.language) {
-    problems.push({
-      rule: "pdf-missing-language",
-      check: "accessibility",
-      severity: sev,
-      message: "Document language is not set",
-      fix: "Set `lang=en-US` (or your language) in `\\DocumentMetadata{...}`"
-    });
-  }
-  if (!facts.title) {
-    problems.push({
-      rule: "pdf-missing-title",
-      check: "accessibility",
-      severity: sev,
-      message: "PDF has no title in its metadata",
-      fix: "Set `\\hypersetup{pdftitle={...}, pdfdisplaydoctitle=true}`"
-    });
-  } else if (facts.displayDocTitle === false) {
-    problems.push({
-      rule: "pdf-missing-title",
-      check: "accessibility",
-      severity: sev,
-      message: "Viewers will show the file name instead of the title (DisplayDocTitle is off)",
-      fix: "Set `\\hypersetup{pdfdisplaydoctitle=true}`",
-      data: { title: facts.title }
-    });
-  }
-  const fromSource = opts.texFiles?.length ? figureAltSourceProblems(opts.texFiles, sev) : [];
-  problems.push(...fromSource.length ? fromSource : figureProblems(facts, sev));
-  problems.push(...fontProblems(facts, sev));
-  if (facts.pdfua === void 0) {
-    problems.push({
-      rule: "pdfua-not-claimed",
-      check: "accessibility",
-      severity: "info",
-      message: "PDF does not claim PDF/UA conformance",
-      fix: "Add `pdfstandard=ua-2` to `\\DocumentMetadata{...}`"
-    });
-  }
-  if (opts.verapdf === null) {
-    const nr = opts.verapdfNotRun ?? {};
-    problems.push({
-      rule: "verapdf-not-run",
-      check: "accessibility",
-      severity: level === "required" && nr.couldRun ? "warning" : "info",
-      message: nr.message ?? "veraPDF not found, full PDF/UA validation skipped",
-      fix: nr.fix ?? "Install veraPDF (https://verapdf.org) and put `verapdf` on PATH, or run `overfull check --engine docker` (uses the Overfull image), or run the check inside the Overfull Docker image"
-    });
-  } else if (opts.verapdf) {
-    problems.push(
-      ...groupVeraPdf(problems, veraPdfProblems(opts.verapdf, sev), opts.buildFailed === true)
-    );
-  }
-  const counted = problems.filter((p) => p.severity !== "info");
-  const stats = {
-    figures: facts.figures.length,
-    figuresWithAlt: facts.figures.filter((f) => !isMissingAlt(f.alt)).length
-  };
-  if (opts.verapdf && !opts.verapdf.error) stats.verapdfFailedRules = opts.verapdf.failures.length;
-  let summary;
-  if (counted.length === 0) {
-    summary = opts.verapdf && !opts.verapdf.error && opts.verapdf.compliant ? "Tagged, PDF/UA valid (veraPDF)" : "Tagged, language and title set";
-  } else {
-    summary = `${plural2(counted.length, "accessibility problem")}`;
-  }
-  return { check: "accessibility", status: statusOf(problems), problems, summary, stats };
-}
-
-// ../packages/core/src/pdf/extract.ts
-var PT_TO_MM = 25.4 / 72;
-function pick(source, key) {
-  if (source instanceof Map) return source.get(key);
-  if (source && typeof source === "object") return source[key];
-  return void 0;
-}
-function str(v) {
-  if (typeof v !== "string") return void 0;
-  const t = v.trim();
-  return t ? t : void 0;
-}
-function dedupeRepeat(s) {
-  if (!s) return s;
-  for (let parts = 2; parts <= 4; parts++) {
-    if (s.length % parts !== 0) continue;
-    const unit = s.slice(0, s.length / parts);
-    if (unit.repeat(parts) === s) return unit;
-  }
-  return s;
-}
-function readInfo(info3) {
-  const out = {};
-  const map = [
-    ["title", "Title"],
-    ["author", "Author"],
-    ["subject", "Subject"],
-    ["keywords", "Keywords"],
-    ["creator", "Creator"],
-    ["producer", "Producer"],
-    ["pdfVersion", "PDFFormatVersion"]
-  ];
-  for (const [k, src] of map) {
-    const v = str(pick(info3, src));
-    if (v) out[k] = v;
-  }
-  return out;
-}
-function readXmp(md) {
-  if (!md) return {};
-  const out = {};
-  const title = dedupeRepeat(str(md.get("dc:title")));
-  if (title) out.title = title;
-  const lang = md.get("dc:language");
-  const langStr = Array.isArray(lang) ? str(lang[0]) : str(lang);
-  if (langStr) out.language = langStr;
-  const creators = md.get("dc:creator");
-  if (Array.isArray(creators)) {
-    const list3 = creators.filter((c) => typeof c === "string" && c.trim() !== "");
-    if (list3.length) out.creators = list3;
-  }
-  const part = Number.parseInt(String(md.get("pdfuaid:part") ?? ""), 10);
-  if (Number.isFinite(part)) out.pdfuaPart = part;
-  return out;
-}
-function pageText(items) {
-  let text2 = "";
-  for (const item of items) {
-    const s = pick(item, "str");
-    if (typeof s !== "string") continue;
-    text2 += s;
-    if (pick(item, "hasEOL") === true) text2 += "\n";
-  }
-  return text2;
-}
-function textBoxOf(items, view) {
-  const [x0 = 0, , , y1 = 0] = view;
-  let left = Number.POSITIVE_INFINITY;
-  let right = Number.NEGATIVE_INFINITY;
-  let top = Number.POSITIVE_INFINITY;
-  let bottom = Number.NEGATIVE_INFINITY;
-  for (const item of items) {
-    const s = pick(item, "str");
-    const t = pick(item, "transform");
-    const width = pick(item, "width");
-    if (typeof s !== "string" || !s.trim() || !Array.isArray(t) || typeof width !== "number")
-      continue;
-    if (/^\s*\d{1,5}\s*$/.test(s)) continue;
-    const [, , , d = 0, e = 0, f = 0] = t;
-    const height = Math.abs(
-      typeof pick(item, "height") === "number" ? pick(item, "height") : d
-    );
-    if (![e, f, width, height].every(Number.isFinite) || width <= 0) continue;
-    left = Math.min(left, e - x0);
-    right = Math.max(right, e - x0 + width);
-    top = Math.min(top, y1 - (f + height));
-    bottom = Math.max(bottom, y1 - f);
-  }
-  if (!Number.isFinite(left)) return void 0;
-  const mm = (v) => Math.round(v * PT_TO_MM * 10) / 10;
-  return { leftMm: mm(left), rightMm: mm(right), topMm: mm(top), bottomMm: mm(bottom) };
-}
-function collectFigures(node, page, out) {
-  if (!node || typeof node !== "object") return;
-  const n = node;
-  if (n.role === "Figure") {
-    const alt = str(n.alt);
-    out.push(alt ? { page, alt } : { page });
-  }
-  if (Array.isArray(n.children)) for (const c of n.children) collectFigures(c, page, out);
-}
-async function extractPdfFacts(data, pdfjs) {
-  const task = pdfjs.getDocument({
-    data: data.slice(),
-    isEvalSupported: false,
-    useSystemFonts: false,
-    disableFontFace: true,
-    verbosity: 0
-  });
-  const doc = await task.promise;
-  try {
-    const { info: info3, metadata } = await doc.getMetadata();
-    const pdfInfo = readInfo(info3);
-    const xmp = readXmp(metadata);
-    const markInfo = await doc.getMarkInfo().catch(() => null);
-    const prefs = doc.getViewerPreferences ? await doc.getViewerPreferences().catch(() => null) : void 0;
-    const pages2 = [];
-    const figures = [];
-    let hasStructTree = false;
-    for (let i = 1; i <= doc.numPages; i++) {
-      const page = await doc.getPage(i);
-      const [x0 = 0, y0 = 0, x1 = 0, y1 = 0] = page.view;
-      let w = Math.abs(x1 - x0) * PT_TO_MM;
-      let h = Math.abs(y1 - y0) * PT_TO_MM;
-      if ((page.rotate ?? 0) % 180 !== 0) [w, h] = [h, w];
-      const content = await page.getTextContent();
-      const box = (page.rotate ?? 0) % 360 === 0 ? textBoxOf(content.items, page.view) : void 0;
-      pages2.push({
-        number: i,
-        text: pageText(content.items),
-        widthMm: Math.round(w * 10) / 10,
-        heightMm: Math.round(h * 10) / 10,
-        ...box ? { textBox: box } : {}
-      });
-      const tree = await page.getStructTree().catch(() => null);
-      if (tree) {
-        hasStructTree = true;
-        collectFigures(tree, i, figures);
-      }
-      page.cleanup?.();
-    }
-    const language = str(pick(info3, "Language")) ?? xmp.language;
-    const title = pdfInfo.title ?? xmp.title;
-    const display = pick(prefs, "DisplayDocTitle");
-    const facts = {
-      pageCount: doc.numPages,
-      pages: pages2,
-      info: pdfInfo,
-      xmp,
-      tagged: pick(markInfo, "Marked") === true,
-      hasStructTree,
-      figures
-    };
-    if (language) facts.language = language;
-    if (title) facts.title = title;
-    if (typeof display === "boolean") facts.displayDocTitle = display;
-    else if (prefs === null) facts.displayDocTitle = false;
-    if (xmp.pdfuaPart !== void 0) facts.pdfua = xmp.pdfuaPart;
-    return facts;
-  } finally {
-    await (task.destroy ? task.destroy() : doc.destroy?.());
-  }
-}
-
-// ../packages/core/src/pdf/fonts.ts
-function parsePdffonts(text2) {
-  const lines = text2.split(/\r?\n/);
-  const sepIndex = lines.findIndex((l) => /^-{4,}( -+)+\s*$/.test(l));
-  if (sepIndex < 0) return [];
-  const sep4 = lines[sepIndex] ?? "";
-  const starts = [];
-  const re = /-+/g;
-  for (let m = re.exec(sep4); m; m = re.exec(sep4)) starts.push(m.index);
-  const typeStart = starts[1] ?? 37;
-  const encStart = starts[2] ?? 55;
-  const fonts = [];
-  for (const line of lines.slice(sepIndex + 1)) {
-    if (!line.trim()) continue;
-    const tokens = line.trim().split(/\s+/);
-    const n = tokens.length;
-    if (n < 6) continue;
-    const flag = (i) => tokens[n - i] === "yes";
-    const overflow = line.length > typeStart && line[typeStart - 1] !== " ";
-    const name = overflow ? tokens[0] ?? "" : line.slice(0, typeStart).trim();
-    const type = overflow ? "" : line.slice(typeStart, encStart).trim();
-    fonts.push({ name, type, embedded: flag(5), subset: flag(4), unicode: flag(3) });
-  }
-  return fonts;
-}
-
-// ../packages/core/src/pdf/output.ts
-var REF_WORDS = [
-  "Figure",
-  "Figures",
-  "Fig\\.",
-  "Figs\\.",
-  "Table",
-  "Tables",
-  "Tab\\.",
-  "Section",
-  "Sections",
-  "Sec\\.",
-  "Secs\\.",
-  "Chapter",
-  "Chapters",
-  "Ch\\.",
-  "Appendix",
-  "Appendices",
-  "App\\.",
-  "Equation",
-  "Equations",
-  "Eq\\.",
-  "Eqs\\.",
-  "Algorithm",
-  "Alg\\.",
-  "Listing",
-  "Theorem",
-  "Thm\\.",
-  "Lemma",
-  "Definition",
-  "Def\\.",
-  "Corollary",
-  "Proposition",
-  "Prop\\.",
-  "Example",
-  "Remark",
-  "Line",
-  "Lines",
-  "Page",
-  "Pages",
-  "p\\.",
-  "pp\\.",
-  "Part",
-  "Step",
-  "Footnote",
-  "\xA7"
-];
-var CONTEXT_REF = new RegExp(
-  `(?<!\\p{L})(?:${REF_WORDS.join("|")})[\\s\\u00a0~]*\\(?\\?\\?\\)?`,
-  "giu"
-);
-var STANDALONE_REF = /(?:\(\?\?\))|(?:(?<=^|[\s ([])\?\?(?=[.,;:)\]]|\s*$))/gm;
-var BARE_QQ = /(?<!\?)\?\?(?!\?)/g;
-var PROSE_BEFORE = /(?:^|[^\p{L}\p{N}_])(?:see|in|of|from|by|and|or|to|cf\.|with|on|under|at|than|like|as|per|also)[\s\u00a0~]{1,3}$/iu;
-var PROSE_AFTER = /^[\s\u00a0]{1,3}(?:and|or|shows?|for|to|in|is|are|was|were|we|that|which|with|of|on|gives?|illustrates?|lists?|summari[sz]es?|presents?|describes?|compares?|reports?|depicts?)(?![\p{L}\p{N}_])/iu;
-function proseHits(text2) {
-  const hits = [];
-  BARE_QQ.lastIndex = 0;
-  for (let m = BARE_QQ.exec(text2); m; m = BARE_QQ.exec(text2)) {
-    const i = m.index;
-    const prev = text2[i - 1] ?? " ";
-    const next = text2[i + 2] ?? " ";
-    if (!/[\s\u00a0~([]/.test(prev) || !/[\s\u00a0.,;:)\]]/.test(next)) continue;
-    const before = text2.slice(Math.max(0, i - 12), i);
-    const after = text2.slice(i + 2, i + 18);
-    if (PROSE_BEFORE.test(before) || PROSE_AFTER.test(after)) hits.push({ index: i, length: 2 });
-  }
-  return hits;
-}
-var UNRESOLVED_CITE = /\[\?(?:\s*[,;]\s*\?)*\]/g;
-function snippet(text2, index, length) {
-  const start = Math.max(0, index - 30);
-  const end = Math.min(text2.length, index + length + 30);
-  return text2.slice(start, end).replace(/\s+/g, " ").trim();
-}
-function findAll(text2, re) {
-  const hits = [];
-  re.lastIndex = 0;
-  for (let m = re.exec(text2); m; m = re.exec(text2)) {
-    hits.push({ index: m.index, length: m[0].length });
-    if (m[0].length === 0) re.lastIndex++;
-  }
-  return hits;
-}
-function refHits(text2) {
-  const ctx = findAll(text2, CONTEXT_REF);
-  const covered = (i) => ctx.some((h) => i >= h.index && i < h.index + h.length);
-  const alone = findAll(text2, STANDALONE_REF).filter((h) => !covered(h.index + h.length - 1));
-  const seen = (i) => covered(i + 1) || alone.some((h) => i >= h.index && i < h.index + h.length);
-  const prose = proseHits(text2).filter((h) => !seen(h.index));
-  return [...ctx, ...alone, ...prose].sort((a, b) => a.index - b.index);
-}
-function pdfOutputProblems(facts) {
-  const problems = [];
-  for (const page of facts.pages) {
-    const refs = refHits(page.text);
-    if (refs.length > 0) {
-      const first2 = refs[0];
-      problems.push({
-        rule: "pdf-unresolved-reference",
-        check: "output",
-        severity: "error",
-        message: refs.length === 1 ? `"??" printed instead of a reference number` : `"??" printed instead of a reference number (${refs.length} times)`,
-        location: { page: page.number },
-        fix: "Check the label exists and is spelled the same in `\\label` and `\\ref`, then rebuild (latexmk runs LaTeX until references settle)",
-        evidence: snippet(page.text, first2.index, first2.length),
-        data: { count: refs.length }
-      });
-    }
-    const cites = findAll(page.text, UNRESOLVED_CITE);
-    if (cites.length > 0) {
-      const first2 = cites[0];
-      problems.push({
-        rule: "pdf-unresolved-citation",
-        check: "output",
-        severity: "error",
-        message: cites.length === 1 ? `"[?]" printed instead of a citation` : `"[?]" printed instead of a citation (${cites.length} times)`,
-        location: { page: page.number },
-        fix: "Add the missing key to the .bib file (or fix its spelling) and rerun biber/bibtex via latexmk",
-        evidence: snippet(page.text, first2.index, first2.length),
-        data: { count: cites.length }
-      });
-    }
-  }
-  return problems;
-}
-
-// ../packages/core/src/pdf/verapdf.ts
-var MAX_CONTEXTS = 3;
-function isObj(v) {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-function num(v) {
-  const n = typeof v === "number" ? v : Number.parseInt(String(v ?? ""), 10);
-  return Number.isFinite(n) ? n : void 0;
-}
-function text(v) {
-  return typeof v === "string" ? v.trim() : "";
-}
-function asArray(v) {
-  if (Array.isArray(v)) return v;
-  return v === void 0 || v === null ? [] : [v];
-}
-function decodeXml(s) {
-  return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d))).replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(Number.parseInt(h, 16))).replace(/&amp;/g, "&").trim();
-}
-function attrs(tag2) {
-  const out = {};
-  const re = /([\w:-]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
-  for (let m = re.exec(tag2); m; m = re.exec(tag2)) {
-    out[m[1]] = decodeXml(m[3] ?? m[4] ?? "");
-  }
-  return out;
-}
-function childText(xml, name) {
-  const m = new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`).exec(xml);
-  return m ? decodeXml(m[1] ?? "") : "";
-}
-function contextPage(context) {
-  const m = /\bpages\[(\d+)\]/.exec(context);
-  return m ? Number(m[1]) + 1 : void 0;
-}
-function pagesOf(contexts) {
-  const pages2 = contexts.map(contextPage).filter((p) => p !== void 0);
-  return [...new Set(pages2)].sort((a, b) => a - b);
-}
-function withPages(f, all) {
-  const pages2 = pagesOf(all);
-  if (pages2.length) f.pages = pages2;
-  return f;
-}
-function mergeByClause(failures) {
-  const byKey = /* @__PURE__ */ new Map();
-  for (const f of failures) {
-    const key = `${f.specification}|${f.clause}|${f.testNumber ?? ""}`;
-    const prev = byKey.get(key);
-    if (prev) {
-      prev.failedChecks += f.failedChecks;
-      prev.contexts = [...prev.contexts, ...f.contexts].slice(0, MAX_CONTEXTS);
-      const pages2 = [.../* @__PURE__ */ new Set([...prev.pages ?? [], ...f.pages ?? []])].sort((a, b) => a - b);
-      if (pages2.length) prev.pages = pages2;
-    } else byKey.set(key, { ...f });
-  }
-  return [...byKey.values()];
-}
-function parseXml(xml) {
-  const vr = /<validationReport\b([^>]*)>([\s\S]*?)<\/validationReport>/.exec(xml);
-  if (!vr) {
-    const exception = childText(xml, "exceptionMessage") || childText(xml, "message");
-    return {
-      compliant: false,
-      failures: [],
-      error: exception || "No <validationReport> element found in veraPDF output"
-    };
-  }
-  const head = attrs(vr[1] ?? "");
-  const body = vr[2] ?? "";
-  const details = /<details\b([^>]*)>/.exec(body);
-  const d = attrs(details?.[1] ?? "");
-  const failures = [];
-  const ruleRe = /<rule\b([^>]*?)(?:\/>|>([\s\S]*?)<\/rule>)/g;
-  for (let m = ruleRe.exec(body); m; m = ruleRe.exec(body)) {
-    const a = attrs(m[1] ?? "");
-    if (a.status && a.status !== "failed") continue;
-    const inner = m[2] ?? "";
-    const all = [];
-    const checkRe = /<check\b[^>]*status="failed"[^>]*>([\s\S]*?)<\/check>/g;
-    for (let c = checkRe.exec(inner); c; c = checkRe.exec(inner)) {
-      const ctx = childText(c[1] ?? "", "context");
-      if (ctx) all.push(ctx);
-    }
-    const contexts = all.slice(0, MAX_CONTEXTS);
-    const failure = withPages(
-      {
-        specification: a.specification ?? "",
-        clause: a.clause ?? "",
-        description: childText(inner, "description"),
-        failedChecks: num(a.failedChecks) ?? Math.max(1, all.length),
-        contexts
-      },
-      all
-    );
-    const tn = num(a.testNumber);
-    if (tn !== void 0) failure.testNumber = tn;
-    failures.push(failure);
-  }
-  const compliantAttr = head.isCompliant ?? head.compliant;
-  const result = {
-    compliant: compliantAttr === "true" || compliantAttr === void 0 && failures.length === 0,
-    failures: mergeByClause(failures)
-  };
-  if (head.profileName) result.profile = head.profileName;
-  if (head.statement) result.statement = head.statement;
-  const pr = num(d.passedRules);
-  const fr = num(d.failedRules);
-  const fc = num(d.failedChecks);
-  if (pr !== void 0) result.passedRules = pr;
-  if (fr !== void 0) result.failedRules = fr;
-  if (fc !== void 0) result.failedChecks = fc;
-  return result;
-}
-function findValidation(root) {
-  if (!isObj(root)) return void 0;
-  const report = isObj(root.report) ? root.report : root;
-  for (const job of asArray(report.jobs)) {
-    if (!isObj(job)) continue;
-    const vr = asArray(job.validationResult ?? job.validationReport)[0];
-    if (isObj(vr)) return vr;
-    if (isObj(job.taskException) || job.taskException) return { taskException: job.taskException };
-  }
-  if (isObj(report.validationResult)) return report.validationResult;
-  if (isObj(report.details)) return report;
-  return void 0;
-}
-function parseJson(data) {
-  const vr = findValidation(data);
-  if (!vr) return { compliant: false, failures: [], error: "No validation result in veraPDF JSON" };
-  if (vr.taskException) {
-    const ex = vr.taskException;
-    const msg = isObj(ex) ? text(ex.exceptionMessage) || text(ex.message) : String(ex);
-    return { compliant: false, failures: [], error: msg || "veraPDF could not validate the file" };
-  }
-  const details = isObj(vr.details) ? vr.details : {};
-  const failures = [];
-  for (const r of asArray(details.ruleSummaries ?? details.rules)) {
-    if (!isObj(r)) continue;
-    const status = text(r.ruleStatus || r.status).toLowerCase();
-    if (status && status !== "failed") continue;
-    const all = asArray(r.checks).filter(isObj).filter((c) => text(c.status).toLowerCase() !== "passed").map((c) => text(c.context)).filter(Boolean);
-    const contexts = all.slice(0, MAX_CONTEXTS);
-    const failure = withPages(
-      {
-        specification: text(r.specification),
-        clause: text(r.clause),
-        description: text(r.description),
-        failedChecks: num(r.failedChecks) ?? Math.max(1, all.length),
-        contexts
-      },
-      all
-    );
-    const tn = num(r.testNumber);
-    if (tn !== void 0) failure.testNumber = tn;
-    failures.push(failure);
-  }
-  const compliant = typeof vr.compliant === "boolean" ? vr.compliant : typeof vr.isCompliant === "boolean" ? vr.isCompliant : failures.length === 0;
-  const result = { compliant, failures: mergeByClause(failures) };
-  const profile = text(vr.profileName);
-  const statement = text(vr.statement);
-  if (profile) result.profile = profile;
-  if (statement) result.statement = statement;
-  const pr = num(details.passedRules);
-  const fr = num(details.failedRules);
-  const fc = num(details.failedChecks);
-  if (pr !== void 0) result.passedRules = pr;
-  if (fr !== void 0) result.failedRules = fr;
-  if (fc !== void 0) result.failedChecks = fc;
-  return result;
-}
-function parseVeraPdfReport(xmlOrJson) {
-  const trimmed = xmlOrJson.replace(/^﻿/, "").trim();
-  if (!trimmed) return { compliant: false, failures: [], error: "veraPDF produced no output" };
-  const jsonStart = trimmed.search(/^[{[]/m);
-  if (!trimmed.startsWith("<") && jsonStart >= 0) {
-    try {
-      return parseJson(JSON.parse(trimmed.slice(jsonStart)));
-    } catch {
-      return { compliant: false, failures: [], error: "veraPDF output is not valid JSON" };
-    }
-  }
-  const xmlStart = trimmed.indexOf("<");
-  if (xmlStart >= 0) return parseXml(trimmed.slice(xmlStart));
-  return { compliant: false, failures: [], error: trimmed.split("\n")[0] ?? "Unreadable output" };
-}
-
-// ../packages/core/src/refs/normalize.ts
-var GREEK_NAMES = {
-  \u03B1: "alpha",
-  \u03B2: "beta",
-  \u03B3: "gamma",
-  \u03B4: "delta",
-  \u03B5: "epsilon",
-  \u03B6: "zeta",
-  \u03B7: "eta",
-  \u03B8: "theta",
-  \u03D1: "theta",
-  \u03B9: "iota",
-  \u03BA: "kappa",
-  \u03BB: "lambda",
-  \u03BC: "mu",
-  \u03BD: "nu",
-  \u03BE: "xi",
-  \u03C0: "pi",
-  \u03C1: "rho",
-  \u03C3: "sigma",
-  \u03C2: "sigma",
-  \u03C4: "tau",
-  \u03C5: "upsilon",
-  \u03C6: "phi",
-  \u03D5: "phi",
-  \u03C7: "chi",
-  \u03C8: "psi",
-  \u03C9: "omega"
-};
-var FOLD = {
-  \u00DF: "ss",
-  \u00F8: "o",
-  \u00E6: "ae",
-  \u0153: "oe",
-  \u0142: "l",
-  \u00F0: "d",
-  \u00FE: "th",
-  \u0131: "i",
-  \u014B: "ng"
-};
-var ENTITIES = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " "
-};
-function stripTags(s) {
-  let out = s;
-  for (let prev = ""; prev !== out; ) {
-    prev = out;
-    out = out.replace(/<[^<>]*>/g, "");
-  }
-  return out;
-}
-function stripMarkup(s) {
-  const decoded = s.replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(Number.parseInt(h, 16))).replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d))).replace(/&([a-z]+);/gi, (m, name) => ENTITIES[name.toLowerCase()] ?? m);
-  return stripTags(decoded).replace(/\s+/g, " ").trim();
-}
-function foldText(plain2) {
-  return plain2.toLowerCase().replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `).replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c).normalize("NFKD").replace(/[̀-ͯ]/g, "");
-}
-function titleWords(title, isTex = true) {
-  const plain2 = isTex ? texToPlain(title) : stripMarkup(title);
-  return foldText(plain2).replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
-}
-function normalizeTitle(title, isTex = true) {
-  return titleWords(title, isTex).join(" ");
-}
-function dice(a, b) {
-  if (!a.length || !b.length) return 0;
-  const counts = /* @__PURE__ */ new Map();
-  for (const w of a) counts.set(w, (counts.get(w) ?? 0) + 1);
-  let shared = 0;
-  for (const w of b) {
-    const n = counts.get(w) ?? 0;
-    if (n > 0) {
-      shared++;
-      counts.set(w, n - 1);
-    }
-  }
-  return 2 * shared / (a.length + b.length);
-}
-function mainTitle(plain2) {
-  const m = /^(.+?)(?:\s*[:?!.]\s+|\s+[-–—]+\s+|\s*—\s*)\S/.exec(plain2);
-  return m ? m[1] : plain2;
-}
-function titleSimilarity(bibTitle, recordTitle) {
-  const a = titleWords(bibTitle, true);
-  const b = titleWords(recordTitle, false);
-  if (!a.length || !b.length) return 0;
-  if (a.join(" ") === b.join(" ")) return 1;
-  let score = dice(a, b);
-  const aMain = titleWords(mainTitle(texToPlain(bibTitle)), false);
-  const bMain = titleWords(mainTitle(stripMarkup(recordTitle)), false);
-  const subtitleMatch = aMain.length >= 2 && aMain.join(" ") === b.join(" ") && aMain.length < a.length || bMain.length >= 2 && bMain.join(" ") === a.join(" ") && bMain.length < b.length;
-  if (subtitleMatch) score = Math.max(score, 0.92);
-  return score;
-}
-function foldName(name) {
-  return foldText(stripMarkup(name)).replace(/[^a-z\s-]+/g, "").replace(/[\s-]+/g, " ").trim();
-}
-var PARTICLES = /* @__PURE__ */ new Set([
-  "van",
-  "von",
-  "der",
-  "den",
-  "de",
-  "del",
-  "della",
-  "di",
-  "da",
-  "du",
-  "dos",
-  "la",
-  "le",
-  "ten",
-  "ter",
-  "jr",
-  "sr"
-]);
-function significant(name) {
-  return name.split(" ").filter((w) => w.length > 1 && !PARTICLES.has(w));
-}
-function namesMatch(a, b) {
-  if (!a || !b) return false;
-  if (a === b) return true;
-  const sa = significant(a);
-  const sb = significant(b);
-  if (!sa.length || !sb.length) return false;
-  const [small, large] = sa.length <= sb.length ? [sa, sb] : [sb, sa];
-  return small.every((w) => large.includes(w));
-}
-
-// ../packages/core/src/refs/cache.ts
-function doiCacheKey(doi) {
-  return `doi:${doi.toLowerCase()}`;
-}
-function arxivCacheKey(id) {
-  return `arxiv:${id.replace(/v\d+$/, "")}`;
-}
-function titleCacheKey(title, year, isTex = true) {
-  return `title:${normalizeTitle(title, isTex)}|${year ?? ""}`;
-}
-var DAY_MS = 24 * 60 * 60 * 1e3;
-var DEFAULT_CACHE_MAX_AGE_DAYS = { negative: 1, positive: 30 };
-function cacheMaxAge(option) {
-  if (typeof option === "number") return { negative: option, positive: option };
-  return { ...DEFAULT_CACHE_MAX_AGE_DAYS, ...option ?? {} };
-}
-function isFresh(cachedAt, negative, maxAge, now = Date.now()) {
-  if (typeof cachedAt !== "number" || !Number.isFinite(cachedAt)) return !negative;
-  const days = negative ? maxAge.negative : maxAge.positive;
-  return now - cachedAt <= days * DAY_MS;
-}
-async function cached(cache2, key, compute, opts) {
-  if (cache2 && !opts.refresh) {
-    const hit = await cache2.get(key);
-    if (hit !== void 0 && hit !== null && typeof hit === "object") {
-      const { cachedAt, ...value2 } = hit;
-      if (isFresh(cachedAt, opts.isNegative(value2), opts.maxAge)) return value2;
-    }
-  }
-  const value = await compute();
-  if (cache2) await cache2.set(key, { ...value, cachedAt: Date.now() });
-  return value;
-}
-
-// ../packages/core/src/refs/sha256.ts
-var K = new Uint32Array([
-  1116352408,
-  1899447441,
-  3049323471,
-  3921009573,
-  961987163,
-  1508970993,
-  2453635748,
-  2870763221,
-  3624381080,
-  310598401,
-  607225278,
-  1426881987,
-  1925078388,
-  2162078206,
-  2614888103,
-  3248222580,
-  3835390401,
-  4022224774,
-  264347078,
-  604807628,
-  770255983,
-  1249150122,
-  1555081692,
-  1996064986,
-  2554220882,
-  2821834349,
-  2952996808,
-  3210313671,
-  3336571891,
-  3584528711,
-  113926993,
-  338241895,
-  666307205,
-  773529912,
-  1294757372,
-  1396182291,
-  1695183700,
-  1986661051,
-  2177026350,
-  2456956037,
-  2730485921,
-  2820302411,
-  3259730800,
-  3345764771,
-  3516065817,
-  3600352804,
-  4094571909,
-  275423344,
-  430227734,
-  506948616,
-  659060556,
-  883997877,
-  958139571,
-  1322822218,
-  1537002063,
-  1747873779,
-  1955562222,
-  2024104815,
-  2227730452,
-  2361852424,
-  2428436474,
-  2756734187,
-  3204031479,
-  3329325298
-]);
-var rotr = (x, n) => x >>> n | x << 32 - n;
-function sha256Hex(text2) {
-  const msg = new TextEncoder().encode(text2);
-  const bitLen = msg.length * 8;
-  const total = msg.length + 9 + 63 >> 6 << 6;
-  const buf = new Uint8Array(total);
-  buf.set(msg);
-  buf[msg.length] = 128;
-  const view = new DataView(buf.buffer);
-  view.setUint32(total - 8, Math.floor(bitLen / 4294967296));
-  view.setUint32(total - 4, bitLen >>> 0);
-  const h = new Uint32Array([
-    1779033703,
-    3144134277,
-    1013904242,
-    2773480762,
-    1359893119,
-    2600822924,
-    528734635,
-    1541459225
-  ]);
-  const w = new Uint32Array(64);
-  for (let off = 0; off < total; off += 64) {
-    for (let i = 0; i < 16; i++) w[i] = view.getUint32(off + i * 4);
-    for (let i = 16; i < 64; i++) {
-      const a2 = w[i - 15];
-      const b2 = w[i - 2];
-      const s0 = rotr(a2, 7) ^ rotr(a2, 18) ^ a2 >>> 3;
-      const s1 = rotr(b2, 17) ^ rotr(b2, 19) ^ b2 >>> 10;
-      w[i] = w[i - 16] + s0 + w[i - 7] + s1 >>> 0;
-    }
-    let [a, b, c, d, e, f, g, hh] = h;
-    for (let i = 0; i < 64; i++) {
-      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
-      const ch2 = e & f ^ ~e & g;
-      const t1 = hh + S1 + ch2 + K[i] + w[i] >>> 0;
-      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
-      const maj2 = a & b ^ a & c ^ b & c;
-      const t2 = S0 + maj2 >>> 0;
-      hh = g;
-      g = f;
-      f = e;
-      e = d + t1 >>> 0;
-      d = c;
-      c = b;
-      b = a;
-      a = t1 + t2 >>> 0;
-    }
-    h[0] = h[0] + a >>> 0;
-    h[1] = h[1] + b >>> 0;
-    h[2] = h[2] + c >>> 0;
-    h[3] = h[3] + d >>> 0;
-    h[4] = h[4] + e >>> 0;
-    h[5] = h[5] + f >>> 0;
-    h[6] = h[6] + g >>> 0;
-    h[7] = h[7] + hh >>> 0;
-  }
-  return [...h].map((x) => x.toString(16).padStart(8, "0")).join("");
-}
-
-// ../packages/core/src/refs/entry.ts
-var DANGEROUS_MACROS = new Set(
-  [
-    "input",
-    "include",
-    "includeonly",
-    "inputiffileexists",
-    "iffileexists",
-    "endinput",
-    "write",
-    "immediate",
-    "openout",
-    "openin",
-    "read",
-    "readline",
-    "closeout",
-    "closein",
-    "catcode",
-    "def",
-    "edef",
-    "gdef",
-    "xdef",
-    "let",
-    "futurelet",
-    "newcommand",
-    "renewcommand",
-    "providecommand",
-    "declarerobustcommand",
-    "csname",
-    "endcsname",
-    "expandafter",
-    "scantokens",
-    "everyeof",
-    "everypar",
-    "everyjob",
-    "output",
-    "shipout",
-    "special",
-    "directlua",
-    "latelua",
-    "luaexec",
-    "luadirect",
-    "usepackage",
-    "requirepackage",
-    "documentclass",
-    "shellescape",
-    "pdfshellescape",
-    "outer",
-    "uppercase",
-    "lowercase",
-    "detokenize",
-    "unexpanded",
-    "begingroup",
-    "aftergroup",
-    "afterassignment",
-    "globaldefs"
-  ].map((m) => m.toLowerCase())
-);
-var PROVENANCE_FIELD = "x-overfull";
-function provenanceCanonical(entry) {
-  const f = entry.fields;
-  const ws = (v) => (v ?? "").replace(/\s+/g, " ").trim();
-  return [
-    entry.type.toLowerCase(),
-    entry.key,
-    normalizeTitle(f.title ?? "", true),
-    ws(f.author),
-    ws(f.year ?? f.date),
-    ws(f.doi).toLowerCase(),
-    ws(f.eprint).toLowerCase()
-  ].join("");
-}
-function provenanceHash(entry) {
-  return sha256Hex(provenanceCanonical(entry)).slice(0, 12);
-}
-function provenanceOf(entry) {
-  const value = entry.fields[PROVENANCE_FIELD]?.replace(/\s+/g, " ").trim();
-  const m = value ? /^cite\s+\S+\s+\d{4}-\d{2}-\d{2}\s+([0-9a-f]{12})$/i.exec(value) : null;
-  if (!m || m[1].toLowerCase() !== provenanceHash(entry)) return void 0;
-  return value;
-}
-function isAuthorProvided(entry) {
-  return /overfull\s*:\s*author-provided/i.test(
-    `${entry.fields.note ?? ""} ${entry.fields.annote ?? ""}`
-  );
-}
-
-// ../packages/core/src/refs/http.ts
-var SourceUnavailableError = class extends Error {
-  host;
-  constructor(host, message) {
-    super(message);
-    this.host = host;
-    this.name = "SourceUnavailableError";
-  }
-};
-var MAX_RETRY_AFTER_MS = 3e4;
-var BREAKER_THRESHOLD = 2;
-var FIRST_BYTE_TIMEOUT_MS = 4e3;
-function sleep(ms, signal) {
-  if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve5, reject) => {
-    const timer = setTimeout(resolve5, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(signal.reason ?? new Error("aborted"));
-      },
-      { once: true }
-    );
-  });
-}
-function retryAfterMs(header, fallback) {
-  if (header === null) return fallback;
-  const seconds = Number(header);
-  if (Number.isFinite(seconds)) return Math.min(Math.max(0, seconds * 1e3), MAX_RETRY_AFTER_MS);
-  const date = Date.parse(header);
-  if (Number.isFinite(date)) return Math.min(Math.max(0, date - Date.now()), MAX_RETRY_AFTER_MS);
-  return fallback;
-}
-var HttpClient = class {
-  fetchFn;
-  timeoutMs;
-  retryDelayMs;
-  signal;
-  intervals;
-  nextSlot = /* @__PURE__ */ new Map();
-  down = /* @__PURE__ */ new Map();
-  failures = /* @__PURE__ */ new Map();
-  /** Hosts that have answered at least once this run. */
-  healthy = /* @__PURE__ */ new Set();
-  /** The single in-flight probe request of a host that is unproven or failing. */
-  probing = /* @__PURE__ */ new Map();
-  firstByteMs;
-  constructor(opts) {
-    const f = opts.fetch ?? globalThis.fetch;
-    if (!f) throw new Error("no fetch available; pass opts.fetch");
-    this.fetchFn = (input2, init) => f.call(globalThis, input2, init);
-    this.timeoutMs = opts.timeoutMs ?? 1e4;
-    this.firstByteMs = Math.min(FIRST_BYTE_TIMEOUT_MS, this.timeoutMs);
-    this.retryDelayMs = opts.retryDelayMs ?? 1e3;
-    this.signal = opts.signal;
-    this.intervals = {
-      "export.arxiv.org": opts.arxivIntervalMs ?? 3e3,
-      // Semantic Scholar's key allows 1 request per second; keyless requests share a pool.
-      ...opts.semanticScholarKey ? { "api.semanticscholar.org": 1100 } : {}
-    };
-  }
-  /** Marks a host as unusable for the rest of this run (e.g. a bot challenge). */
-  markDown(host, reason) {
-    this.down.set(host, reason);
-  }
-  /**
-   * GET with the given Accept header. Resolves for any final HTTP status
-   * (callers decide what 404 means); throws SourceUnavailableError when no
-   * definitive answer was obtained.
-   */
-  async get(url, accept, headers) {
-    const host = new URL(url).host;
-    const release = await this.acquire(host);
-    try {
-      return await this.getOnce(url, accept, host, headers);
-    } finally {
-      release();
-    }
-  }
-  async getOnce(url, accept, host, headers) {
-    let res = await this.attempt(url, accept, host, headers);
-    if (res.status === 429 && /daily|budget|quota|per day|credits/i.test(res.body)) {
-      const reason = `${host} answered HTTP 429: daily request budget used up`;
-      this.markDown(host, reason);
-      throw new SourceUnavailableError(host, reason);
-    }
-    if (res.status >= 500) this.recordFailure(host, `${host} answered HTTP ${res.status}`);
-    if (res.status === 429 || res.status >= 500) {
-      const downReason = this.down.get(host);
-      if (downReason) throw new SourceUnavailableError(host, downReason);
-      await sleep(retryAfterMs(res.retryAfter, this.retryDelayMs), this.signal);
-      res = await this.attempt(url, accept, host, headers);
-    }
-    if (res.status === 429 || res.status >= 500) {
-      const reason = `${host} answered HTTP ${res.status}`;
-      if (res.status === 429 || !this.down.has(host)) this.recordFailure(host, reason);
-      throw new SourceUnavailableError(host, this.down.get(host) ?? reason);
-    }
-    this.failures.delete(host);
-    this.healthy.add(host);
-    return { status: res.status, body: res.body, contentType: res.contentType };
-  }
-  /**
-   * Throws when the host is down. A host that has not answered yet, or is failing,
-   * lets one request through at a time; the others wait for its outcome.
-   */
-  async acquire(host) {
-    for (; ; ) {
-      const downReason = this.down.get(host);
-      if (downReason) throw new SourceUnavailableError(host, downReason);
-      if (this.signal?.aborted) throw this.signal.reason ?? new Error("aborted");
-      const unproven = !this.healthy.has(host) || (this.failures.get(host) ?? 0) > 0;
-      if (!unproven) return () => {
-      };
-      const other = this.probing.get(host);
-      if (!other) break;
-      await other;
-    }
-    let done;
-    const gate = new Promise((resolve5) => {
-      done = resolve5;
-    });
-    this.probing.set(host, gate);
-    return () => {
-      this.probing.delete(host);
-      done();
-    };
-  }
-  /** Consecutive failures take a host out for the rest of the run. */
-  recordFailure(host, reason) {
-    const n = (this.failures.get(host) ?? 0) + 1;
-    this.failures.set(host, n);
-    if (n >= BREAKER_THRESHOLD && !this.down.has(host))
-      this.markDown(host, `${reason} (repeatedly; skipped for the rest of this run)`);
-  }
-  async throttle(host) {
-    const interval = this.intervals[host] ?? 0;
-    if (interval <= 0) return;
-    const now = Date.now();
-    const slot = Math.max(now, this.nextSlot.get(host) ?? 0);
-    this.nextSlot.set(host, slot + interval);
-    await sleep(slot - now, this.signal);
-  }
-  async attempt(url, accept, host, headers) {
-    if (this.signal?.aborted) throw this.signal.reason ?? new Error("aborted");
-    await this.throttle(host);
-    const controller = new AbortController();
-    const onAbort = () => controller.abort(this.signal?.reason);
-    this.signal?.addEventListener("abort", onAbort, { once: true });
-    let timedOutAfter = this.firstByteMs;
-    const firstByte = setTimeout(() => controller.abort(new Error("timeout")), this.firstByteMs);
-    const total = setTimeout(() => {
-      timedOutAfter = this.timeoutMs;
-      controller.abort(new Error("timeout"));
-    }, this.timeoutMs);
-    try {
-      const res = await this.fetchFn(url, {
-        headers: { Accept: accept, ...headers ?? {} },
-        redirect: "follow",
-        signal: controller.signal
-      });
-      clearTimeout(firstByte);
-      const body = await res.text();
-      return {
-        status: res.status,
-        body,
-        contentType: res.headers.get("content-type") ?? "",
-        retryAfter: res.headers.get("retry-after")
-      };
-    } catch (err) {
-      if (this.signal?.aborted) throw this.signal.reason ?? err;
-      const timedOut = controller.signal.aborted;
-      const why2 = timedOut ? `timed out after ${timedOutAfter} ms` : `network error (${err.message})`;
-      const reason = `${host}: ${why2}`;
-      this.recordFailure(host, reason);
-      throw new SourceUnavailableError(host, reason);
-    } finally {
-      clearTimeout(firstByte);
-      clearTimeout(total);
-      this.signal?.removeEventListener("abort", onAbort);
-    }
-  }
-};
-async function getJson(client, url, accept = "application/json", headers) {
-  const res = await client.get(url, accept, headers);
-  if (res.status === 404 || res.status === 410) return { status: res.status, data: null };
-  const host = new URL(url).host;
-  if (res.status < 200 || res.status >= 300) {
-    throw new SourceUnavailableError(host, `${host} answered HTTP ${res.status}`);
-  }
-  try {
-    return { status: res.status, data: JSON.parse(res.body) };
-  } catch {
-    const reason = `${host} returned a non-JSON page (HTTP ${res.status}); it may be blocking automated requests`;
-    client.markDown(host, reason);
-    throw new SourceUnavailableError(host, reason);
-  }
-}
-
-// ../packages/core/src/refs/sources/acl.ts
-var NEW_ID = String.raw`\d{4}\.[a-z0-9]+(?:-[a-z0-9]+)+\.\d+`;
-var OLD_ID = String.raw`[A-Za-z]\d{2}-\d{4}`;
-var ID = new RegExp(`^(?:${NEW_ID}|${OLD_ID})$`);
-var OLD_ONLY = new RegExp(`^${OLD_ID}$`);
-function stripSuffixes(value) {
-  let s = value;
-  for (const mark of ["?", "#"]) {
-    const at = s.indexOf(mark);
-    if (at >= 0) s = s.slice(0, at);
-  }
-  if (s.endsWith("/")) s = s.slice(0, -1);
-  for (const ext of [".pdf", ".bib", ".xml"]) {
-    if (s.toLowerCase().endsWith(ext)) {
-      s = s.slice(0, -ext.length);
-      break;
-    }
-  }
-  return s.endsWith("/") ? s.slice(0, -1) : s;
-}
-function parseAclId(input2) {
-  if (input2.length > 512) return null;
-  const s = input2.trim().replace(/^(?:https?:\/\/)?(?:www\.)?(?:aclanthology\.org|aclweb\.org\/anthology)\//i, "").replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)?10\.18653\/v1\//i, "").replace(/^ACL:\s*/i, "");
-  const id = stripSuffixes(s);
-  if (!ID.test(id)) return null;
-  return OLD_ONLY.test(id) ? id.toUpperCase() : id;
-}
-function aclBibUrl(id) {
-  return `https://aclanthology.org/${id}.bib`;
-}
-var TYPES = {
-  inproceedings: "proceedings-article",
-  article: "journal-article",
-  book: "book",
-  incollection: "book-chapter",
-  phdthesis: "dissertation"
-};
-function parseAclBib(bib) {
-  const entry = parseBib(bib)[0];
-  const f = entry?.fields;
-  if (!entry || !f?.title) return null;
-  const authors = parseNames(f.author).filter((n) => !n.corporate).map((n) => n.given ? { given: n.given, family: n.family } : { family: n.family });
-  const year = Number(/\b(\d{4})\b/.exec(f.year ?? "")?.[1]);
-  const record = {
-    source: "acl",
-    title: texToPlain(f.title).replace(/\s+/g, " ").trim(),
-    authors,
-    years: Number.isInteger(year) ? [year] : []
-  };
-  const venue2 = f.booktitle ?? f.journal;
-  if (venue2) record.venue = texToPlain(venue2).replace(/\s+/g, " ").trim();
-  if (f.doi) record.doi = f.doi.toLowerCase();
-  if (f.url) record.url = f.url;
-  const type = TYPES[entry.type.toLowerCase()];
-  if (type) record.type = type;
-  return record;
-}
-async function aclById(client, id) {
-  const res = await client.get(aclBibUrl(id), "text/plain");
-  if (res.status === 404 || res.status === 410) return null;
-  if (res.status !== 200 || !/^\s*@/.test(res.body)) {
-    throw new SourceUnavailableError(
-      "aclanthology.org",
-      `aclanthology.org answered HTTP ${res.status} without BibTeX`
-    );
-  }
-  return parseAclBib(res.body);
-}
-
-// ../packages/core/src/refs/sources/arxiv.ts
-var API = "https://export.arxiv.org/api/query";
-var NEW_ID2 = /^(\d{4}\.\d{4,5})(v\d+)?$/;
-var OLD_ID2 = /^([a-z-]+(?:\.[A-Z]{2})?\/\d{7})(v\d+)?$/;
-function parseArxivId(input2) {
-  const s = input2.trim().replace(/^(?:https?:\/\/)?(?:www\.|export\.)?arxiv\.org\/(?:abs|pdf)\//i, "").replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/)?10\.48550\/arxiv\./i, "").replace(/^arxiv:\s*/i, "").replace(/\.pdf$/i, "");
-  const m = NEW_ID2.exec(s) ?? OLD_ID2.exec(s);
-  return m ? m[1] : null;
-}
-var XML_ENTITIES = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'"
-};
-function xmlText(s) {
-  return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(Number.parseInt(h, 16))).replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d))).replace(/&(amp|lt|gt|quot|apos);/g, (_m, e) => XML_ENTITIES[e]).replace(/\s+/g, " ").trim();
-}
-function tag(xml, name) {
-  const m = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`).exec(xml);
-  return m ? xmlText(m[1]) : void 0;
-}
-function yearFrom(date) {
-  const y = Number(date?.slice(0, 4));
-  return Number.isInteger(y) && y > 1990 ? y : void 0;
-}
-function parseArxivFeed(xml) {
-  const records = [];
-  for (const m of xml.matchAll(/<entry\b[^>]*>([\s\S]*?)<\/entry>/g)) {
-    const entry = m[1];
-    const idUrl = tag(entry, "id") ?? "";
-    const title = tag(entry, "title");
-    if (!title || idUrl.includes("/api/errors")) continue;
-    const arxivId = parseArxivId(idUrl.replace(/^https?:\/\/arxiv\.org\/abs\//, ""));
-    const authors = [...entry.matchAll(/<author\b[^>]*>([\s\S]*?)<\/author>/g)].map((a) => parseNames(tag(a[1], "name") ?? "")[0]).filter((n) => n !== void 0).map((n) => n.given ? { given: n.given, family: n.family } : { family: n.family });
-    const years = [yearFrom(tag(entry, "published")), yearFrom(tag(entry, "updated"))].filter(
-      (y) => y !== void 0
-    );
-    const record = {
-      source: "arxiv",
-      title,
-      authors,
-      years: [...new Set(years)],
-      type: "arxiv"
-    };
-    if (arxivId) {
-      record.arxivId = arxivId;
-      record.url = `https://arxiv.org/abs/${arxivId}`;
-    }
-    const doi = tag(entry, "arxiv:doi");
-    if (doi) record.doi = doi.toLowerCase();
-    const journal = tag(entry, "arxiv:journal_ref");
-    if (journal) record.venue = journal;
-    records.push(record);
-  }
-  return records;
-}
-async function query(client, url) {
-  const res = await client.get(url, "application/atom+xml");
-  if (res.status !== 200 || !res.body.includes("<feed")) {
-    throw new SourceUnavailableError(
-      "export.arxiv.org",
-      `export.arxiv.org answered HTTP ${res.status} without an Atom feed`
-    );
-  }
-  return parseArxivFeed(res.body);
-}
-function arxivIdUrl(id) {
-  return `${API}?id_list=${encodeURIComponent(id)}&max_results=1`;
-}
-function arxivTitleUrl(title) {
-  const phrase = normalizeTitle(title, false);
-  const params = new URLSearchParams({ search_query: `ti:"${phrase}"`, max_results: "5" });
-  return `${API}?${params}`;
-}
-async function arxivById(client, id) {
-  const [record] = await query(client, arxivIdUrl(id));
-  return record ?? null;
-}
-async function arxivSearch(client, title) {
-  return query(client, arxivTitleUrl(title));
-}
-
-// ../packages/core/src/refs/sources/csl.ts
-function first(v) {
-  const s = Array.isArray(v) ? v[0] : v;
-  return s?.trim() || void 0;
-}
-function yearOf(d) {
-  const y = Number(d?.["date-parts"]?.[0]?.[0]);
-  return Number.isInteger(y) && y > 0 ? y : void 0;
-}
-function fromCsl(item, source) {
-  const main3 = first(item.title);
-  if (!main3) return null;
-  const sub = first(item.subtitle);
-  const title = sub && !main3.toLowerCase().includes(sub.toLowerCase()) ? `${main3}: ${sub}` : main3;
-  const years = [item.issued, item["published-print"], item["published-online"], item.published].map(yearOf).filter((y) => y !== void 0);
-  const authors = (item.author ?? []).map((a) => ({
-    family: (a.family ?? a.name ?? a.literal ?? "").trim(),
-    ...a.given ? { given: a.given.trim() } : {}
-  })).filter((a) => a.family);
-  const record = { source, title, authors, years: [...new Set(years)] };
-  const venue2 = first(item["container-title"]);
-  if (venue2) record.venue = venue2;
-  if (item.DOI) record.doi = item.DOI.toLowerCase();
-  if (item.URL) record.url = item.URL;
-  if (item.type) record.type = item.type;
-  if (typeof item["is-referenced-by-count"] === "number") {
-    record.citations = item["is-referenced-by-count"];
-  }
-  return record;
-}
-
-// ../packages/core/src/refs/sources/doi.ts
-var CSL = "application/vnd.citationstyles.csl+json";
-function parseDoi(input2) {
-  const m = /^\s*(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)?(10\.\d{4,9}\/\S+?)\s*$/i.exec(input2);
-  if (!m) return null;
-  let doi = m[1];
-  try {
-    doi = decodeURIComponent(doi);
-  } catch {
-  }
-  return trimTrailingPunctuation(doi).toLowerCase();
-}
-function trimTrailingPunctuation(s) {
-  let end = s.length;
-  while (end > 0 && ".,;".includes(s[end - 1])) end--;
-  return s.slice(0, end);
-}
-function doiUrl(doi) {
-  return `https://doi.org/${encodeURIComponent(doi).replace(/%2F/gi, "/")}`;
-}
-async function resolveDoi(client, doi) {
-  const res = await client.get(doiUrl(doi), CSL);
-  if (res.status === 404 || res.status === 410) return { kind: "missing" };
-  if (res.status === 406 || res.status === 204) return { kind: "no-metadata" };
-  if (res.status < 200 || res.status >= 300) {
-    throw new SourceUnavailableError("doi.org", `doi.org answered HTTP ${res.status}`);
-  }
-  let item;
-  try {
-    item = JSON.parse(res.body);
-  } catch {
-    return { kind: "no-metadata" };
-  }
-  const record = fromCsl(item, "doi.org");
-  if (!record) return { kind: "no-metadata" };
-  if (!record.doi) record.doi = doi;
-  return { kind: "found", record };
-}
-
-// ../packages/core/src/refs/sources/europepmc.ts
-var PMID_PREFIX = /^\s*PMID[\s:]+(\d{1,9})\s*$/i;
-var PMID_URL = /^(?:https?:\/\/)?(?:www\.)?(?:pubmed\.ncbi\.nlm\.nih\.gov|ncbi\.nlm\.nih\.gov\/pubmed)\/(\d{1,9})\/?$/i;
-var PMCID_BARE = /^(PMC\d{1,9})\/?$/i;
-var PMCID_URL = /^(?:https?:\/\/)?(?:(?:www\.)?ncbi\.nlm\.nih\.gov\/pmc\/articles|pmc\.ncbi\.nlm\.nih\.gov\/articles|europepmc\.org\/(?:article\/PMC|articles))\/(PMC\d{1,9})\/?$/i;
-var MAX_ID_INPUT = 512;
-function parsePmid(input2) {
-  if (input2.length > MAX_ID_INPUT) return null;
-  const s = input2.trim();
-  const m = PMID_PREFIX.exec(s) ?? PMID_URL.exec(s);
-  return m ? m[1] : null;
-}
-function parsePmcid(input2) {
-  if (input2.length > MAX_ID_INPUT) return null;
-  const s = input2.trim();
-  const m = PMCID_BARE.exec(s) ?? PMCID_URL.exec(s);
-  return m ? m[1].toUpperCase() : null;
-}
-function searchUrl(query3) {
-  const params = new URLSearchParams({
-    query: query3,
-    format: "json",
-    resultType: "core",
-    pageSize: "5"
-  });
-  return `https://www.ebi.ac.uk/europepmc/webservices/rest/search?${params}`;
-}
-var europepmcPmidUrl = (pmid) => searchUrl(`EXT_ID:${pmid} AND SRC:MED`);
-var europepmcPmcidUrl = (pmcid) => searchUrl(`PMCID:${pmcid}`);
-function europepmcTitleUrl(title) {
-  const words2 = title.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  return searchUrl(`TITLE:"${words2}"`);
-}
-function authorsOf(r) {
-  const list3 = r.authorList?.author ?? [];
-  const named = list3.map((a) => {
-    if (a.lastName) return { family: a.lastName, ...a.firstName ? { given: a.firstName } : {} };
-    return { family: (a.collectiveName ?? a.fullName ?? "").trim() };
-  }).filter((a) => a.family);
-  if (named.length) return named;
-  return (r.authorString ?? "").replace(/\.$/, "").split(",").map((part) => {
-    const s = part.trim();
-    const at = s.lastIndexOf(" ");
-    return at > 0 && /^[A-Z]{1,4}$/.test(s.slice(at + 1)) ? s.slice(0, at).trim() : s;
-  }).filter(Boolean).map((family) => ({ family }));
-}
-function fromEuropePmc(r) {
-  const trimmed = r.title?.trim();
-  const title = trimmed?.endsWith(".") ? trimmed.slice(0, -1).trimEnd() : trimmed;
-  if (!title) return null;
-  const years = [
-    Number(r.pubYear),
-    r.journalInfo?.yearOfPublication,
-    Number(r.firstPublicationDate?.slice(0, 4)),
-    r.bookOrReportDetails?.yearOfPublication
-  ].filter((y) => typeof y === "number" && Number.isInteger(y) && y > 0);
-  const record = {
-    source: "europepmc",
-    title,
-    authors: authorsOf(r),
-    years: [...new Set(years)]
-  };
-  const venue2 = r.journalInfo?.journal?.title ?? r.journalInfo?.journal?.medlineAbbreviation;
-  if (venue2) record.venue = venue2;
-  if (r.doi) record.doi = r.doi.toLowerCase();
-  if (r.source && r.id) record.url = `https://europepmc.org/article/${r.source}/${r.id}`;
-  if (r.source === "PPR") record.type = "preprint";
-  else if (r.journalInfo) record.type = "journal-article";
-  else if (r.bookOrReportDetails) record.type = "book";
-  return record;
-}
-async function query2(client, url) {
-  const { data } = await getJson(client, url);
-  return (data?.resultList?.result ?? []).map(fromEuropePmc).filter((r) => r !== null);
-}
-async function europepmcByPmid(client, pmid) {
-  return (await query2(client, europepmcPmidUrl(pmid)))[0] ?? null;
-}
-async function europepmcByPmcid(client, pmcid) {
-  return (await query2(client, europepmcPmcidUrl(pmcid)))[0] ?? null;
-}
-async function europepmcSearch(client, title) {
-  return query2(client, europepmcTitleUrl(title));
-}
-
-// ../packages/core/src/refs/kind.ts
-var SCHOLARLY = /* @__PURE__ */ new Set(["article", "inproceedings", "conference", "incollection"]);
-var NOT_INDEXED = /* @__PURE__ */ new Set([
-  "online",
-  "www",
-  "webpage",
-  "electronic",
-  "software",
-  "codefragment",
-  "softwareversion",
-  "softwaremodule",
-  "dataset",
-  "data",
-  "standard",
-  "manual",
-  "patent",
-  "artwork",
-  "audio",
-  "video",
-  "image",
-  "movie",
-  "music",
-  "performance",
-  "legislation",
-  "legal",
-  "jurisdiction"
-]);
-function parseOpenReviewId(value) {
-  let url;
-  try {
-    url = new URL(unwrapUrl(value));
-  } catch {
-    return null;
-  }
-  if (url.hostname !== "openreview.net" && url.hostname !== "www.openreview.net") return null;
-  if (url.pathname !== "/forum" && url.pathname !== "/pdf") return null;
-  const id = url.searchParams.get("id");
-  return id && /^[A-Za-z0-9_-]{5,40}$/.test(id) ? id : null;
-}
-function unwrapUrl(value) {
-  const v = value.trim().slice(0, 600);
-  return v.startsWith("\\url{") && v.endsWith("}") ? v.slice(5, -1).trim() : v;
-}
-function otherIdentifiers(entry, doi) {
-  const f = entry.fields;
-  const ids = {};
-  const archive = (f.eprinttype ?? f.archiveprefix ?? "").toLowerCase();
-  const acl = [f.url, f.howpublished, doi ?? void 0].map((v) => v ? parseAclId(unwrapUrl(v)) : null).find((v) => Boolean(v));
-  if (acl) ids.aclId = acl;
-  const pmid = [f.pmid, archive === "pubmed" || archive === "pmid" ? f.eprint : void 0, f.url].map((v) => v ? parsePmid(/^\d+$/.test(v.trim()) ? `PMID:${v.trim()}` : v.trim()) : null).find((v) => Boolean(v));
-  if (pmid) ids.pmid = pmid;
-  const pmcid = [f.pmcid, archive === "pmc" || archive === "pmcid" ? f.eprint : void 0, f.url].map((v) => v ? parsePmcid(v.trim()) : null).find((v) => Boolean(v));
-  if (pmcid) ids.pmcid = pmcid;
-  const openreview = [f.url, f.howpublished, f.note].map((v) => v ? parseOpenReviewId(v) : null).find((v) => Boolean(v));
-  if (openreview) ids.openreviewId = openreview;
-  return ids;
-}
-function identifiersOf(entry) {
-  const f = entry.fields;
-  const ids = {};
-  const doi = (f.doi ? parseDoi(f.doi) : null) ?? [f.url, f.howpublished].map((v) => {
-    const m = /https?:\/\/(?:dx\.)?doi\.org\/(10\.\d{4,9}\/[^\s{}]+)/i.exec(v ?? "");
-    return m ? parseDoi(m[1]) : null;
-  }).find((d) => Boolean(d)) ?? null;
-  const archive = (f.archiveprefix ?? f.eprinttype ?? "").toLowerCase();
-  const candidates = [
-    archive === "arxiv" || !archive && f.eprint ? f.eprint : void 0,
-    doi?.startsWith("10.48550/") ? doi : void 0,
-    ...[f.journal, f.journaltitle, f.url, f.note, f.howpublished].map(
-      (v) => /arxiv[.:/\s]*(?:abs\/|org\/abs\/)?\s*([a-z-]+(?:\.[A-Z]{2})?\/\d{7}|\d{4}\.\d{4,5})(v\d+)?/i.exec(
-        v ?? ""
-      )?.[1]
-    )
-  ];
-  for (const c of candidates) {
-    const id = c ? parseArxivId(c) : null;
-    if (id) {
-      ids.arxivId = id;
-      break;
-    }
-  }
-  if (doi && !doi.startsWith("10.48550/")) ids.doi = doi;
-  return { ...ids, ...otherIdentifiers(entry, doi) };
-}
-var STANDARD_TYPES = /* @__PURE__ */ new Set(["techreport", "report", "standard", "manual", "misc"]);
-var STANDARDS_BODY = /^(?:the\s+)?(?:ISO|IEC|ISO\/IEC|IETF|Internet Engineering Task Force|RFC Editor|W3C|World Wide Web Consortium|ANSI|American National Standards Institute|NIST|National Institute of Standards and Technology|ETSI|European Telecommunications Standards Institute|ITU|ITU-T|ITU-R|International Telecommunication Union|International Organization for Standardization|International Electrotechnical Commission|DIN|BSI|British Standards Institution|CEN|CENELEC|Ecma International|ECMA|Unicode Consortium|The Unicode Consortium|OASIS|IEEE Standards Association|IEEE-SA|3GPP|WHATWG|Khronos Group)\b/i;
-var STANDARD_ID = /^(?:RFC\s*-?\s*\d+|BCP\s*\d+|ISO(?:\/IEC)?(?:\/IEEE)?\s+\d{3,}|IEC\s+\d{3,}|IEEE\s+Std\b|IEEE\s+\d{3,}(?:\.\d+)?-\d{4}|ANSI\s+[A-Z]|NIST\s+(?:SP|FIPS|IR)\b|FIPS\s*(?:PUB\s*)?\d+|ITU-[TR]\s+[A-Z]\.\d+|ETSI\s+(?:TS|EN|ES|TR)\b|ECMA-\d+|3GPP\s+TS\b|W3C\s+Recommendation\b)/i;
-var STANDARD_URL = /^https?:\/\/(?:www\.)?(?:rfc-editor\.org|datatracker\.ietf\.org|tools\.ietf\.org|iso\.org|w3\.org\/TR|nvlpubs\.nist\.gov|etsi\.org\/deliver|itu\.int\/rec)\b/i;
-var plain = (v) => (v ?? "").replace(/[{}]/g, "").replace(/\\url/g, "").trim();
-function isStandard(entry) {
-  if (!STANDARD_TYPES.has(entry.type)) return false;
-  const f = entry.fields;
-  if (entry.type !== "standard" && (f.journal || f.journaltitle || f.booktitle)) return false;
-  const body = [f.institution, f.organization, f.publisher].map(plain);
-  if (body.some((b) => STANDARDS_BODY.test(b))) return true;
-  const ids = [f.number, f.title, f.howpublished, f.series].map(plain);
-  if (ids.some((v) => STANDARD_ID.test(v))) return true;
-  return [f.url, f.howpublished].map(plain).some((u) => STANDARD_URL.test(u));
-}
-function isWebOnly(entry) {
-  const f = entry.fields;
-  const hasVenue = f.journal || f.journaltitle || f.booktitle || f.publisher || f.school || f.institution;
-  return !!(f.url || f.howpublished?.includes("\\url")) && !f.author && !hasVenue;
-}
-function entryKind(entry, ids) {
-  if (ids.doi || ids.arxivId || ids.aclId || ids.pmid || ids.pmcid)
-    return SCHOLARLY.has(entry.type) ? "scholarly" : "maybe-indexed";
-  if (NOT_INDEXED.has(entry.type) || isStandard(entry) || isWebOnly(entry)) return "not-indexed";
-  if (SCHOLARLY.has(entry.type)) return "scholarly";
-  return "maybe-indexed";
-}
-function notIndexedReason(entry) {
-  if (isStandard(entry)) return "standards and RFCs are not in scholarly indexes";
-  if (["software", "codefragment", "softwareversion", "softwaremodule"].includes(entry.type)) {
-    return "software is not in scholarly indexes";
-  }
-  if (entry.type === "dataset" || entry.type === "data") return "datasets are not reliably indexed";
-  if (entry.type === "patent") return "patents are not in scholarly indexes";
-  if (entry.type === "manual") return "manuals are not in scholarly indexes";
-  return "web pages are not in scholarly indexes";
-}
-
-// ../packages/core/src/refs/match.ts
-var STRONG_TITLE = 0.9;
-var SIMILAR_TITLE = 0.75;
-var DIFFERENT_WORK_TITLE = 0.6;
-function bibYear(entry) {
-  const m = /\b(1[5-9]\d\d|20\d\d)\b/.exec(entry.fields.year ?? entry.fields.date ?? "");
-  return m ? Number(m[1]) : void 0;
-}
-function bibFacts(entry) {
-  const people = parseNames(entry.fields.author ?? entry.fields.editor);
-  const facts = {
-    surnames: people.filter((p) => !p.corporate).map((p) => foldName(p.family)),
-    firstIsPersonal: people.length > 0 && !people[0]?.corporate
-  };
-  if (entry.fields.title) facts.title = entry.fields.title;
-  const authorText2 = entry.fields.author ?? entry.fields.editor;
-  if (authorText2) facts.authorText = authorText2;
-  const year = bibYear(entry);
-  if (year !== void 0) facts.year = year;
-  return facts;
-}
-function recordNameMatches(surname, a) {
-  return namesMatch(surname, foldName(a.family)) || !!a.given && namesMatch(surname, foldName(a.given));
-}
-function authorOverlap(facts, record) {
-  if (!facts.surnames.length || !record.authors.length) return null;
-  const matched = facts.surnames.filter((s) => record.authors.some((a) => recordNameMatches(s, a)));
-  return matched.length / Math.min(facts.surnames.length, record.authors.length);
-}
-function firstAuthorOk(facts, record) {
-  const first2 = facts.surnames[0];
-  if (!facts.firstIsPersonal || !first2 || !record.authors.length) return null;
-  return record.authors.slice(0, 2).some((a) => recordNameMatches(first2, a));
-}
-function yearDiff(facts, record) {
-  if (facts.year === void 0 || !record.years.length) return null;
-  return Math.min(...record.years.map((y) => Math.abs(y - facts.year)));
-}
-function recordAuthorText(record, max = 3) {
-  const names = record.authors.slice(0, max).map((a) => a.given ? `${a.given} ${a.family}` : a.family);
-  return names.join(", ") + (record.authors.length > max ? ", \u2026" : "");
-}
-function closestYear(facts, record) {
-  if (facts.year === void 0) return record.years[0];
-  return [...record.years].sort(
-    (a, b) => Math.abs(a - facts.year) - Math.abs(b - facts.year)
-  )[0];
-}
-function differencesFor(facts, record, s) {
-  const diffs = [];
-  if (s.titleScore < STRONG_TITLE && facts.title) {
-    diffs.push({ field: "title", bib: facts.title, record: stripMarkup(record.title) });
-  }
-  if (s.overlap === 0 || s.firstOk === false) {
-    diffs.push({ field: "author", bib: facts.authorText ?? "", record: recordAuthorText(record) });
-  }
-  if (s.years !== null && s.years > 1) {
-    diffs.push({
-      field: "year",
-      bib: String(facts.year),
-      record: String(closestYear(facts, record))
-    });
-  }
-  return diffs;
-}
-function verdictFor(s, identified) {
-  const authorsConflict = s.overlap === 0 || s.firstOk === false;
-  const yearConflict = s.years !== null && s.years > 1;
-  if (s.titleScore >= STRONG_TITLE) {
-    if (!identified && authorsConflict && yearConflict)
-      return { verdict: "none", differentWork: false };
-    return {
-      verdict: authorsConflict || yearConflict ? "mismatch" : "verified",
-      differentWork: false
-    };
-  }
-  const sameAuthors = s.overlap !== null && s.overlap > 0 && s.firstOk !== false;
-  if (s.titleScore >= SIMILAR_TITLE && sameAuthors && !yearConflict) {
-    return { verdict: "mismatch", differentWork: false };
-  }
-  if (!identified) return { verdict: "none", differentWork: false };
-  const differentWork = s.titleScore < DIFFERENT_WORK_TITLE || !sameAuthors;
-  return { verdict: "mismatch", differentWork };
-}
-var REDEPOSIT_TYPES = /* @__PURE__ */ new Set(["posted-content", "preprint", "other", "component", "dataset"]);
-function isLaterRedeposit(facts, record, identified) {
-  if (identified || facts.year === void 0 || !record.years.length) return false;
-  return REDEPOSIT_TYPES.has(record.type ?? "") && Math.min(...record.years) > facts.year + 1;
-}
-function assess(facts, record, identified) {
-  if (isLaterRedeposit(facts, record, identified)) {
-    return {
-      record,
-      verdict: "none",
-      titleScore: 0,
-      authorOverlap: null,
-      yearDiff: null,
-      differences: [],
-      differentWork: false,
-      score: 0
-    };
-  }
-  const signals = {
-    titleScore: facts.title ? titleSimilarity(facts.title, record.title) : identified ? 1 : 0,
-    overlap: authorOverlap(facts, record),
-    firstOk: firstAuthorOk(facts, record),
-    years: yearDiff(facts, record)
-  };
-  const { verdict, differentWork } = verdictFor(signals, identified);
-  let differences = [];
-  if (verdict === "mismatch") differences = differencesFor(facts, record, signals);
-  else if (verdict === "verified" && signals.years === 1) {
-    differences = [
-      { field: "year", bib: String(facts.year), record: String(closestYear(facts, record)) }
-    ];
-  }
-  const score = signals.titleScore + 0.3 * (signals.overlap ?? 0.5) - 0.05 * Math.min(signals.years ?? 0, 10) + (record.doi ? 0.01 : 0);
-  return {
-    record,
-    verdict,
-    titleScore: signals.titleScore,
-    authorOverlap: signals.overlap,
-    yearDiff: signals.years,
-    differences,
-    differentWork,
-    score
-  };
-}
-function bestAssessment(list3) {
-  const rank = (a) => a.verdict === "verified" ? 2 : a.verdict === "mismatch" ? 1 : 0;
-  return [...list3].filter((a) => a.verdict !== "none").sort((a, b) => rank(b) - rank(a) || b.score - a.score)[0];
-}
-
-// ../packages/core/src/refs/extra.ts
-function locationOf(r, entry) {
-  return r?.location ?? (entry?.line ? { line: entry.line, ...entry.file ? { file: entry.file } : {} } : void 0);
-}
-var ASSERTED_BY = {
-  "retraction-watch": "Retraction Watch",
-  publisher: "the publisher"
-};
-function retractedProblems(results, byKey) {
-  const problems = [];
-  for (const r of results) {
-    const n = r.retraction;
-    if (!n) continue;
-    const entry = byKey.get(r.key);
-    const location2 = locationOf(r, entry);
-    const word = n.kind === "withdrawal" ? "withdrawn" : "retracted";
-    const who = n.assertedBy ? ASSERTED_BY[n.assertedBy] ?? n.assertedBy : void 0;
-    const notice = n.noticeDoi ? `https://doi.org/${n.noticeDoi}` : void 0;
-    problems.push({
-      rule: "reference-retracted",
-      check: "references",
-      severity: "error",
-      message: `\`${r.key}\` is recorded as ${word} (DOI ${n.doi})`,
-      ...location2 ? { location: location2 } : {},
-      detail: [
-        `CrossRef lists a ${n.kind} for ${n.doi}${n.date ? `, dated ${n.date}` : ""}${who ? `, asserted by ${who}` : ""}.`,
-        notice ? `Notice: ${notice}` : void 0
-      ].filter(Boolean).join(" "),
-      fix: `Read the notice${notice ? ` (${notice})` : ""}. Do not cite the work as sound evidence: replace it with a work that stands, or cite it only to say it was ${word}, together with the notice.`,
-      ...entry?.raw ? { evidence: entry.raw } : {},
-      data: {
-        key: r.key,
-        doi: n.doi,
-        kind: n.kind,
-        ...n.noticeDoi ? { noticeDoi: n.noticeDoi } : {},
-        ...n.date ? { date: n.date } : {},
-        ...n.assertedBy ? { assertedBy: n.assertedBy } : {}
-      }
-    });
-  }
-  return problems;
-}
-function publishedVersionProblems(results, byKey) {
-  const problems = [];
-  for (const r of results) {
-    const entry = byKey.get(r.key);
-    const doi = r.matched?.doi;
-    if (r.source !== "arxiv" || !entry || !doi || doi.startsWith("10.48550/")) continue;
-    if (r.status !== "verified" && r.status !== "mismatch") continue;
-    if (identifiersOf(entry).doi || entry.fields.doi) continue;
-    const location2 = locationOf(r, entry);
-    problems.push({
-      rule: "reference-published-version",
-      check: "references",
-      severity: "info",
-      message: `\`${r.key}\` is an arXiv preprint whose arXiv record names a published version (DOI ${doi})`,
-      ...location2 ? { location: location2 } : {},
-      detail: "The arXiv record of this paper gives a DOI for the published article. If you read the published version, cite that; if you read the preprint, keep this entry.",
-      fix: `Run \`overfull cite ${doi}\`, use the key it prints in \`\\cite{}\`, and remove this entry if nothing else cites it.`,
-      ...entry.raw ? { evidence: entry.raw } : {},
-      data: { key: r.key, doi, ...r.matched?.title ? { title: r.matched.title } : {} }
-    });
-  }
-  return problems;
-}
-function duplicateKeys(entry) {
-  const ids = identifiersOf(entry);
-  const keys = [];
-  if (ids.doi) keys.push({ kind: "doi", value: ids.doi.toLowerCase() });
-  if (ids.arxivId) keys.push({ kind: "arxiv", value: ids.arxivId.toLowerCase() });
-  const year = bibYear(entry);
-  const title = normalizeTitle(entry.fields.title ?? "", true);
-  if (year !== void 0 && title.length >= 12)
-    keys.push({ kind: "title", value: `${title}|${year}` });
-  return keys;
-}
-var WHAT = {
-  doi: "the same DOI",
-  arxiv: "the same arXiv id",
-  title: "the same title and year"
-};
-function duplicateProblems(entries) {
-  const first2 = /* @__PURE__ */ new Map();
-  const problems = [];
-  for (const entry of entries) {
-    let reported = false;
-    for (const k of duplicateKeys(entry)) {
-      const id = `${k.kind}:${k.value}`;
-      const earlier = first2.get(id);
-      if (!earlier) {
-        first2.set(id, entry);
-        continue;
-      }
-      if (reported || earlier === entry) continue;
-      reported = true;
-      const location2 = locationOf(void 0, entry);
-      problems.push({
-        rule: "reference-duplicate",
-        check: "references",
-        severity: "warning",
-        message: `\`${entry.key}\` and \`${earlier.key}\` are the same work (${WHAT[k.kind]})`,
-        ...location2 ? { location: location2 } : {},
-        detail: `Both entries have ${WHAT[k.kind]}${k.kind === "title" ? "" : `: ${k.value}`}. \`${earlier.key}\` comes first${earlier.line ? ` (line ${earlier.line}${earlier.file ? ` of ${earlier.file}` : ""})` : ""}.`,
-        fix: `Keep one entry, use its key in every \`\\cite{}\`, and delete the other. If they are two different works (for example two editions), give them different titles or years.`,
-        ...entry.raw ? { evidence: entry.raw } : {},
-        data: { key: entry.key, duplicateOf: earlier.key, by: k.kind }
-      });
-    }
-  }
-  return problems;
-}
-function uncitedProblems(entries, cited) {
-  const used = new Set(cited);
-  return entries.filter((e) => !used.has(e.key)).map((entry) => {
-    const location2 = locationOf(void 0, entry);
-    return {
-      rule: "reference-uncited",
-      check: "references",
-      severity: "info",
-      message: `\`${entry.key}\` is in the bibliography but no \`\\cite\` uses it`,
-      ...location2 ? { location: location2 } : {},
-      fix: "Cite it where it belongs, or remove the entry if you do not need it.",
-      data: { key: entry.key }
-    };
-  });
-}
-
-// ../packages/core/src/refs/retraction.ts
-var BATCH = 40;
-function dateOf(u) {
-  const [y, m, d] = u.updated?.["date-parts"]?.[0] ?? [];
-  if (!y) return void 0;
-  return [y, m, d].filter((n) => typeof n === "number").map((n, i) => String(n).padStart(i === 0 ? 4 : 2, "0")).join("-");
-}
-function retractionOf(work) {
-  const updates = work["updated-by"] ?? [];
-  const pick2 = updates.find((u) => u.type === "retraction") ?? updates.find((u) => u.type === "withdrawal");
-  if (!pick2 || !work.DOI) return void 0;
-  const notice = {
-    kind: pick2.type === "withdrawal" ? "withdrawal" : "retraction",
-    doi: work.DOI.toLowerCase()
-  };
-  if (pick2.DOI) notice.noticeDoi = pick2.DOI.toLowerCase();
-  const date = dateOf(pick2);
-  if (date) notice.date = date;
-  if (pick2.source) notice.assertedBy = pick2.source;
-  return notice;
-}
-function crossrefUpdatesUrl(dois, mailto) {
-  const params = new URLSearchParams({
-    filter: dois.map((d) => `doi:${d}`).join(","),
-    select: "DOI,updated-by",
-    rows: String(dois.length)
-  });
-  if (mailto) params.set("mailto", mailto);
-  return `https://api.crossref.org/works?${params}`;
-}
-async function findRetractions(client, ctx, dois) {
-  const { cache: cache2 } = ctx.opts;
-  const found = /* @__PURE__ */ new Map();
-  const maxAge = { ...cacheMaxAge(ctx.opts.cacheMaxAgeDays) };
-  maxAge.negative = Math.min(maxAge.negative, 1);
-  maxAge.positive = Math.min(maxAge.positive, 1);
-  const todo = [];
-  for (const doi of [...new Set(dois)]) {
-    if (doi.includes(",")) continue;
-    const hit = cache2 && !ctx.opts.refresh ? await cache2.get(`retraction:${doi}`) : null;
-    if (hit && typeof hit === "object" && isFresh(hit.cachedAt, false, maxAge)) {
-      if (hit.notice) found.set(doi, hit.notice);
-    } else todo.push(doi);
-  }
-  for (let i = 0; i < todo.length; i += BATCH) {
-    const chunk = todo.slice(i, i + BATCH);
-    const { data } = await getJson(
-      client,
-      crossrefUpdatesUrl(chunk, ctx.opts.mailto)
-    );
-    const items = data?.message?.items;
-    if (!Array.isArray(items)) continue;
-    const byDoi = /* @__PURE__ */ new Map();
-    for (const item of items) {
-      const notice = retractionOf(item);
-      if (notice) byDoi.set(notice.doi, notice);
-    }
-    for (const doi of chunk) {
-      const notice = byDoi.get(doi);
-      if (notice) found.set(doi, notice);
-      if (cache2)
-        await cache2.set(`retraction:${doi}`, {
-          ...notice ? { notice } : {},
-          cachedAt: Date.now()
-        });
-    }
-  }
-  return found;
-}
-async function attachRetractions(ctx, results) {
-  if (!ctx.opts.checkRetractions) return;
-  if (ctx.opts.sources && !ctx.opts.sources.includes("crossref")) return;
-  const candidates = [];
-  for (const r of results) {
-    const doi = r.matched?.doi?.toLowerCase();
-    if ((r.status === "verified" || r.status === "mismatch") && !r.wrongWork && doi) {
-      if (!doi.startsWith("10.48550/")) candidates.push({ r, doi });
-    }
-  }
-  if (!candidates.length) return;
-  try {
-    const found = await findRetractions(
-      ctx.client,
-      ctx,
-      candidates.map((c) => c.doi)
-    );
-    for (const { r, doi } of candidates) {
-      const notice = found.get(doi);
-      if (notice) r.retraction = notice;
-    }
-  } catch (err) {
-    if (ctx.opts.signal?.aborted) throw err;
-  }
-}
-
-// ../packages/core/src/refs/sources/crossref.ts
-var SELECT = [
-  "DOI",
-  "URL",
-  "type",
-  "title",
-  "subtitle",
-  "author",
-  "issued",
-  "published-print",
-  "published-online",
-  "container-title",
-  "is-referenced-by-count"
-].join(",");
-function crossrefSearchUrl(q, mailto) {
-  const text2 = [q.title, q.firstAuthor, q.year].filter(Boolean).join(" ");
-  const params = new URLSearchParams({ "query.bibliographic": text2, rows: "5", select: SELECT });
-  if (mailto) params.set("mailto", mailto);
-  return `https://api.crossref.org/works?${params}`;
-}
-async function crossrefSearch(client, q, mailto) {
-  const { data } = await getJson(
-    client,
-    crossrefSearchUrl(q, mailto)
-  );
-  return (data?.message?.items ?? []).map((item) => fromCsl(item, "crossref")).filter((r) => r !== null);
-}
-
-// ../packages/core/src/refs/sources/dblp.ts
-function dblpSearchUrl(title) {
-  const params = new URLSearchParams({ q: title, format: "json", h: "5" });
-  return `https://dblp.org/search/publ/api?${params}`;
-}
-function dblpPerson(text2) {
-  const clean2 = text2.replace(/\s+\d{4}$/, "");
-  const [name] = parseNames(clean2);
-  if (!name) return { family: clean2 };
-  return name.given ? { given: name.given, family: name.family } : { family: name.family };
-}
-function fromDblp(info3) {
-  if (!info3.title) return null;
-  const authorField = info3.authors?.author;
-  const authors = (Array.isArray(authorField) ? authorField : authorField ? [authorField] : []).map((a) => dblpPerson(a.text ?? "")).filter((a) => a.family);
-  const year = Number(info3.year);
-  const record = {
-    source: "dblp",
-    title: info3.title.replace(/\.$/, ""),
-    authors,
-    years: Number.isInteger(year) ? [year] : []
-  };
-  const venue2 = Array.isArray(info3.venue) ? info3.venue[0] : info3.venue;
-  if (venue2) record.venue = venue2;
-  if (info3.doi) record.doi = info3.doi.toLowerCase();
-  const ee = Array.isArray(info3.ee) ? info3.ee[0] : info3.ee;
-  if (ee ?? info3.url) record.url = ee ?? info3.url;
-  if (info3.type) record.type = info3.type;
-  return record;
-}
-async function dblpSearch(client, title) {
-  const { data } = await getJson(client, dblpSearchUrl(title));
-  return (data?.result?.hits?.hit ?? []).map((h) => h.info ? fromDblp(h.info) : null).filter((r) => r !== null);
-}
-
-// ../packages/core/src/refs/sources/openalex.ts
-function openalexSearchUrl(title, apiKey, mailto) {
-  const params = new URLSearchParams({ search: title, "per-page": "5" });
-  if (apiKey) params.set("api_key", apiKey);
-  if (mailto) params.set("mailto", mailto);
-  return `https://api.openalex.org/works?${params}`;
-}
-function fromOpenAlex(w) {
-  const title = w.display_name ?? w.title;
-  if (!title) return null;
-  const authors = (w.authorships ?? []).map((a) => parseNames(a.author?.display_name ?? "")[0]).filter((n) => n !== void 0).map((n) => n.given ? { given: n.given, family: n.family } : { family: n.family });
-  const record = {
-    source: "openalex",
-    title,
-    authors,
-    years: w.publication_year ? [w.publication_year] : []
-  };
-  const venue2 = w.primary_location?.source?.display_name;
-  if (venue2) record.venue = venue2;
-  if (w.doi) record.doi = w.doi.replace(/^https?:\/\/doi\.org\//i, "").toLowerCase();
-  const url = w.primary_location?.landing_page_url;
-  if (url) record.url = url;
-  if (w.type && (venue2 || w.type !== "article")) record.type = w.type;
-  if (typeof w.cited_by_count === "number") record.citations = w.cited_by_count;
-  return record;
-}
-async function openalexSearch(client, title, apiKey, mailto) {
-  const { data } = await getJson(
-    client,
-    openalexSearchUrl(title, apiKey, mailto)
-  );
-  return (data?.results ?? []).map(fromOpenAlex).filter((r) => r !== null);
-}
-
-// ../packages/core/src/refs/sources/semanticscholar.ts
-var FIELDS = "title,authors,year,venue,externalIds,publicationTypes,journal,citationCount";
-function semanticScholarSearchUrl(title) {
-  const params = new URLSearchParams({ query: title, limit: "5", fields: FIELDS });
-  return `https://api.semanticscholar.org/graph/v1/paper/search?${params}`;
-}
-var TYPES2 = {
-  JournalArticle: "journal-article",
-  Conference: "proceedings-article",
-  Book: "book",
-  BookSection: "book-chapter"
-};
-function fromSemanticScholar(p) {
-  const title = p.title?.trim();
-  if (!title) return null;
-  const authors = (p.authors ?? []).map((a) => parseNames(a.name ?? "")[0]).filter((n) => n !== void 0).map((n) => n.given ? { given: n.given, family: n.family } : { family: n.family });
-  const record = {
-    source: "semanticscholar",
-    title,
-    authors,
-    years: typeof p.year === "number" ? [p.year] : []
-  };
-  const arxivId = p.externalIds?.ArXiv;
-  const venue2 = (p.venue || p.journal?.name || "").trim();
-  const isPreprint = /^(arxiv|corr)\b/i.test(venue2);
-  if (venue2 && !isPreprint) record.venue = venue2;
-  const doi = p.externalIds?.DOI;
-  if (doi) record.doi = doi.toLowerCase();
-  if (arxivId) record.arxivId = arxivId.replace(/v\d+$/, "");
-  if (p.paperId) record.url = `https://www.semanticscholar.org/paper/${p.paperId}`;
-  const kind = (p.publicationTypes ?? []).map((t) => TYPES2[t]).find((t) => t !== void 0);
-  if (isPreprint && arxivId) record.type = "preprint";
-  else if (kind) record.type = kind;
-  if (typeof p.citationCount === "number") record.citations = p.citationCount;
-  return record;
-}
-async function semanticScholarSearch(client, title, apiKey) {
-  const { data } = await getJson(
-    client,
-    semanticScholarSearchUrl(title),
-    "application/json",
-    apiKey ? { "x-api-key": apiKey } : void 0
-  );
-  return (data?.data ?? []).map(fromSemanticScholar).filter((r) => r !== null);
-}
-
-// ../packages/core/src/refs/search.ts
-function sourceAllowed(opts, source) {
-  return !opts.sources || opts.sources.includes(source);
-}
-function failureReason(err) {
-  return err instanceof SourceUnavailableError ? err.message : `unexpected error: ${String(err)}`;
-}
-function resolveDoiCached(ctx, doi) {
-  return cached(ctx.opts.cache, doiCacheKey(doi), () => resolveDoi(ctx.client, doi), {
-    isNegative: (v) => v.kind !== "found",
-    maxAge: cacheMaxAge(ctx.opts.cacheMaxAgeDays),
-    refresh: ctx.opts.refresh === true
-  });
-}
-async function arxivByIdCached(ctx, id) {
-  const value = await cached(
-    ctx.opts.cache,
-    arxivCacheKey(id),
-    async () => ({ record: await arxivById(ctx.client, id) }),
-    {
-      isNegative: (v) => !v.record,
-      maxAge: cacheMaxAge(ctx.opts.cacheMaxAgeDays),
-      refresh: ctx.opts.refresh === true
-    }
-  );
-  return value.record;
-}
-var MAX_TITLE_ANSWERS = 3;
-async function aclByIdCached(ctx, id) {
-  const value = await cached(
-    ctx.opts.cache,
-    `acl:${id}`,
-    async () => ({ record: await aclById(ctx.client, id) }),
-    {
-      isNegative: (v) => !v.record,
-      maxAge: cacheMaxAge(ctx.opts.cacheMaxAgeDays),
-      refresh: ctx.opts.refresh === true
-    }
-  );
-  return value.record;
-}
-async function europepmcByIdCached(ctx, id) {
-  const key = "pmid" in id ? `pmid:${id.pmid}` : `pmcid:${id.pmcid}`;
-  const value = await cached(
-    ctx.opts.cache,
-    key,
-    async () => ({
-      record: "pmid" in id ? await europepmcByPmid(ctx.client, id.pmid) : await europepmcByPmcid(ctx.client, id.pmcid)
-    }),
-    {
-      isNegative: (v) => !v.record,
-      maxAge: cacheMaxAge(ctx.opts.cacheMaxAgeDays),
-      refresh: ctx.opts.refresh === true
-    }
-  );
-  return value.record;
-}
-function titleSources(ctx, q) {
-  const plain2 = q.isTex ? texToPlain(q.title) : q.title;
-  const { client, opts } = ctx;
-  const crossrefQuery = {
-    title: plain2,
-    ...q.firstAuthor ? { firstAuthor: q.firstAuthor } : {},
-    ...q.year ? { year: q.year } : {}
-  };
-  const list3 = [
-    ["crossref", () => crossrefSearch(client, crossrefQuery, opts.mailto)],
-    ["dblp", () => dblpSearch(client, plain2)],
-    ["arxiv", () => arxivSearch(client, plain2)]
-  ];
-  const key = opts.openalexKey;
-  if (key) list3.push(["openalex", () => openalexSearch(client, plain2, key, opts.mailto)]);
-  return list3.filter(([source]) => sourceAllowed(opts, source));
-}
-var writes = /* @__PURE__ */ new WeakMap();
-async function searchOne(ctx, cacheKey, source, run2) {
-  const cache2 = ctx.opts.cache;
-  const hit = cache2 && !ctx.opts.refresh ? await cache2.get(cacheKey) : void 0;
-  const cachedRecords = hit?.[source];
-  if (Array.isArray(cachedRecords) && isFresh(
-    hit?.cachedAt?.[source],
-    cachedRecords.length === 0,
-    cacheMaxAge(ctx.opts.cacheMaxAgeDays)
-  )) {
-    return cachedRecords;
-  }
-  const records = await run2();
-  if (cache2) {
-    const write = (writes.get(cache2) ?? Promise.resolve()).then(async () => {
-      const latest = await cache2.get(cacheKey) ?? {};
-      await cache2.set(cacheKey, {
-        ...latest,
-        [source]: records,
-        cachedAt: { ...latest.cachedAt ?? {}, [source]: Date.now() }
-      });
-    });
-    writes.set(
-      cache2,
-      write.catch(() => {
-      })
-    );
-    await write;
-  }
-  return records;
-}
-async function titleSearch(ctx, q, visit) {
-  const outcome = { searched: [], failures: [] };
-  const cacheKey = titleCacheKey(q.title, q.year, q.isTex) + (q.hinted && q.firstAuthor ? `|author:${q.firstAuthor.toLowerCase()}` : "");
-  const sources = titleSources(ctx, q);
-  const first2 = sources.filter(([s]) => s === "crossref" || s === "dblp");
-  const waves = [first2, sources.filter((entry) => !first2.includes(entry))];
-  for (const wave of waves) {
-    const pending = wave.map(([source, run2]) => {
-      if (ctx.deadline !== void 0 && Date.now() > ctx.deadline) {
-        const reason = `${source} not asked: lookup time budget used up`;
-        return Promise.resolve({ source, reason });
-      }
-      return searchOne(ctx, cacheKey, source, run2).then(
-        (records) => ({ source, records }),
-        (err) => ({ source, err })
-      );
-    });
-    for (const p of pending) {
-      const got = await p;
-      if ("records" in got) {
-        outcome.searched.push(got.source);
-        if (visit(got.records, got.source)) return outcome;
-      } else if ("reason" in got) {
-        outcome.failures.push({ source: got.source, reason: got.reason });
-      } else {
-        if (ctx.opts.signal?.aborted) throw got.err;
-        outcome.failures.push({ source: got.source, reason: failureReason(got.err) });
-      }
-    }
-  }
-  if ((ctx.deadline === void 0 || Date.now() <= ctx.deadline) && !ctx.opts.openalexKey && sourceAllowed(ctx.opts, "openalex") && !outcome.searched.includes("dblp")) {
-    const plain2 = q.isTex ? texToPlain(q.title) : q.title;
-    try {
-      const records = await searchOne(
-        ctx,
-        cacheKey,
-        "openalex",
-        () => openalexSearch(ctx.client, plain2, void 0, ctx.opts.mailto)
-      );
-      outcome.searched.push("openalex");
-      if (visit(records, "openalex")) return outcome;
-    } catch (err) {
-      if (ctx.opts.signal?.aborted) throw err;
-      outcome.failures.push({ source: "openalex", reason: failureReason(err) });
-    }
-  }
-  const plainTitle = q.isTex ? texToPlain(q.title) : q.title;
-  const fallbacks = [
-    [
-      "semanticscholar",
-      () => semanticScholarSearch(ctx.client, plainTitle, ctx.opts.semanticScholarKey)
-    ],
-    ["europepmc", () => europepmcSearch(ctx.client, plainTitle)]
-  ];
-  for (const [source, run2] of fallbacks) {
-    if (outcome.searched.length >= MAX_TITLE_ANSWERS) break;
-    if (ctx.deadline !== void 0 && Date.now() > ctx.deadline) break;
-    if (!sourceAllowed(ctx.opts, source)) continue;
-    try {
-      const records = await searchOne(ctx, cacheKey, source, run2);
-      outcome.searched.push(source);
-      if (visit(records, source)) return outcome;
-    } catch (err) {
-      if (ctx.opts.signal?.aborted) throw err;
-    }
-  }
-  return outcome;
-}
-
-// ../packages/core/src/refs/verify.ts
-var SOURCE_NAMES = {
-  "doi.org": "doi.org",
-  crossref: "CrossRef",
-  dblp: "dblp",
-  arxiv: "arXiv",
-  openalex: "OpenAlex",
-  semanticscholar: "Semantic Scholar",
-  acl: "ACL Anthology",
-  europepmc: "Europe PMC"
-};
-var SECOND_OPINION = ["openalex", "semanticscholar", "dblp"];
-function notFoundQuorum(searched) {
-  return searched.includes("crossref") && searched.some((s) => SECOND_OPINION.includes(s));
-}
-function sourceName(s) {
-  return SOURCE_NAMES[s];
-}
-function toMatched(r) {
-  const m = {
-    title: stripTags(r.title),
-    authors: r.authors.map((a) => a.given ? `${a.given} ${a.family}` : a.family)
-  };
-  const year = r.years.length ? Math.min(...r.years) : void 0;
-  if (year !== void 0) m.year = year;
-  if (r.venue) m.venue = r.venue;
-  if (r.doi) m.doi = r.doi;
-  if (r.url) m.url = r.url;
-  if (r.type) m.type = r.type;
-  return m;
-}
-function isSkipped(entry, ignore) {
-  if (ignore.has(entry.key)) return true;
-  return /overfull\s*:\s*skip/i.test(`${entry.fields.note ?? ""} ${entry.fields.annote ?? ""}`);
-}
-function fromAssessment(base, a, ev) {
-  const result = {
-    ...base,
-    status: a.verdict === "verified" ? "verified" : "mismatch",
-    source: a.record.source,
-    matched: toMatched(a.record),
-    searched: [...ev.searched]
-  };
-  if (a.differences.length) result.differences = a.differences;
-  const doiDiff = a.differences[0];
-  if (a.differentWork && doiDiff?.field === "doi" && a.record.source === "doi.org") {
-    result.wrongWork = { field: "doi", id: doiDiff.bib, title: toMatched(a.record).title };
-  }
-  if (a.differentWork && doiDiff?.field === "eprint" && a.record.source === "arxiv") {
-    result.wrongWork = { field: "eprint", id: doiDiff.bib, title: toMatched(a.record).title };
-  }
-  if (a.verdict === "verified" && a.yearDiff === 1) {
-    result.reason = "year differs by one (common between preprint, online and print versions)";
-  }
-  return result;
-}
-async function checkDoi(ctx, doi, facts, ev) {
-  ev.queries.push(doiCacheKey(doi));
-  try {
-    const res = await resolveDoiCached(ctx, doi);
-    ev.searched.add("doi.org");
-    if (res.kind === "missing") ev.doiMissing = true;
-    if (res.kind !== "found") return null;
-    return assessIdentified(facts, res.record, ev, "doi", doi, "resolves to");
-  } catch (err) {
-    return sourceFailed(ctx, ev, "doi.org", err);
-  }
-}
-function assessIdentified(facts, record, ev, field, id, verb) {
-  const a = assess(facts, record, true);
-  if (a.differentWork) {
-    a.differences = [
-      { field, bib: id, record: `${verb} \u201C${record.title}\u201D` },
-      ...a.differences.filter((d) => d.field !== "title")
-    ];
-  }
-  ev.assessments.push(a);
-  return a;
-}
-function sourceFailed(ctx, ev, source, err) {
-  if (ctx.opts.signal?.aborted) throw err;
-  ev.failures.push({ source, reason: failureReason(err) });
-  return null;
-}
-async function checkArxiv(ctx, id, facts, ev) {
-  ev.queries.push(arxivCacheKey(id));
-  try {
-    const record = await arxivByIdCached(ctx, id);
-    ev.searched.add("arxiv");
-    if (!record) {
-      ev.arxivMissing = true;
-      return null;
-    }
-    return assessIdentified(facts, record, ev, "eprint", id, "is");
-  } catch (err) {
-    return sourceFailed(ctx, ev, "arxiv", err);
-  }
-}
-async function checkOtherId(ctx, source, label, fetchRecord, facts, ev) {
-  ev.queries.push(label);
-  try {
-    const record = await fetchRecord();
-    ev.searched.add(source);
-    if (!record) return null;
-    const a = assess(facts, record, true);
-    ev.assessments.push(a);
-    return a;
-  } catch (err) {
-    return sourceFailed(ctx, ev, source, err);
-  }
-}
-async function checkOtherIds(ctx, ids, facts, ev) {
-  if (ids.aclId && sourceAllowed(ctx.opts, "acl")) {
-    const id = ids.aclId;
-    const a = await checkOtherId(ctx, "acl", `acl:${id}`, () => aclByIdCached(ctx, id), facts, ev);
-    if (a) return a;
-  }
-  if (sourceAllowed(ctx.opts, "europepmc")) {
-    if (ids.pmid) {
-      const pmid = ids.pmid;
-      const a = await checkOtherId(
-        ctx,
-        "europepmc",
-        `pmid:${pmid}`,
-        () => europepmcByIdCached(ctx, { pmid }),
-        facts,
-        ev
-      );
-      if (a) return a;
-    }
-    if (ids.pmcid) {
-      const pmcid = ids.pmcid;
-      return checkOtherId(
-        ctx,
-        "europepmc",
-        `pmcid:${pmcid}`,
-        () => europepmcByIdCached(ctx, { pmcid }),
-        facts,
-        ev
-      );
-    }
-  }
-  return null;
-}
-async function searchByTitle(ctx, facts, kind, ev) {
-  if (!facts.title) return;
-  ev.queries.push(titleCacheKey(facts.title, facts.year));
-  const firstAuthor = facts.firstIsPersonal ? facts.surnames[0] : void 0;
-  const outcome = await titleSearch(
-    ctx,
-    {
-      title: facts.title,
-      isTex: true,
-      ...firstAuthor ? { firstAuthor } : {},
-      ...facts.year ? { year: facts.year } : {}
-    },
-    (records) => {
-      const found = records.map((r) => assess(facts, r, false)).filter((a) => kind === "scholarly" || a.verdict !== "mismatch");
-      ev.assessments.push(...found);
-      return found.some((a) => a.verdict === "verified");
-    }
-  );
-  for (const s of outcome.searched) ev.searched.add(s);
-  ev.failures.push(...outcome.failures);
-}
-function sourcesText(sources) {
-  const names = sources.map(sourceName);
-  if (names.length <= 1) return names.join("");
-  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
-}
-function lastFailures(failures) {
-  const bySource = /* @__PURE__ */ new Map();
-  for (const f of failures) bySource.set(f.source, f);
-  return [...bySource.values()];
-}
-function failuresText(failures) {
-  return failures.map((f) => f.reason).join("; ");
-}
-function withBrokenIds(result, ids, ev) {
-  const broken = [];
-  if (ev.doiMissing && ids.doi) {
-    broken.push({ field: "doi", bib: ids.doi, record: "does not resolve" });
-  }
-  if (ev.arxivMissing && ids.arxivId) {
-    broken.push({ field: "eprint", bib: ids.arxivId, record: "does not resolve" });
-  }
-  if (!broken.length) return result;
-  const what = broken.map((d) => d.field === "doi" ? `DOI ${d.bib}` : `arXiv id ${d.bib}`);
-  const { reason: _reason, ...rest } = result;
-  return {
-    ...rest,
-    status: "mismatch",
-    differences: [...broken, ...result.differences ?? []],
-    reason: `the ${what.join(" and the ")} does not resolve, but a record with this title exists`
-  };
-}
-function noMatch(ctx, base, entry, kind, ids, ev) {
-  const searched = [...ev.searched];
-  const withSearched = { ...base, searched };
-  const opts = ctx.opts;
-  const skipped3 = ["crossref", "openalex", "dblp"].filter(
-    (s) => !sourceAllowed(opts, s)
-  );
-  const skippedNote = skipped3.length ? `(${sourcesText(skipped3).replace(/ or /, " and ")} ${skipped3.length === 1 ? "was" : "were"} not searched)` : "";
-  const titleNote = entry.fields.title ? " and no record has a similar title" : "";
-  if (ev.arxivMissing) {
-    return {
-      ...withSearched,
-      status: "not-found",
-      reason: `arXiv has no paper ${ids.arxivId}${titleNote}`
-    };
-  }
-  if (ev.doiMissing) {
-    if (kind === "scholarly") {
-      return {
-        ...withSearched,
-        status: "not-found",
-        reason: `the DOI ${ids.doi} does not exist${titleNote}`
-      };
-    }
-    return {
-      ...withSearched,
-      status: "mismatch",
-      differences: [
-        { field: "doi", bib: ids.doi, record: "does not resolve at doi.org" }
-      ],
-      reason: `the DOI ${ids.doi} does not exist`
-    };
-  }
-  if (kind !== "scholarly") {
-    const why2 = entry.type === "book" || entry.type === "inbook" ? "books are often not indexed" : entry.type.endsWith("thesis") ? "theses are often not indexed" : "this kind of entry is often not indexed";
-    const failed = ev.failures.length ? ` (lookup incomplete: ${failuresText(ev.failures)})` : "";
-    return {
-      ...withSearched,
-      ...ev.failures.length ? { failures: lastFailures(ev.failures) } : {},
-      status: "unverifiable",
-      reason: `no match found, but ${why2}${failed}`
-    };
-  }
-  if (!notFoundQuorum(searched)) {
-    if (skipped3.length && !ev.failures.length) {
-      return {
-        ...withSearched,
-        status: "unverifiable",
-        reason: `could not be checked here ${skippedNote}`
-      };
-    }
-    const failed = [...new Set(ev.failures.map((f) => f.source))];
-    return {
-      ...withSearched,
-      ...failed.length ? { failed, failures: lastFailures(ev.failures) } : {},
-      status: "error",
-      reason: `lookup incomplete: ${failuresText(ev.failures) || "too few indexes answered"}`
-    };
-  }
-  const sameTitle = ev.assessments.find((a) => a.titleScore >= STRONG_TITLE);
-  if (sameTitle) {
-    return {
-      ...withSearched,
-      status: "unverifiable",
-      reason: `other works share this title (such as \u201C${stripTags(sameTitle.record.title)}\u201D, ${sameTitle.record.years[0] ?? "year unknown"}), and the indexes did not single out this one; add its DOI or arXiv id to check it`
-    };
-  }
-  if (ids.openreviewId) {
-    return {
-      ...withSearched,
-      status: "unverifiable",
-      reason: `no index has it yet, and OpenReview (forum ${ids.openreviewId}) cannot be checked automatically; open the link to confirm`
-    };
-  }
-  return {
-    ...withSearched,
-    status: "not-found",
-    reason: `no record with a similar title in ${sourcesText(searched.filter((s) => s !== "doi.org"))}`
-  };
-}
-async function verifyEntry(entry, ctx, ignore) {
-  const base = { key: entry.key, status: "unverifiable" };
-  if (entry.line) base.location = { line: entry.line, ...entry.file ? { file: entry.file } : {} };
-  if (isSkipped(entry, ignore)) return { ...base, reason: "skipped by author" };
-  const ids = identifiersOf(entry);
-  const kind = entryKind(entry, ids);
-  if (kind === "not-indexed") return { ...base, reason: notIndexedReason(entry) };
-  const facts = bibFacts(entry);
-  if (!facts.title && !ids.doi && !ids.arxivId)
-    return { ...base, reason: "no title, DOI or arXiv id to look up" };
-  const ev = {
-    assessments: [],
-    searched: /* @__PURE__ */ new Set(),
-    failures: [],
-    doiMissing: false,
-    arxivMissing: false,
-    queries: []
-  };
-  const viaId = (ids.doi && sourceAllowed(ctx.opts, "doi.org") ? await checkDoi(ctx, ids.doi, facts, ev) : null) ?? (ids.arxivId && sourceAllowed(ctx.opts, "arxiv") ? await checkArxiv(ctx, ids.arxivId, facts, ev) : null) ?? await checkOtherIds(ctx, ids, facts, ev);
-  const withQuery = (r) => ({ ...r, query: ev.queries[0] ?? "" });
-  if (viaId) return withQuery(withBrokenIds(fromAssessment(base, viaId, ev), ids, ev));
-  await searchByTitle(ctx, facts, kind, ev);
-  const best = bestAssessment(ev.assessments);
-  if (best) return withQuery(withBrokenIds(fromAssessment(base, best, ev), ids, ev));
-  return withQuery(noMatch(ctx, base, entry, kind, ids, ev));
-}
-async function runPool(items, limit, worker) {
-  const results = new Array(items.length);
-  let next = 0;
-  const lanes = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await worker(items[i]);
-    }
-  });
-  await Promise.all(lanes);
-  return results;
-}
-async function verifyEntries(entries, opts = {}) {
-  if (opts.offline) {
-    const ignore2 = new Set(opts.ignore ?? []);
-    return entries.map((e) => {
-      const r = {
-        key: e.key,
-        status: "unverifiable",
-        reason: isSkipped(e, ignore2) ? "skipped by author" : "offline",
-        ...e.line ? { location: { line: e.line, ...e.file ? { file: e.file } : {} } } : {}
-      };
-      return opts.requireProvenance && isUnproven(e, r) ? { ...r, unproven: true } : r;
-    });
-  }
-  const ctx = { client: new HttpClient(opts), opts };
-  const ignore = new Set(opts.ignore ?? []);
-  let done = 0;
-  const results = await runPool(entries, opts.concurrency ?? 4, async (e) => {
-    const result = await verifyEntry(e, ctx, ignore);
-    opts.onProgress?.(++done, entries.length);
-    return opts.requireProvenance && isUnproven(e, result) ? { ...result, unproven: true } : result;
-  });
-  await attachRetractions(ctx, results);
-  return results;
-}
-function isUnproven(entry, result) {
-  if (result.status === "verified") return false;
-  if (result.reason === "skipped by author" || isAuthorProvided(entry)) return false;
-  return !hasValidProvenance(entry);
-}
-function hasValidProvenance(entry) {
-  const f = entry.fields;
-  const ids = identifiersOf(entry);
-  return Boolean(provenanceOf(entry) && (ids.doi || ids.arxivId || f.doi || f.eprint || f.url));
-}
-
-// ../packages/core/src/refs/check.ts
-var UNPROVEN_FIX = "Ask the author for a DOI/arXiv id and add it with `overfull cite`, or remove the \\cite. If you wrote this entry yourself, add `note = {overfull: author-provided}` to it.";
-var refsRules = [
-  {
-    id: "bib-file-missing",
-    check: "references",
-    severity: "error",
-    title: "Bibliography file not found",
-    summary: "A .bib file named in overfull.yml (`bib:`) or in `\\addbibresource`/`\\bibliography` does not exist, so its entries cannot be checked and LaTeX cannot use them.",
-    fix: "Fix the path in `bib:` (overfull.yml) or in `\\addbibresource`, relative to the project root."
-  },
-  {
-    id: "refs-cache-ignored",
-    check: "references",
-    severity: "info",
-    title: "Project reference cache ignored",
-    summary: "With `references.cache: project`, lookups are cached in `.overfull/cache/refs.json` inside the project. That file is repository content: in CI (any provider, with or without a .git directory) it is never read, and anywhere a cache reached through a symlink is not used, because it could mark references as verified that were never looked up. Every reference is looked up again.",
-    fix: "Keep `.overfull/` out of git (add it to .gitignore) and make sure it is a real directory, not a symlink; or drop `references.cache: project` to use the user cache directory."
-  },
-  {
-    id: "reference-not-found",
-    check: "references",
-    severity: "error",
-    title: "Reference not found in any index",
-    summary: "A journal or conference reference matched nothing in CrossRef, dblp or arXiv, or its DOI / arXiv id does not exist. The reference may be mistyped, or may not exist.",
-    fix: 'Check the title and DOI against the publisher page, then re-add the reference from real metadata with `overfull cite "<title>"` or `overfull cite <doi>`. If it is real but unindexed, add `note = {overfull: skip}`.'
-  },
-  {
-    id: "reference-metadata-mismatch",
-    check: "references",
-    severity: "warning",
-    title: "Reference metadata differs from the index record",
-    summary: "A matching record was found, but its year, authors or title differ meaningfully from the .bib entry.",
-    fix: "Compare the entry with the record shown and correct it, or replace it with `overfull cite <doi>`."
-  },
-  {
-    id: "reference-doi-wrong-work",
-    check: "references",
-    severity: "error",
-    title: "DOI points to a different work",
-    summary: "The entry\u2019s DOI resolves at doi.org, but to a paper with a different title or authors. Readers who follow the DOI land on an unrelated work.",
-    fix: 'Find the correct DOI for the cited title on the publisher page, or re-add the entry with `overfull cite "<title>"`. Do not re-add it from this DOI: that would cite the unrelated paper.'
-  },
-  {
-    id: "reference-arxiv-wrong-work",
-    check: "references",
-    severity: "error",
-    title: "arXiv id points to a different work",
-    summary: "The entry\u2019s arXiv id exists, but arXiv has a paper with a different title or authors under it. Readers who follow the id land on an unrelated work.",
-    fix: 'Find the correct arXiv id for the cited title on arxiv.org, or re-add the entry with `overfull cite "<title>"`. Do not re-add it from this id: that would cite the unrelated paper.'
-  },
-  {
-    id: "bib-outside-project",
-    check: "references",
-    severity: "warning",
-    title: "Bibliography outside the project not checked",
-    summary: "The document names a .bib file outside the project directory (for example `\\bibliography{../shared/refs}`). Overfull only reads files inside the project, so the references in it were not checked.",
-    fix: "Pass the file explicitly with `--bib` (or `bib:` in overfull.yml) from a project that contains it, or move it into the project."
-  },
-  {
-    id: "reference-unverifiable",
-    check: "references",
-    severity: "info",
-    title: "Reference could not be checked automatically",
-    summary: "Websites, software, standards, books and theses are often not in scholarly indexes, so their existence cannot be confirmed automatically.",
-    fix: "Check these entries by hand. Add a DOI or ISBN where one exists."
-  },
-  {
-    id: "reference-lookup-failed",
-    check: "references",
-    severity: "warning",
-    title: "Reference lookup failed",
-    summary: "An index could not be reached (network error, timeout, rate limit), so the reference was neither confirmed nor ruled out.",
-    fix: "The message names the index that could not answer. Add the DOI or arXiv id to the entry: doi.org and arXiv can confirm it even when the title search fails. Or re-add the entry with `overfull cite <doi | arXiv:id>`."
-  },
-  {
-    id: "reference-unproven",
-    check: "references",
-    severity: "error",
-    title: "Reference neither verified nor added with overfull cite",
-    summary: "With `references.requireCite`, every entry that cannot be verified must have been added with `overfull cite`: it carries an intact `x-overfull = {cite \u2026 <hash>}` marker and a DOI, eprint or URL. The hash makes edits evident; it is not authentication. Entries the author vouches for carry `note = {overfull: author-provided}` (added by the author, never by an agent). A hand-written entry that no index confirms may not exist.",
-    fix: UNPROVEN_FIX
-  },
-  {
-    id: "reference-not-reverified",
-    check: "references",
-    severity: "warning",
-    title: "Cited entry could not be re-verified",
-    summary: "The entry was added with `overfull cite` (its `x-overfull` marker is intact), but this run could not confirm it again: the check ran offline or the indexes could not be reached.",
-    fix: "Run `overfull check` again with network access. If an index stays unreachable, the DOI or arXiv id in the entry lets doi.org or arXiv confirm it."
-  },
-  {
-    id: "reference-retracted",
-    check: "references",
-    severity: "error",
-    title: "Cited work is retracted or withdrawn",
-    summary: "CrossRef records a retraction or withdrawal for the work this entry matched (publisher notices and Retraction Watch data). Citing it as sound evidence misleads readers. Needs the lookup to find the work by DOI; entries without a DOI are not checked for this.",
-    fix: "Read the retraction notice. Replace the work with one that stands, or cite it only to say it was retracted, together with the notice."
-  },
-  {
-    id: "reference-published-version",
-    check: "references",
-    severity: "info",
-    title: "Preprint has a published version",
-    summary: "The entry is an arXiv preprint, and its arXiv record names a DOI for the published article.",
-    fix: "If you read the published version, run `overfull cite <doi>` and cite that; if you read the preprint, keep the entry."
-  },
-  {
-    id: "reference-duplicate",
-    check: "references",
-    severity: "warning",
-    title: "Two entries for the same work",
-    summary: "Two entries have the same DOI, the same arXiv id, or the same title and year. The reference list may show the work twice, under two keys. Checked offline, from the .bib file alone.",
-    fix: "Keep one entry, use its key in every `\\cite{}`, and delete the other."
-  },
-  {
-    id: "reference-uncited",
-    check: "references",
-    severity: "info",
-    title: "Bibliography entry that nothing cites",
-    summary: "No `\\cite` in the document uses this entry. Off by default; turn it on with `references.reportUncited: true` in overfull.yml. Needs the cited keys (from the .aux or .bcf, or the .tex sources).",
-    fix: "Cite it where it belongs, or remove the entry."
-  },
-  {
-    id: "bib-parse-error",
-    check: "references",
-    severity: "error",
-    title: "Malformed .bib entry",
-    summary: "A .bib entry could not be parsed, so BibTeX/biber will skip or misread it.",
-    fix: "Fix the syntax at the reported line: usually a missing comma, `=`, or closing brace."
-  },
-  {
-    id: "citation-key-missing",
-    check: "references",
-    severity: "error",
-    title: "Cited key not in any .bib file",
-    summary: "The document cites a key that no .bib file defines; the PDF shows `[?]` or the key in bold.",
-    fix: 'Add the entry with `overfull cite <doi | arXiv:id | "title">`, or fix the key in `\\cite{}`.'
-  }
-];
-function fieldList(r) {
-  return (r.differences ?? []).map((d) => d.field === "author" ? "authors" : d.field).join(", ");
-}
-function titleHint(r, entry) {
-  const title = entry?.fields.title ?? (r.wrongWork ? void 0 : r.matched?.title);
-  return title ? `overfull cite "${title.replace(/[{}]/g, "").replace(/"/g, "'")}"` : void 0;
-}
-function citeHint(r, entry) {
-  if (r.wrongWork) return titleHint(r, entry) ?? 'overfull cite "<title>"';
-  if (r.matched?.doi) return `overfull cite ${r.matched.doi}`;
-  const title = entry?.fields.title ?? r.matched?.title;
-  return title ? `overfull cite "${title.replace(/[{}]/g, "").replace(/"/g, "'")}"` : "overfull cite <doi>";
-}
-function searchedText(r) {
-  const names = (r.searched ?? []).map(sourceName);
-  if (!names.length) return "the indexes";
-  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
-}
-function failedText(r) {
-  const names = (r.failed ?? []).map(sourceName);
-  if (!names.length) return "A source";
-  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
-}
-function unprovenProblem(r, entry) {
-  const location2 = r.location ?? (entry?.line ? { line: entry.line, ...entry.file ? { file: entry.file } : {} } : void 0);
-  return {
-    rule: "reference-unproven",
-    check: "references",
-    severity: "error",
-    message: `\`${r.key}\` was not added with \`overfull cite\` and could not be verified`,
-    ...location2 ? { location: location2 } : {},
-    detail: `Status: ${r.status}${r.reason ? ` (${r.reason})` : ""}. The entry has no intact \`x-overfull = {cite \u2026 <hash>}\` marker (missing, hand-written, or the entry was edited after \`overfull cite\`) with a DOI, eprint or URL beside it, so nothing shows it came from real metadata.`,
-    fix: UNPROVEN_FIX,
-    ...entry?.raw ? { evidence: entry.raw } : {},
-    data: { key: r.key, status: r.status }
-  };
-}
-function notReverifiedProblem(r, entry) {
-  const location2 = r.location ?? (entry?.line ? { line: entry.line, ...entry.file ? { file: entry.file } : {} } : void 0);
-  return {
-    rule: "reference-not-reverified",
-    check: "references",
-    severity: "warning",
-    message: `\`${r.key}\` was added with \`overfull cite\` but could not be re-verified${r.reason === "offline" ? " (offline)" : r.reason ? `: ${r.reason}` : ""}`,
-    ...location2 ? { location: location2 } : {},
-    fix: "Run the check again with network access; the entry\u2019s DOI or arXiv id lets doi.org or arXiv confirm it.",
-    data: { key: r.key, status: r.status }
-  };
-}
-function authorProvidedProblem(r, entry) {
-  const location2 = r.location ?? (entry?.line ? { line: entry.line, ...entry.file ? { file: entry.file } : {} } : void 0);
-  return {
-    rule: "reference-unverifiable",
-    check: "references",
-    severity: "info",
-    message: `\`${r.key}\` is marked \`overfull: author-provided\` and was not verified${r.reason ? ` (${r.reason})` : ""}`,
-    ...location2 ? { location: location2 } : {},
-    fix: "The author vouches for this entry; check it by hand before submission.",
-    data: { key: r.key, status: r.status, authorProvided: true }
-  };
-}
-function failureLines(r) {
-  if (!r.failures?.length) return void 0;
-  return r.failures.map(
-    (f) => `${sourceName(f.source)}: ${f.reason.replace(/^[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:: | (?=answered|returned))/, "")}.`
-  ).join("\n");
-}
-function problemFor(r, entry, requireProvenance = false) {
-  if (r.status !== "verified" && r.status !== "mismatch" && entry && isAuthorProvided(entry))
-    return r.reason === "offline" || r.reason === "skipped by author" ? null : authorProvidedProblem(r, entry);
-  if (requireProvenance && entry && (r.reason === "offline" || r.status === "error") && hasValidProvenance(entry))
-    return notReverifiedProblem(r, entry);
-  const location2 = r.location ?? (entry?.line ? { line: entry.line, ...entry.file ? { file: entry.file } : {} } : void 0);
-  const data = { key: r.key, status: r.status };
-  if (r.source) data.source = r.source;
-  if (r.query) data.query = r.query;
-  if (r.differences) data.differences = r.differences;
-  if (r.matched) data.matched = r.matched;
-  const common = { check: "references", ...location2 ? { location: location2 } : {}, data };
-  const evidence2 = entry?.raw ? { evidence: entry.raw } : {};
-  switch (r.status) {
-    case "verified":
-      return null;
-    case "not-found":
-      return {
-        ...common,
-        ...evidence2,
-        rule: "reference-not-found",
-        severity: "error",
-        message: `\`${r.key}\` was not found in ${searchedText(r)}`,
-        detail: `Searched ${searchedText(r)}: ${r.reason ?? "no similar record"}. The reference may be mistyped or may not exist; Overfull cannot tell which.`,
-        fix: `Check the DOI and title against the publisher page, or re-add it from real metadata with \`${citeHint(r, entry)}\`. If it is real but unindexed, add \`note = {overfull: skip}\`.`
-      };
-    case "mismatch": {
-      if (r.wrongWork?.field === "eprint") {
-        const others = (r.differences ?? []).filter((d) => d.field !== "eprint").map((d) => `${d.field}: bib \u201C${d.bib}\u201D, record \u201C${d.record}\u201D`);
-        return {
-          ...common,
-          ...evidence2,
-          rule: "reference-arxiv-wrong-work",
-          severity: "error",
-          message: `\`${r.key}\`: the arXiv id ${r.wrongWork.id} points to a different paper, \u201C${r.wrongWork.title}\u201D`,
-          detail: [
-            `arXiv has \u201C${r.wrongWork.title}\u201D as ${r.wrongWork.id}, not the cited work`,
-            ...others
-          ].join("; "),
-          fix: `Find the correct arXiv id for the cited title, or re-add the entry with \`${citeHint(r, entry)}\`. Do not re-add it from this id: that would cite the unrelated paper.`
-        };
-      }
-      if (r.wrongWork) {
-        const others = (r.differences ?? []).filter((d) => d.field !== "doi").map((d) => `${d.field}: bib \u201C${d.bib}\u201D, record \u201C${d.record}\u201D`);
-        return {
-          ...common,
-          ...evidence2,
-          rule: "reference-doi-wrong-work",
-          severity: "error",
-          message: `\`${r.key}\`: the DOI ${r.wrongWork.id} points to a different paper, \u201C${r.wrongWork.title}\u201D`,
-          detail: [
-            `doi.org resolves ${r.wrongWork.id} to \u201C${r.wrongWork.title}\u201D, not to the cited work`,
-            ...others
-          ].join("; "),
-          fix: `Find the correct DOI for the cited title on the publisher page, or re-add the entry with \`${citeHint(r, entry)}\`. Do not re-add it from this DOI: that would cite the unrelated paper.`
-        };
-      }
-      const diffs = (r.differences ?? []).map(
-        (d) => `${d.field}: bib \u201C${d.bib}\u201D, record \u201C${d.record}\u201D`
-      );
-      return {
-        ...common,
-        ...evidence2,
-        rule: "reference-metadata-mismatch",
-        severity: "warning",
-        message: `\`${r.key}\`: ${fieldList(r) || "metadata"} differ${r.differences?.length === 1 ? "s" : ""} from the ${r.source ? sourceName(r.source) : "index"} record`,
-        detail: [r.reason, ...diffs].filter(Boolean).join("; "),
-        fix: `Compare the entry with the record${r.matched?.doi ? ` (doi ${r.matched.doi})` : ""} and correct it, or replace it with \`${citeHint(r, entry)}\`.`
-      };
-    }
-    case "unverifiable": {
-      const why2 = withoutLookupNote(r.reason);
-      const lines = failureLines(r);
-      return {
-        ...common,
-        rule: "reference-unverifiable",
-        severity: "info",
-        message: `\`${r.key}\` could not be checked automatically${why2 ? `: ${why2}` : ""}`,
-        ...lines ? { detail: `The lookup was incomplete. ${lines}` } : {},
-        fix: "Check this entry by hand; add a DOI where one exists."
-      };
-    }
-    case "error": {
-      const lines = failureLines(r);
-      return {
-        ...common,
-        rule: "reference-lookup-failed",
-        severity: "warning",
-        message: lines ? `\`${r.key}\` could not be checked because ${failedText(r)} did not answer` : `\`${r.key}\` could not be checked: ${r.reason ?? "lookup failed"}`,
-        detail: lines ? `${lines} A network problem is not evidence against the reference.` : "A network problem is not evidence against the reference; it was neither confirmed nor ruled out.",
-        fix: `${failedText(r)} could not answer. Add the DOI or arXiv id to the entry (doi.org and arXiv can confirm it even when the title search fails), or re-add it with \`overfull cite <doi | arXiv:id>\`.`
-      };
-    }
-  }
-}
-function bibIssueProblems(issues, file) {
-  return issues.map((i) => ({
-    rule: "bib-parse-error",
-    check: "references",
-    severity: /^(duplicate field|undefined macro)/.test(i.message) ? "warning" : "error",
-    message: i.message,
-    location: { line: i.line, ...file ? { file } : {} },
-    ...i.key ? { data: { key: i.key } } : {}
-  }));
-}
-function missingKeys(cited, entries, texFiles) {
-  const defined = new Set(entries.map((e) => e.key));
-  const missing = cited.filter((k) => !defined.has(k));
-  const where = texFiles?.length ? citeLocations(texFiles, missing) : void 0;
-  return missing.map((key) => {
-    const location2 = where?.get(key);
-    return {
-      rule: "citation-key-missing",
-      check: "references",
-      severity: "error",
-      message: `\`${key}\` is cited but not defined in any .bib file`,
-      ...location2 ? { location: location2 } : {},
-      fix: `Add it with \`overfull cite <doi | arXiv:id | "title">\` (then use the key it prints), fix the key in \`\\cite{${key}}\`, or remove the \`\\cite\` if the source is not known.`,
-      data: { key }
-    };
-  });
-}
-function plural3(n, noun) {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
-}
-function summaryOf(results, stats) {
-  const parts = [];
-  if (stats.notFound) parts.push(`${stats.notFound} not found`);
-  const differing = (stats.mismatch ?? 0) - (stats.wrongWork ?? 0);
-  if (differing) parts.push(`${differing} with differing metadata`);
-  if (stats.wrongWork)
-    parts.push(`${stats.wrongWork} with an identifier that points to another work`);
-  if (stats.error) parts.push(`${stats.error} could not be checked`);
-  if (stats.unverifiable) parts.push(`${stats.unverifiable} not checkable automatically`);
-  const head = `${stats.verified} of ${plural3(results.length, "reference")} verified`;
-  return parts.length ? `${head} (${parts.join(", ")})` : head;
-}
-var COLLAPSE_AT = 3;
-function unreachableHosts(reason) {
-  const hosts = [];
-  for (const part of (reason ?? "").replace(/^lookup incomplete: /, "").split("; ")) {
-    const m = /^([A-Za-z0-9.-]+\.[A-Za-z]{2,})(?:: (?:network error|timed out)| returned a non-JSON page)/.exec(
-      part
-    );
-    if (m?.[1]) hosts.push(m[1]);
-  }
-  return hosts;
-}
-function collapseNetworkFailures(problems, results) {
-  const byKey = new Map(results.map((r) => [r.key, r]));
-  const network = problems.filter((p) => {
-    if (p.rule !== "reference-lookup-failed" && p.rule !== "reference-not-reverified") return false;
-    const r = byKey.get(String(p.data?.key));
-    return r?.status === "error" && unreachableHosts(r.reason).length > 0;
-  });
-  if (network.length < COLLAPSE_AT) return;
-  const entries = network.map((p) => {
-    const r = byKey.get(String(p.data?.key));
-    return { key: r.key, reason: r.reason ?? "", ...p.location ? { location: p.location } : {} };
-  });
-  const hosts = [...new Set(entries.flatMap((e) => unreachableHosts(e.reason)))];
-  const hostText = hosts.length === 1 ? hosts[0] : `${hosts.slice(0, -1).join(", ")} and ${hosts.at(-1)}`;
-  const summary = {
-    rule: "reference-lookup-failed",
-    check: "references",
-    severity: "warning",
-    message: `Could not reach ${hostText}; ${entries.length} entries were not re-verified. Run again when online.`,
-    detail: "A network problem is not evidence against the references; they were neither confirmed nor ruled out.",
-    fix: "Run `overfull check` again with network access. Entries with a DOI or arXiv id can be confirmed by doi.org or arXiv even when a title search index is unreachable.",
-    evidence: entries.map((e) => `${e.key}: ${e.reason}`).join("\n"),
-    data: { keys: entries.map((e) => e.key), hosts, entries }
-  };
-  const drop = new Set(network);
-  const at = problems.findIndex((p) => drop.has(p));
-  const kept = problems.filter((p) => !drop.has(p));
-  kept.splice(at, 0, summary);
-  problems.splice(0, problems.length, ...kept);
-}
-function refsCheck(results, opts = {}) {
-  const byKey = new Map((opts.entries ?? []).map((e) => [e.key, e]));
-  const stats = {
-    total: results.length,
-    verified: results.filter((r) => r.status === "verified").length,
-    mismatch: results.filter((r) => r.status === "mismatch").length,
-    notFound: results.filter((r) => r.status === "not-found").length,
-    unverifiable: results.filter((r) => r.status === "unverifiable").length,
-    error: results.filter((r) => r.status === "error").length
-  };
-  const wrongWork = results.filter((r) => r.status === "mismatch" && r.wrongWork).length;
-  if (wrongWork) stats.wrongWork = wrongWork;
-  const problems = [
-    ...bibIssueProblems(opts.issues ?? [], opts.bibFile),
-    ...opts.extra ?? [],
-    ...results.map((r) => problemFor(r, byKey.get(r.key), opts.requireProvenance)).filter((p) => p !== null),
-    ...results.filter((r) => {
-      if (r.unproven) return true;
-      const entry = byKey.get(r.key);
-      return Boolean(opts.requireProvenance && entry && isUnproven(entry, r));
-    }).map((r) => unprovenProblem(r, byKey.get(r.key))),
-    ...retractedProblems(results, byKey),
-    ...publishedVersionProblems(results, byKey),
-    ...opts.entries ? duplicateProblems(opts.entries) : [],
-    ...opts.reportUncited && opts.entries && opts.citedKeys ? uncitedProblems(opts.entries, opts.citedKeys) : []
-  ];
-  collapseNetworkFailures(problems, results);
-  if (problems.some((p) => p.rule === "reference-unproven")) {
-    stats.unproven = problems.filter((p) => p.rule === "reference-unproven").length;
-  }
-  if (results.some((r) => r.reason === "offline") && results.every((r) => r.reason === "offline" || r.reason === "skipped by author")) {
-    const blocking = problems.filter((p) => p.rule !== "reference-unverifiable");
-    const notChecked = `${plural3(results.length, "reference")} not checked (offline)`;
-    const missing = blocking.filter((p) => p.rule === "citation-key-missing").length;
-    if (blocking.some((p) => p.severity !== "info")) {
-      const lead = missing ? `${plural3(missing, "cited key")} with no .bib entry` : plural3(blocking.filter((p) => p.severity !== "info").length, "problem");
-      return {
-        check: "references",
-        status: statusOf(blocking),
-        problems: blocking,
-        summary: `${lead}; ${notChecked}`,
-        stats
-      };
-    }
-    return {
-      check: "references",
-      status: "skipped",
-      skippedReason: "offline: references were not looked up",
-      problems: blocking,
-      summary: notChecked,
-      stats
-    };
-  }
-  return {
-    check: "references",
-    status: statusOf(problems),
-    problems,
-    summary: summaryOf(results, stats),
-    stats
-  };
-}
-function withoutLookupNote(reason) {
-  if (!reason?.endsWith(")")) return reason;
-  const at = reason.indexOf(" (lookup incomplete: ");
-  return at < 0 ? reason : reason.slice(0, at);
-}
-
-// ../packages/core/src/report/shared.ts
-var SEVERITY_ORDER = { error: 0, warning: 1, info: 2 };
-function formatLocation(loc) {
-  if (!loc) return "";
-  if (loc.file) return loc.line ? `${loc.file}:${loc.line}` : loc.file;
-  if (loc.page) return `p.${loc.page}`;
-  return "";
-}
-function sortProblems(problems) {
-  return problems.map((p, i) => ({ p, i })).sort((a, b) => {
-    const fa = a.p.location?.file;
-    const fb = b.p.location?.file;
-    return SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] || (fa === void 0 ? 1 : 0) - (fb === void 0 ? 1 : 0) || (fa ?? "").localeCompare(fb ?? "") || (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) || a.i - b.i;
-  }).map(({ p }) => p);
-}
-function sortedProblems(report) {
-  const checkIndex = (c) => CHECK_IDS.indexOf(c);
-  return report.checks.flatMap((c) => c.problems).map((p, i) => ({ p, i })).sort(
-    (a, b) => SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] || checkIndex(a.p.check) - checkIndex(b.p.check) || (a.p.location?.file ?? "").localeCompare(b.p.location?.file ?? "") || (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) || (a.p.location?.page ?? 0) - (b.p.location?.page ?? 0) || a.i - b.i
-  ).map(({ p }) => p);
-}
-function tally(report) {
-  const all = report.checks.flatMap((c) => c.problems);
-  return {
-    errors: all.filter((p) => p.severity === "error").length,
-    warnings: all.filter((p) => p.severity === "warning").length,
-    infos: all.filter((p) => p.severity === "info").length,
-    passed: report.checks.filter((c) => c.status === "pass").length,
-    skipped: report.checks.filter((c) => c.status === "skipped").length
-  };
-}
-function checkLine(c) {
-  if (c.status === "skipped") return `skipped: ${c.skippedReason ?? "not run"}`;
-  if (c.summary) return c.summary;
-  const n = c.problems.filter((p) => p.severity !== "info").length;
-  if (n === 0) return "no problems";
-  return `${n} problem${n === 1 ? "" : "s"}`;
-}
-function nothingCheckedLine(report) {
-  if (report.status !== "skipped") return void 0;
-  const reason = report.checks.find((c) => c.skippedReason)?.skippedReason;
-  return `Nothing was checked${reason ? `: ${reason}` : ""}.`;
-}
-function tallyLine(t) {
-  const parts = [`${t.errors} to fix`, `${t.warnings} to review`];
-  if (t.infos) parts.push(`${t.infos} note${t.infos === 1 ? "" : "s"}`);
-  parts.push(`${t.passed} passed`);
-  if (t.skipped) parts.push(`${t.skipped} skipped`);
-  return parts.join(" \xB7 ");
-}
-var RUNNER_WHITESPACE = "[\\s\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff\\f\\v]";
-var UNSAFE_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
-function oneLine(s) {
-  return s.replace(/[\r\n\u0085\u2028\u2029]+/g, " ").replace(UNSAFE_CHARS, "");
-}
-function safeLines(s) {
-  return s.split(/\r\n|[\r\n\u0085\u2028\u2029]/).map(oneLine);
-}
-var COMMAND_AT_LINE_START = new RegExp(`(^|[\\r\\n])(${RUNNER_WHITESPACE}*?)(::|##\\[)`, "g");
-function neutralizeWorkflowCommands(text2) {
-  let prev;
-  let out = text2;
-  do {
-    prev = out;
-    out = out.replace(COMMAND_AT_LINE_START, "$1$2\u200B$3");
-  } while (out !== prev);
-  return out;
-}
-
-// ../packages/core/src/report/annotations.ts
-function escapeData(s) {
-  return s.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
-}
-function escapeProperty(s) {
-  return escapeData(s).replace(/:/g, "%3A").replace(/,/g, "%2C");
-}
-function joinPath(root, file) {
-  if (!root || root === "." || root === "./") return file;
-  return `${root.replace(/\/+$/, "")}/${file}`;
-}
-function annotation(p, opts) {
-  const cmd = p.severity === "error" ? "error" : p.severity === "warning" ? "warning" : "notice";
-  const props = [];
-  if (p.location?.file) {
-    props.push(`file=${escapeProperty(joinPath(opts.root, p.location.file))}`);
-    if (p.location.line) props.push(`line=${p.location.line}`);
-  }
-  props.push(`title=${escapeProperty(`overfull ${p.rule}`)}`);
-  const page = p.location?.page && !p.location.file ? `Page ${p.location.page}: ` : "";
-  const msg = p.fix ? `${page}${p.message}
-Fix: ${p.fix}` : `${page}${p.message}`;
-  return `::${cmd} ${props.join(",")}::${escapeData(msg)}`;
-}
-function githubAnnotations(report, opts = {}) {
-  const list3 = sortedProblems(report).map((p) => annotation(p, opts));
-  return opts.limit ? list3.slice(0, opts.limit) : list3;
-}
-
-// ../packages/core/src/report/dedupe.ts
-function mergeDuplicateFindings(checks) {
-  const refs = checks.find((c) => c.check === "references");
-  const output = checks.find((c) => c.check === "output");
-  if (!refs || !output) return checks;
-  const missing = new Set(
-    refs.problems.filter((p) => p.rule === "citation-key-missing").map((p) => String(p.data?.key))
-  );
-  if (!missing.size) return checks;
-  const kept = output.problems.filter(
-    (p) => !(p.rule === "undefined-citation" && missing.has(String(p.data?.key)))
-  );
-  if (kept.length === output.problems.length) return checks;
-  output.problems = kept;
-  if (output.status !== "skipped") {
-    output.status = statusOf(kept);
-    output.summary = outputSummary(kept);
-  }
-  return checks;
-}
-
-// ../packages/core/src/report/human.ts
-function palette(color) {
-  const wrap = (open, close) => (s) => color ? `\x1B[${open}m${s}\x1B[${close}m` : s;
-  return {
-    red: wrap(31, 39),
-    yellow: wrap(33, 39),
-    green: wrap(32, 39),
-    cyan: wrap(36, 39),
-    dim: wrap(2, 22),
-    bold: wrap(1, 22)
-  };
-}
-var STATUS_GLYPH = { pass: "\u2713", warn: "!", fail: "\u2715", skipped: "\u2013" };
-var SEVERITY_GLYPH = { error: "\u2715", warning: "!", info: "i" };
-function pad(s, width) {
-  return s.length >= width ? s : s + " ".repeat(width - s.length);
-}
-function formatHuman(report, opts = {}) {
-  const c = palette(opts.color ?? false);
-  const statusPaint = {
-    pass: c.green,
-    warn: c.yellow,
-    fail: c.red,
-    skipped: c.dim
-  };
-  const sevPaint = { error: c.red, warning: c.yellow, info: c.cyan };
-  const lines = [];
-  const statusWord = { pass: "PASS", warn: "WARN", fail: "FAIL", skipped: "NOTHING CHECKED" }[report.status];
-  const target = report.target ? ` ${oneLine(report.target)}` : "";
-  lines.push(`${c.bold(`overfull${target}`)}  ${statusPaint[report.status](c.bold(statusWord))}`);
-  const nameWidth = Math.max(...report.checks.map((ch2) => ch2.check.length), 5) + 2;
-  for (const ch2 of report.checks) {
-    const glyph = statusPaint[ch2.status](STATUS_GLYPH[ch2.status]);
-    const text2 = oneLine(checkLine(ch2));
-    lines.push(
-      `  ${glyph} ${pad(ch2.check, nameWidth)}${ch2.status === "skipped" ? c.dim(text2) : text2}`
-    );
-  }
-  const problems = sortedProblems(report);
-  if (problems.length > 0) {
-    lines.push("");
-    const locWidth = Math.min(
-      28,
-      Math.max(...problems.map((p) => oneLine(formatLocation(p.location)).length))
-    );
-    for (const p of problems)
-      lines.push(...problemLines(p, locWidth, opts.verbose ?? false, c, sevPaint));
-  }
-  lines.push("");
-  const why2 = nothingCheckedLine(report);
-  if (why2) lines.push(why2);
-  lines.push(tallyLine(tally(report)));
-  if (!opts.verbose && problems.some((p) => p.fix || p.detail)) {
-    lines.push(c.dim("Run with --verbose for fixes, or `overfull explain <rule>`."));
-  }
-  return `${neutralizeWorkflowCommands(lines.join("\n"))}
-`;
-}
-function problemLines(p, locWidth, verbose, c, sevPaint) {
-  const loc = oneLine(formatLocation(p.location));
-  const locCol = locWidth > 0 ? `${pad(loc, locWidth)}  ` : "";
-  const related = p.related ? c.dim(` (+${p.related} follow-on)`) : "";
-  const out = [
-    `  ${sevPaint[p.severity](SEVERITY_GLYPH[p.severity])} ${locCol}${oneLine(p.message)}${related}  ${c.dim(oneLine(p.rule))}`
-  ];
-  if (verbose) {
-    const indent = " ".repeat(4 + (locWidth > 0 ? locWidth + 2 : 0));
-    if (p.detail) out.push(`${indent}${c.dim("why:")} ${oneLine(p.detail)}`);
-    if (p.fix) out.push(`${indent}${c.dim("fix:")} ${oneLine(p.fix)}`);
-    if (p.evidence) {
-      for (const e of safeLines(p.evidence).slice(0, 4)) out.push(`${indent}${c.dim(`| ${e}`)}`);
-    }
-  }
-  return out;
-}
-
-// ../packages/core/src/report/json.ts
-function sortKeys(v) {
-  if (Array.isArray(v)) return v.map(sortKeys);
-  if (v && typeof v === "object") {
-    const out = {};
-    for (const k of Object.keys(v).sort()) out[k] = sortKeys(v[k]);
-    return out;
-  }
-  return v;
-}
-function ordered(obj, keys) {
-  const out = {};
-  for (const k of keys) if (obj[k] !== void 0) out[k] = obj[k];
-  return out;
-}
-function problem(p) {
-  const o = ordered(p, [
-    "rule",
-    "check",
-    "severity",
-    "message",
-    "location",
-    "detail",
-    "fix",
-    "related",
-    "evidence",
-    "data"
-  ]);
-  if (p.location) o.location = ordered(p.location, ["file", "line", "page"]);
-  if (p.data) o.data = sortKeys(p.data);
-  return o;
-}
-function check(c) {
-  const o = ordered(c, ["check", "status", "summary", "skippedReason", "stats", "problems"]);
-  if (c.stats) o.stats = sortKeys(c.stats);
-  o.problems = c.problems.map((p) => problem(p));
-  return o;
-}
-function formatJson(report) {
-  const o = ordered(report, ["tool", "version", "target", "assumed", "status", "checks"]);
-  if (report.assumed) o.assumed = sortKeys(report.assumed);
-  o.checks = report.checks.map((c) => check(c));
-  return `${JSON.stringify(o, null, 2)}
-`;
-}
-
-// ../packages/core/src/report/markdown.ts
-var STATUS_TEXT = { pass: "pass", warn: "warn", fail: "fail", skipped: "skipped" };
-function escapeHtml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-function escapeMarkdown(s) {
-  return escapeHtml(oneLine(s)).replace(/([\\`*_{}[\]|~#])/g, "\\$1");
-}
-function inline(s) {
-  return oneLine(s).split("`").map(
-    (part, i) => i % 2 === 1 ? `<code>${escapeHtml(part).replace(/\|/g, "&#124;")}</code>` : escapeMarkdown(part)
-  ).join("");
-}
-function problemItem(p) {
-  const loc = formatLocation(p.location);
-  const head = `- **${p.severity}**${loc ? ` <code>${escapeHtml(oneLine(loc))}</code>` : ""} ${escapeMarkdown(p.message)} <sub>${escapeHtml(oneLine(p.rule))}</sub>`;
-  const sub = [];
-  if (p.detail) sub.push(`  - Why: ${inline(p.detail)}`);
-  if (p.fix) sub.push(`  - Fix: ${inline(p.fix)}`);
-  return [head, ...sub].join("\n");
-}
-function formatMarkdown(report) {
-  const out = [];
-  const target = report.target ? ` \u2014 ${escapeMarkdown(report.target)}` : "";
-  const word = report.status === "skipped" ? "NOTHING CHECKED" : report.status.toUpperCase();
-  out.push(`## Overfull preflight: ${word}${target}`, "");
-  const why2 = nothingCheckedLine(report);
-  if (why2) out.push(inline(why2), "");
-  out.push("| Check | Status | Summary |", "| --- | --- | --- |");
-  for (const c of report.checks) {
-    out.push(`| ${c.check} | ${STATUS_TEXT[c.status]} | ${inline(checkLine(c))} |`);
-  }
-  out.push("", tallyLine(tally(report)), "");
-  const problems = sortedProblems(report);
-  for (const c of report.checks) {
-    const mine = problems.filter((p) => p.check === c.check);
-    if (mine.length === 0) continue;
-    const open = mine.some((p) => p.severity === "error") ? " open" : "";
-    out.push(
-      `<details${open}><summary><b>${c.check}</b>: ${mine.length} item${mine.length === 1 ? "" : "s"}</summary>`,
-      ""
-    );
-    for (const p of mine) out.push(problemItem(p));
-    out.push("", "</details>", "");
-  }
-  return `${neutralizeWorkflowCommands(out.join("\n").trimEnd())}
-`;
-}
-
-// ../packages/core/src/venue/arxiv.ts
-var PATH_COMMANDS = [
-  "includegraphics",
-  "input",
-  "include",
-  "addbibresource",
-  "bibliography",
-  "subfile",
-  "includepdf",
-  "lstinputlisting",
-  "inputminted"
-];
-function detectEngine(log) {
-  if (!log) return void 0;
-  const head = log.slice(0, 400);
-  if (/This is LuaH?B?TeX|This is LuaTeX/i.test(head)) return "lualatex";
-  if (/This is XeTeX/i.test(head)) return "xelatex";
-  if (/This is pdfTeX|This is e-pTeX/i.test(head)) return "pdflatex";
-  return void 0;
-}
-function isAbsolute(p) {
-  return /^(\/|~[/\\]|[A-Za-z]:[\\/]|\\\\)/.test(p.trim());
-}
-function dirname(p) {
-  const i = p.lastIndexOf("/");
-  return i < 0 ? "" : p.slice(0, i + 1);
-}
-function arxivProblems(ctx) {
-  const problems = [];
-  const files = ctx.texFiles ?? [];
-  const uses = findCommands(files, PATH_COMMANDS);
-  for (const use of uses) {
-    for (const p of use.arg.split(",")) {
-      if (!isAbsolute(p)) continue;
-      problems.push({
-        rule: "arxiv-absolute-path",
-        check: "venue",
-        severity: "error",
-        message: `Absolute path in \\${use.name}: ${p.trim()}`,
-        location: { file: use.file, line: use.line },
-        fix: "Use a path relative to the main file (arXiv only has your uploaded files)"
-      });
-    }
-    if (/\s/.test(use.arg.trim()) && use.name !== "bibliography") {
-      problems.push({
-        rule: "arxiv-filename-space",
-        check: "venue",
-        severity: "warning",
-        message: `File name with a space in \\${use.name}: ${use.arg.trim()}`,
-        location: { file: use.file, line: use.line },
-        fix: "Rename the file without spaces (use - or _)"
-      });
-    }
-  }
-  const engine = detectEngine(ctx.log);
-  if (engine === "lualatex") {
-    problems.push({
-      rule: "arxiv-unsupported-engine",
-      check: "venue",
-      severity: "error",
-      message: "This build used LuaLaTeX, but arXiv compiles with pdfLaTeX",
-      fix: "arXiv compiles with pdfLaTeX; build with `make arxiv` / `latexmk -pdf` and check that log with --log",
-      data: { engine }
-    });
-  }
-  for (const use of uses.filter(
-    (u) => u.name === "includegraphics" && /\.e?ps$/i.test(u.arg.trim())
-  )) {
-    problems.push({
-      rule: "arxiv-eps-pdflatex",
-      check: "venue",
-      severity: "warning",
-      message: `EPS figure (arXiv compiles with pdfLaTeX, which cannot include it): ${use.arg.trim()}`,
-      location: { file: use.file, line: use.line },
-      fix: "Convert to PDF (`epstopdf figure.eps`) and include the .pdf; arXiv\u2019s pdfLaTeX will not convert it"
-    });
-  }
-  const shell = /\\usepackage(\[[^\]]*\])?\{[^}]*\b(minted|pythontex|svg|gnuplottex|shellesc)\b[^}]*\}|\\write18|\\ShellEscape|\\immediate\\write18/g;
-  for (const hit of grepTex(files, shell)) {
-    problems.push({
-      rule: "arxiv-shell-escape",
-      check: "venue",
-      severity: "warning",
-      message: `Needs shell escape, which arXiv does not allow: ${hit.match.slice(0, 60)}`,
-      location: { file: hit.file, line: hit.line },
-      fix: "Use `listings` instead of `minted`, or pre-generate the output (minted: `frozencache`) and upload it"
-    });
-  }
-  if (ctx.main && ctx.files) {
-    for (const f of ctx.files.filter((f2) => /\s/.test(f2) && !f2.startsWith("."))) {
-      problems.push({
-        rule: "arxiv-filename-space",
-        check: "venue",
-        severity: "warning",
-        message: `File name with a space: ${f}`,
-        location: { file: f },
-        fix: "Rename the file without spaces (use - or _)"
-      });
-    }
-    const usesBib = uses.some((u) => u.name === "addbibresource" || u.name === "bibliography");
-    const stem = ctx.main.replace(/\.tex$/i, "");
-    const expected = `${stem}.bbl`;
-    const hasBbl = ctx.files.some((f) => f.toLowerCase() === expected.toLowerCase());
-    if (usesBib && !hasBbl) {
-      const other = ctx.files.find(
-        (f) => f.toLowerCase().endsWith(".bbl") && dirname(f) === dirname(ctx.main ?? "")
-      );
-      problems.push({
-        rule: "arxiv-missing-bbl",
-        check: "venue",
-        severity: "info",
-        message: other ? `Found ${other}, but arXiv compiles ${ctx.main} and reads ${expected}; rename or copy it to ${expected}` : `No ${expected} next to ${ctx.main}; arXiv does not run biber`,
-        fix: other ? `Copy the .bbl to ${expected} (arXiv runs on the main file, not on your jobname)` : "Build once, then upload the generated .bbl (named like your main file) with your sources",
-        data: { expected, ...other ? { found: other } : {} }
-      });
-    }
-  }
-  const seen = /* @__PURE__ */ new Set();
-  return problems.filter((p) => {
-    const key = `${p.rule}|${p.location?.file}|${p.location?.line}|${p.message}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-// ../packages/core/src/venue/aux-file.ts
-function parseAuxLabels(aux) {
-  const labels = /* @__PURE__ */ new Map();
-  const re = /\\newlabel\s*\{/g;
-  for (let m = re.exec(aux); m; m = re.exec(aux)) {
-    const name = readGroup(aux, m.index + m[0].length - 1);
-    if (!name) continue;
-    let i = name.end;
-    while (aux[i] === " ") i++;
-    const body = readGroup(aux, i);
-    if (!body) continue;
-    const fields = [];
-    let j = 0;
-    while (j < body.value.length && fields.length < 2) {
-      while (body.value[j] === " ") j++;
-      const g = readGroup(body.value, j);
-      if (!g) break;
-      fields.push(g.value);
-      j = g.end;
-    }
-    if (fields.length < 2) continue;
-    labels.set(name.value, { ref: clean(fields[0] ?? ""), page: clean(fields[1] ?? "") });
-    re.lastIndex = body.end;
-  }
-  return labels;
-}
-function clean(s) {
-  return s.replace(/\\relax\s*/g, "").replace(/\\protect\s*/g, "").replace(/[{}]/g, "").trim();
-}
-
-// ../packages/core/src/venue/anonymity.ts
-var ANON = /anonym|blind|submission|paper\s*id|author\s*names?\s*(hidden|withheld)/i;
-function authorText(arg) {
-  return arg.replace(/\\(and|And|AND|thanks|footnote|email|affil|inst|orcid)\b(\s*\{[^}]*\})?/g, " ").replace(/\\\\(\[[^\]]*\])?/g, " ").replace(/\\[A-Za-z@]+\*?/g, " ").replace(/[{}$^_~&,;]/g, " ").replace(/\s+/g, " ").trim();
-}
-function anonymityProblems(ctx) {
-  const problems = [];
-  const pdfAuthor = ctx.facts?.info.author ?? ctx.facts?.xmp.creators?.join(", ");
-  if (pdfAuthor && !ANON.test(pdfAuthor)) {
-    problems.push({
-      rule: "anonymity-pdf-author",
-      check: "venue",
-      severity: "error",
-      message: `PDF metadata names the author: "${pdfAuthor}"`,
-      fix: "Set `\\hypersetup{pdfauthor={Anonymous}}` (or remove `pdfauthor`) for the review version",
-      data: { author: pdfAuthor }
-    });
-  }
-  const files = ctx.texFiles ?? [];
-  for (const use of findCommands(files, ["author"])) {
-    const text2 = authorText(use.arg);
-    if (!text2 || ANON.test(text2)) continue;
-    if (!new RegExp("\\p{L}{2,}", "u").test(text2)) continue;
-    problems.push({
-      rule: "anonymity-author-named",
-      check: "venue",
-      severity: "error",
-      message: `\\author names someone: "${text2.slice(0, 60)}${text2.length > 60 ? "\u2026" : ""}"`,
-      location: { file: use.file, line: use.line },
-      fix: "Use `\\author{Anonymous}` or the venue class\u2019s review/anonymous option"
-    });
-  }
-  const ack = /\\(?:section|chapter|subsection|paragraph|subsubsection)\*?\s*\{\s*Acknowledg|\\begin\{acknowledg|\\acknowledg(?:e)?ments\b/i;
-  for (const hit of grepTex(files, ack)) {
-    problems.push({
-      rule: "anonymity-acknowledgments",
-      check: "venue",
-      severity: "warning",
-      message: "Acknowledgments section in an anonymous submission",
-      location: { file: hit.file, line: hit.line },
-      fix: "Remove or comment out acknowledgments until the camera-ready version"
-    });
-  }
-  const self2 = /\b(?:our|my)\s+(?:previous|prior|earlier|own|recent)\s+(?:work|paper|papers|study|studies|publication|results?)\b/gi;
-  for (const hit of grepTex(files, self2)) {
-    problems.push({
-      rule: "anonymity-self-reference",
-      check: "venue",
-      severity: "info",
-      message: `Possible self-identification: "${hit.match}"`,
-      location: { file: hit.file, line: hit.line },
-      fix: 'Cite your earlier work in the third person ("Smith et al. [3] showed\u2026")'
-    });
-  }
-  return problems;
-}
-
-// ../packages/core/src/venue/disclosure.ts
-var AI = /\b(AI|LLMs?|large\s+language\s+models?|generative|artificial\s+intelligence|GenAI|ChatGPT)\b/i;
-var USE = /\b(use|usage|used|disclosure|statement|declaration|assist\w*|tools?)\b/i;
-var HEADINGS = ["section", "subsection", "subsubsection", "paragraph", "chapter", "addsec"];
-var PLACEHOLDER = /\b(placeholder|todo|tbd|tbc|lorem ipsum|xxx+|fill (this|in))\b|\[(describe|write|insert)[^\]]*\]/i;
-var MIN_STATEMENT_CHARS = 40;
-function isDisclosureTitle(title) {
-  return AI.test(title) && USE.test(title);
-}
-function sectionBody(src, start) {
-  const rest = src.slice(start);
-  const next = rest.search(
-    /\\(section|subsection|subsubsection|paragraph|chapter|addsec|appendix|printbibliography|bibliography)\b|\\end\{document\}/
-  );
-  const raw = next < 0 ? rest : rest.slice(0, next);
-  return raw.replace(/\\label\s*\{[^}]*\}/g, " ").replace(/\\[a-zA-Z@]+\*?/g, " ").replace(/[{}~]/g, " ").replace(/\s+/g, " ").trim();
-}
-function bodyAfterHeading(f, line) {
-  const src = stripComments(f.content);
-  const lines = src.split("\n");
-  const offset = lines.slice(0, line - 1).join("\n").length;
-  const headingEnd = src.indexOf("}", offset);
-  return sectionBody(src, headingEnd < 0 ? offset : headingEnd + 1);
-}
-function findDisclosure(ctx) {
-  const files = ctx.texFiles ?? [];
-  const label = grepTex(files, /\\label\s*\{overfull:disclosure\}/)[0];
-  const heading = findCommands(files, HEADINGS).find((h) => isDisclosureTitle(h.arg));
-  const hit = heading ?? label;
-  if (hit) {
-    const f = files.find((x) => x.path === hit.file);
-    return {
-      file: hit.file,
-      line: hit.line,
-      ...f ? { body: bodyAfterHeading(f, hit.line) } : {}
-    };
-  }
-  if (files.length === 0 && ctx.facts) {
-    const page = ctx.facts.pages.findIndex(
-      (p) => p.text.split("\n").some((l) => l.length < 80 && isDisclosureTitle(l))
-    );
-    if (page >= 0) return { file: "", line: 0 };
-  }
-  return null;
-}
-function disclosureProblems(level, ctx) {
-  if (!level || level === "off") return [];
-  if (!ctx.texFiles?.length && !ctx.facts) return [];
-  const found = findDisclosure(ctx);
-  if (!found) {
-    return [
-      {
-        rule: "disclosure-missing",
-        check: "venue",
-        severity: level === "required" ? "error" : "info",
-        message: level === "required" ? "No AI-use disclosure statement found (required by this venue)" : "No AI-use disclosure statement found (many venues now ask for one)",
-        fix: "Add a short section such as `\\section*{Use of Generative AI}\\label{overfull:disclosure}`. The author writes the statement: which AI tools were used and for what, and that the authors checked the output. Only the author can say whether none were used."
-      }
-    ];
-  }
-  if (found.body === void 0) return [];
-  const unfinished = PLACEHOLDER.test(found.body) || found.body.length < MIN_STATEMENT_CHARS;
-  if (!unfinished) return [];
-  return [
-    {
-      rule: "disclosure-placeholder",
-      check: "venue",
-      severity: level === "required" ? "error" : "warning",
-      message: "The AI-use disclosure is still a placeholder or nearly empty",
-      location: { file: found.file, line: found.line },
-      detail: `The section reads: "${found.body.slice(0, 120)}${found.body.length > 120 ? "\u2026" : ""}"`,
-      fix: "The author writes the statement: which AI tools were used and for what, and that the authors checked the output. Only the author can say whether none were used."
-    }
-  ];
-}
-
-// ../packages/core/src/venue/layout.ts
-var baseName = (path) => path.split("/").pop() ?? path;
-function layoutCheckApplies(profile) {
-  if (profile.id === "generic" || profile.id === "thesis") return false;
-  return profile.pageLimit !== void 0 || (profile.styleFiles?.length ?? 0) > 0;
-}
-var NEGATIVE_SPACE_LENGTHS = "abovecaptionskip|belowcaptionskip|textfloatsep|floatsep|intextsep|dbltextfloatsep|dblfloatsep|abovedisplayskip|belowdisplayskip|abovedisplayshortskip|belowdisplayshortskip";
-var PAGE_LENGTHS = "textheight|textwidth|columnsep|oddsidemargin|evensidemargin|topmargin|headheight|headsep|footskip|voffset|hoffset|marginparwidth|columnwidth|linewidth";
-var GEOMETRY_KEYS = /\b(?:margin|left|right|top|bottom|lmargin|rmargin|tmargin|bmargin|textwidth|textheight|text|total|body|hmargin|vmargin|inner|outer|width|height|hscale|vscale|columnsep|footskip|headheight|headsep|marginparwidth)\s*=/;
-var NEAR = 3;
-function problem2(use, kind, what, fix) {
-  return {
-    rule: "layout-tampering",
-    check: "venue",
-    severity: "warning",
-    message: `${what}; check that your venue allows this`,
-    location: { file: use.file, line: use.line },
-    fix,
-    data: { kind }
-  };
-}
-var num2 = (s) => {
-  const m = /^\s*([+-]?\d*\.?\d+)/.exec(s);
-  return m ? Number(m[1]) : void 0;
-};
-function layoutProblems(profile, ctx) {
-  if (!layoutCheckApplies(profile)) return [];
-  const named = new Set((profile.styleFiles ?? []).map((f) => f.name));
-  const strict = named.size > 0;
-  const files = (ctx.texFiles ?? []).filter(
-    (f) => !/\.cls$/i.test(f.path) && !named.has(baseName(f.path))
-  );
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  const add = (p) => {
-    const key = `${p.location?.file}:${p.location?.line}:${p.data?.kind}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push(p);
-  };
-  for (const f of files) {
-    const lines = stripComments(f.content).split("\n");
-    const nearAnchor = (i) => lines.slice(Math.max(0, i - NEAR), i + NEAR + 1).some(
-      (l) => /\\(?:begin|end)\{(?:figure|table|wrapfigure|wraptable)\*?\}|\\caption\b|\\(?:sub)*section\b|\\paragraph\b/.test(
-        l
-      )
-    );
-    lines.forEach((line, i) => {
-      const at = { file: f.path, line: i + 1 };
-      const neg = /\\(vspace|vskip)\*?\s*\{?\s*(-[^}\s]*)/.exec(line);
-      if (neg && nearAnchor(i)) {
-        add(
-          problem2(
-            at,
-            "negative-vspace",
-            `\`\\${neg[1]}{${neg[2]}}\` pulls a figure, table or heading closer to the text`,
-            "Remove it, or check the venue\u2019s formatting rules before you keep it"
-          )
-        );
-      }
-      const skip = new RegExp(
-        `\\\\(?:setlength|addtolength)\\s*\\{?\\\\(${NEGATIVE_SPACE_LENGTHS})\\}?\\s*\\{\\s*(-[^}]*)\\}`
-      ).exec(line);
-      if (skip) {
-        add(
-          problem2(
-            at,
-            "negative-skip",
-            `\`\\${skip[1]}\` is set to ${skip[2]?.trim()}, which shrinks the space around floats or equations`,
-            "Remove it, or check the venue\u2019s formatting rules before you keep it"
-          )
-        );
-      }
-      const stretch = /\\renewcommand\s*\{?\\baselinestretch\}?\s*\{([^}]*)\}/.exec(line) ?? /\\(?:linespread|setstretch)\s*\{([^}]*)\}/.exec(line);
-      const factor = stretch?.[1] === void 0 ? void 0 : num2(stretch[1]);
-      if (stretch && factor !== void 0 && factor < 1) {
-        add(
-          problem2(
-            at,
-            "line-spacing",
-            `Line spacing is set to ${stretch[1]?.trim()} (below 1)`,
-            "Remove it, or check the venue\u2019s formatting rules before you keep it"
-          )
-        );
-      }
-      if (strict) {
-        const len = new RegExp(
-          `\\\\(?:(?:setlength|addtolength)\\s*\\{?\\\\(${PAGE_LENGTHS})\\}?|(${PAGE_LENGTHS})\\s*=)`
-        ).exec(line);
-        if (len) {
-          const name = len[1] ?? len[2];
-          add(
-            problem2(
-              at,
-              "page-length",
-              `\`\\${name}\` is changed from the venue\u2019s style`,
-              "Remove it and use the venue\u2019s style file as shipped"
-            )
-          );
-        }
-        const geo = /\\(?:usepackage|geometry|newgeometry|RequirePackage)\b/.test(line) ? /geometry/.test(line) && GEOMETRY_KEYS.test(line) : false;
-        if (geo) {
-          add(
-            problem2(
-              at,
-              "geometry",
-              "The `geometry` package changes margins or the text block",
-              "Remove it and use the venue\u2019s style file as shipped"
-            )
-          );
-        }
-        if (/\\renewcommand\s*\{?\\(?:@normalsize|normalsize)\b/.test(line)) {
-          add(
-            problem2(
-              at,
-              "font-size",
-              "The base font size (`\\normalsize`) is redefined",
-              "Remove it and use the venue\u2019s style file as shipped"
-            )
-          );
-        }
-      }
-    });
-  }
-  for (const use of findCommands(files, ["usepackage", "RequirePackage"])) {
-    if (/(^|,)\s*savetrees\s*(,|$)/.test(use.arg)) {
-      add(
-        problem2(
-          use,
-          "savetrees",
-          "The `savetrees` package shrinks margins, spacing and fonts",
-          "Remove it; most venues do not allow it"
-        )
-      );
-    }
-  }
-  if (strict) {
-    for (const use of findCommands(files, ["documentclass"])) {
-      const size = use.optional ? /(?:^|,)\s*(\d+(?:\.\d+)?pt)\s*(?:,|$)/.exec(use.optional) : null;
-      if (size) {
-        add(
-          problem2(
-            use,
-            "font-size",
-            `The class option ${size[1]} sets the base font size`,
-            "Remove it unless the venue\u2019s instructions ask for that size"
-          )
-        );
-      }
-    }
-    for (const hit of grepTex(
-      files.filter((f) => f.path === ctx.main),
-      /\\fontsize\s*\{[^}]*\}\s*\{[^}]*\}\s*\\selectfont[^\n]*/
-    )) {
-      const f = files.find((x) => x.path === hit.file);
-      const body = f ? stripComments(f.content).search(/\\begin\{document\}/) : -1;
-      const before = f ? stripComments(f.content).split("\n").slice(0, hit.line).join("\n") : "";
-      if (body < 0 || before.length < body) {
-        add(
-          problem2(
-            hit,
-            "font-size",
-            "The base font size is set in the preamble with `\\fontsize`",
-            "Remove it and use the venue\u2019s style file as shipped"
-          )
-        );
-      }
-    }
-  }
-  const order = new Map(files.map((f, n) => [f.path, n]));
-  return out.sort(
-    (a, b) => (order.get(a.location?.file ?? "") ?? 0) - (order.get(b.location?.file ?? "") ?? 0) || (a.location?.line ?? 0) - (b.location?.line ?? 0)
-  );
-}
-
-// ../packages/core/src/venue/links.ts
-var URL_RE = /https?:\/\/[^\s{}\\|<>"^`]+/gi;
-var ANONYMIZERS = ["anonymous.4open.science"];
-var USER_HOSTS = ["github.com", "gitlab.com", "bitbucket.org"];
-function why(url) {
-  const host = url.hostname.toLowerCase().replace(/^www\./, "");
-  if (ANONYMIZERS.some((a) => host === a || host.endsWith(`.${a}`))) return void 0;
-  if (host === "osf.io" && url.searchParams.has("view_only")) return void 0;
-  if (USER_HOSTS.includes(host)) {
-    const user = url.pathname.split("/").filter(Boolean)[0];
-    return user ? `a ${host} page of "${user}"` : void 0;
-  }
-  if (host.endsWith(".github.io") || host.endsWith(".gitlab.io"))
-    return `a personal page (${host})`;
-  if (host === "sites.google.com") return "a personal Google Sites page";
-  if (/^[^/]*\/~[^/]+/.test(`${host}${url.pathname}`)) return "a personal page (a ~user path)";
-  if (/(^|\.)(edu|ac\.[a-z]{2}|edu\.[a-z]{2})$/.test(host))
-    return `an institutional page (${host})`;
-  return void 0;
-}
-function anonymityLinkProblems(ctx) {
-  const out = [];
-  for (const f of ctx.texFiles ?? []) {
-    if (/\.(cls|sty)$/i.test(f.path)) continue;
-    stripComments(f.content).split("\n").forEach((line, i) => {
-      for (const m of line.matchAll(URL_RE)) {
-        const raw = m[0].replace(/[.,;:)\]]+$/, "");
-        let url;
-        try {
-          url = new URL(raw);
-        } catch {
-          continue;
-        }
-        const reason = why(url);
-        if (!reason) continue;
-        out.push({
-          rule: "anonymity-link",
-          check: "venue",
-          severity: "warning",
-          message: `Link to ${reason} can identify the authors: ${raw.slice(0, 80)}`,
-          location: { file: f.path, line: i + 1 },
-          fix: "Use an anonymized copy (e.g. anonymous.4open.science), or remove the link for the review version. Ignore this if the link is not yours",
-          data: { url: raw }
-        });
-      }
-    });
-  }
-  return out;
-}
-
-// ../packages/core/src/venue/margins.ts
-var TOLERANCE_MM = 2;
-function marginProblems(profile, ctx) {
-  const block = profile.textBlock;
-  if (!block || !ctx.facts) return [];
-  const out = [];
-  for (const page of ctx.facts.pages) {
-    const box = page.textBox;
-    if (!box) continue;
-    const left = block.leftMm ?? (page.widthMm - block.widthMm) / 2;
-    const right = left + block.widthMm;
-    const past = [];
-    const over = (mm) => Math.round(mm * 10) / 10;
-    if (box.leftMm < left - TOLERANCE_MM)
-      past.push(`${over(left - box.leftMm)} mm into the left margin`);
-    if (box.rightMm > right + TOLERANCE_MM)
-      past.push(`${over(box.rightMm - right)} mm into the right margin`);
-    if (block.topMm !== void 0 && block.heightMm !== void 0) {
-      const top = block.topMm;
-      const bottom = top + block.heightMm;
-      if (box.topMm < top - TOLERANCE_MM)
-        past.push(`${over(top - box.topMm)} mm into the top margin`);
-      if (box.bottomMm > bottom + TOLERANCE_MM)
-        past.push(`${over(box.bottomMm - bottom)} mm into the bottom margin`);
-    }
-    if (!past.length) continue;
-    out.push({
-      rule: "text-outside-block",
-      check: "venue",
-      severity: "warning",
-      message: `Text on page ${page.number} reaches ${past.join(" and ")} (text block ${block.widthMm} mm wide for ${profile.name})`,
-      location: { page: page.number },
-      fix: "Find the overfull line, table or figure on that page (`overfull pages` renders it) and make it fit; do not change the margins.",
-      data: { page: page.number, textBox: box, textBlock: block }
-    });
-  }
-  return out;
-}
-
-// ../packages/core/src/venue/pages.ts
-var PAPER = {
-  a4: { w: 210, h: 297, label: "A4 (210 \xD7 297 mm)" },
-  letter: { w: 215.9, h: 279.4, label: "US Letter (8.5 \xD7 11 in)" }
-};
-var TOLERANCE_MM2 = 3;
-function mainTextPages(profile, ctx) {
-  const endLabel = profile.pageLimit?.endLabel;
-  if (!endLabel || !ctx.aux) return void 0;
-  const entry = parseAuxLabels(ctx.aux).get(endLabel);
-  return entry && /^\d+$/.test(entry.page) ? Number(entry.page) : void 0;
-}
-var pages = (n) => `${n} page${n === 1 ? "" : "s"}`;
-function pageLimitText(profile, ctx) {
-  const max = profile.pageLimit?.max;
-  if (max === void 0) return void 0;
-  const total = ctx.facts?.pageCount;
-  const main3 = mainTextPages(profile, ctx);
-  if (main3 !== void 0)
-    return `main text ${pages(main3)}, limit ${max}${total !== void 0 ? ` (${total} in total)` : ""}`;
-  return total !== void 0 ? `${pages(total)}, limit ${max}` : void 0;
-}
-function pageLimitProblems(profile, ctx) {
-  const limit = profile.pageLimit;
-  if (!limit) return [];
-  const problems = [];
-  const { max, endLabel } = limit;
-  if (endLabel) {
-    const entry = ctx.aux ? parseAuxLabels(ctx.aux).get(endLabel) : void 0;
-    if (entry && /^\d+$/.test(entry.page)) {
-      const page = Number(entry.page);
-      if (page > max) {
-        problems.push({
-          rule: "page-limit-exceeded",
-          check: "venue",
-          severity: "error",
-          message: `The main text is ${pages(page)}; the limit is ${max}${ctx.facts?.pageCount !== void 0 ? ` (${ctx.facts.pageCount} pages in total)` : ""}`,
-          location: { page },
-          detail: `Counted up to \`\\label{${endLabel}}\`. Partial pages count as full pages.`,
-          fix: `Cut ${page - max === 1 ? "about a page" : `about ${page - max} pages`} before \`\\label{${endLabel}}\`, or move material to the appendix`,
-          data: { pages: page, max, endLabel }
-        });
-      }
-      problems.push(...floatsAfterEnd(ctx.aux ?? "", page, endLabel));
-      return problems;
-    }
-    if (ctx.facts)
-      problems.push({
-        rule: "page-limit-label-missing",
-        check: "venue",
-        severity: "warning",
-        message: entry ? `\\label{${endLabel}} is on page "${entry.page}", which is not a page number; counted all pages` : `\\label{${endLabel}} not found in the .aux; counted all pages`,
-        fix: `Put \`\\label{${endLabel}}\` right after the last line of the main text (before references/appendix) and rebuild`,
-        data: { endLabel }
-      });
-  }
-  const total = ctx.facts?.pageCount;
-  if (total === void 0) {
-    problems.push({
-      rule: "page-limit-unchecked",
-      check: "venue",
-      severity: "info",
-      message: `Page limit (${max}) not checked: no PDF`,
-      fix: "Build the PDF first: `overfull build` locally, or an earlier step of your CI workflow"
-    });
-  } else if (total > max) {
-    problems.push({
-      rule: "page-limit-exceeded",
-      check: "venue",
-      severity: "error",
-      message: `The paper is ${pages(total)}; the limit is ${max} (all pages counted)`,
-      fix: endLabel ? `Cut ${total - max} page(s), or fix \`\\label{${endLabel}}\` so only the main text is counted` : `Cut ${total - max} page(s), or set \`venue.pageLimit.endLabel\` if references/appendix do not count`,
-      data: { pages: total, max }
-    });
-  }
-  return problems;
-}
-var FLOAT_LABEL = /^(fig|figure|tab|table):/i;
-var APPENDIX_LABEL = /^(?:app|appendix)\b|^app(?:endix)?[:._-]|[:._-]app(?:endix)?(?:[:._-]|$)/i;
-function floatsAfterEnd(aux, endPage, endLabel) {
-  const labels = parseAuxLabels(aux);
-  const pageOf = (p) => /^\d+$/.test(p) ? Number(p) : void 0;
-  let appendixPage = Number.POSITIVE_INFINITY;
-  for (const [name, l] of labels) {
-    const page = pageOf(l.page);
-    if (page !== void 0 && !FLOAT_LABEL.test(name) && APPENDIX_LABEL.test(name)) {
-      appendixPage = Math.min(appendixPage, page);
-    }
-  }
-  const problems = [];
-  for (const [name, l] of labels) {
-    if (!FLOAT_LABEL.test(name) || APPENDIX_LABEL.test(name.replace(FLOAT_LABEL, ""))) continue;
-    if (/^[A-Z](?:\.|$)/.test(l.ref)) continue;
-    const page = pageOf(l.page);
-    if (page === void 0 || page <= endPage || page >= appendixPage) continue;
-    const kind = /^(fig|figure):/i.test(name) ? "Figure" : "Table";
-    problems.push({
-      rule: "float-after-main-end",
-      check: "venue",
-      severity: "warning",
-      message: `${kind} ${name} floated to page ${page}, after the end of the main text (page ${endPage}); it may not count toward the page limit but reviewers will see it outside the main text`,
-      location: { page },
-      fix: `Place the ${kind.toLowerCase()} earlier (\`[t]\` or \`[htbp]\`, or move it closer to where it is first referenced) so it lands before \`\\label{${endLabel}}\`, or move it to the appendix on purpose`,
-      data: { label: name, page, endPage, endLabel }
-    });
-  }
-  return problems;
-}
-function paperSizeProblems(profile, ctx) {
-  const want = profile.paper;
-  if (!want || want === "any" || !ctx.facts) return [];
-  const target = PAPER[want];
-  const off = ctx.facts.pages.filter(
-    (p) => Math.abs(p.widthMm - target.w) > TOLERANCE_MM2 || Math.abs(p.heightMm - target.h) > TOLERANCE_MM2
-  );
-  const first2 = off[0];
-  if (!first2) return [];
-  const other = want === "a4" ? "letter" : "a4";
-  const isOther = Math.abs(first2.widthMm - PAPER[other].w) <= TOLERANCE_MM2 && Math.abs(first2.heightMm - PAPER[other].h) <= TOLERANCE_MM2;
-  const size = isOther ? PAPER[other].label : `${first2.widthMm} \xD7 ${first2.heightMm} mm`;
-  return [
-    {
-      rule: "paper-size-mismatch",
-      check: "venue",
-      severity: "warning",
-      message: `Page ${first2.number} is ${size}, venue expects ${target.label}${off.length > 1 ? ` (${off.length} pages differ)` : ""}`,
-      location: { page: first2.number },
-      fix: want === "a4" ? "Use `\\documentclass[a4paper]{...}` or `\\usepackage[a4paper]{geometry}`" : "Use `\\documentclass[letterpaper]{...}` or `\\usepackage[letterpaper]{geometry}`",
-      data: { expected: want, widthMm: first2.widthMm, heightMm: first2.heightMm, pages: off.length }
-    }
-  ];
-}
-
-// ../packages/core/src/venue/stale.ts
-var STALE_AFTER_MONTHS = 14;
-function staleProfileProblems(profile, now) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(profile.checkedOn ?? "");
-  if (!m) return [];
-  const checked = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  const limit = new Date(checked);
-  limit.setUTCMonth(limit.getUTCMonth() + STALE_AFTER_MONTHS);
-  if (now.getTime() <= limit.getTime()) return [];
-  return [
-    {
-      rule: "venue-profile-stale",
-      check: "venue",
-      severity: "info",
-      message: `Profile ${profile.id} was last checked against the venue's pages on ${profile.checkedOn}; it may be out of date`,
-      fix: `Read the venue's current instructions${profile.source?.length ? ` (${profile.source.join(", ")})` : ""} before you submit`,
-      data: { profile: profile.id, checkedOn: profile.checkedOn, months: STALE_AFTER_MONTHS }
-    }
-  ];
-}
-
-// ../packages/core/src/venue/style-file.ts
-var baseName2 = (path) => path.split("/").pop() ?? path;
-function styleFileProblems(profile, files) {
-  const problems = [];
-  for (const sf of profile.styleFiles ?? []) {
-    if (!sf.sha256) continue;
-    const want = sf.sha256.toLowerCase();
-    for (const f of files) {
-      if (baseName2(f.path) !== sf.name) continue;
-      if (sha256Hex(f.content) === want) continue;
-      if (f.content.includes("\r\n") && sha256Hex(f.content.replace(/\r\n/g, "\n")) === want)
-        continue;
-      problems.push({
-        rule: "style-file-modified",
-        check: "venue",
-        severity: "warning",
-        message: `${f.path} differs from the official ${sf.name} for ${profile.name}`,
-        location: { file: f.path },
-        detail: `Expected SHA-256 ${want}. Venues often reject papers built with a changed style file.`,
-        fix: `Download ${sf.name} again from the venue's page and keep your changes in your own files`,
-        data: { file: f.path, styleFile: sf.name, expected: want }
-      });
-    }
-  }
-  return problems;
-}
-
-// ../packages/core/src/venue/check.ts
-function venueCheck(profile, ctx) {
-  if (!ctx.facts && !ctx.texFiles?.length && !ctx.aux) {
-    return {
-      check: "venue",
-      status: "skipped",
-      problems: [],
-      skippedReason: "No PDF or .tex sources to check"
-    };
-  }
-  const problems = [
-    ...pageLimitProblems(profile, ctx),
-    ...paperSizeProblems(profile, ctx),
-    ...profile.anonymous ? [...anonymityProblems(ctx), ...anonymityLinkProblems(ctx)] : [],
-    ...styleFileProblems(profile, ctx.texFiles ?? []),
-    ...layoutProblems(profile, ctx),
-    ...marginProblems(profile, ctx),
-    ...disclosureProblems(profile.disclosure, ctx),
-    ...profile.arxiv ? arxivProblems(ctx) : [],
-    ...staleProfileProblems(profile, ctx.now ?? /* @__PURE__ */ new Date())
-  ];
-  const stats = {};
-  if (ctx.facts) stats.pages = ctx.facts.pageCount;
-  if (profile.pageLimit) stats.pageLimit = profile.pageLimit.max;
-  const errors = problems.filter((p) => p.severity === "error").length;
-  const warnings = problems.filter((p) => p.severity === "warning").length;
-  const parts = [`profile ${profile.id}`];
-  const limitText = pageLimitText(profile, ctx);
-  if (limitText) parts.push(limitText);
-  else if (ctx.facts) parts.push(`${ctx.facts.pageCount} pages`);
-  if (errors) parts.push(`${errors} to fix`);
-  if (warnings) parts.push(`${warnings} to review`);
-  return { check: "venue", status: statusOf(problems), problems, summary: parts.join(", "), stats };
-}
-
-// ../packages/core/src/venue/venues.generated.ts
-var venueProfileData = {
-  "aaai-2027": {
-    id: "aaai-2027",
-    name: "AAAI-27 (main technical track)",
-    extends: "double-blind",
-    year: 2027,
-    source: [
-      "https://aaai.org/conference/aaai/aaai-27/main-technical-track-call/",
-      "https://aaai.org/conference/aaai/aaai-27/submission-instructions/",
-      "https://aaai.org/conference/aaai/aaai-27/policies-aaai-27-authors/",
-      "https://aaai.org/authorkit27/"
-    ],
-    checkedOn: "2026-11-10",
-    paper: "letter",
-    pageLimit: {
-      max: 7,
-      endLabel: "overfull:main-end",
-      counts: "Main content, including any ethical statements",
-      excludes: [
-        "References"
-      ]
-    },
-    anonymous: true,
-    styleFiles: [
-      {
-        name: "aaai2027.sty",
-        sha256: "01990f8d3716f8e39c5b28a7478f3ac6e28630d1161de6105a7217f5e7f60e43"
-      }
-    ],
-    textBlock: {
-      widthMm: 177.8
-    },
-    notes: "The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for references. Acknowledgements are omitted from papers submitted for review. The author policy allows judicious use of generative AI tools; the pages read state no disclosure requirement. The hash is of aaai2027.sty (2027/10/21) from the AuthorKit27 archive downloaded on 2026-11-10. The AAAI-28 call page redirects to AAAI-26 content, so AAAI-27 is the latest published. Text block: 7 in wide, centred on US Letter (aaai2027.sty)."
-  },
-  "acl-rolling-review": {
-    id: "acl-rolling-review",
-    name: "ACL Rolling Review (long papers)",
-    extends: "double-blind",
-    year: "rolling",
-    source: [
-      "https://aclrollingreview.org/cfp",
-      "https://acl-org.github.io/ACLPUB/formatting.html"
-    ],
-    checkedOn: "2026-11-10",
-    paper: "a4",
-    pageLimit: {
-      max: 8,
-      endLabel: "overfull:main-end",
-      counts: "Content, including figures and tables",
-      excludes: [
-        "Limitations (required section)",
-        "Ethical considerations",
-        "References"
-      ]
-    },
-    anonymous: true,
-    disclosure: "recommended",
-    notes: "Short papers have 4 pages of content. Final versions of long papers get one more page (9). Missing a Limitations section is a desk-rejection reason. Use of generative AI for writing or coding must be disclosed in the Responsible NLP Checklist, with details in the Acknowledgements; some uses (language polishing, short-form input assistance) need no disclosure. The official style files are at https://github.com/acl-org/acl-style-files (not reachable from this session, so no file name or hash is recorded)."
-  },
-  "acm-sigconf": {
-    id: "acm-sigconf",
-    name: "ACM conference proceedings (acmart, sigconf format)",
-    extends: "paper",
-    year: "rolling",
-    source: [
-      "https://ctan.org/pkg/acmart",
-      "https://mirrors.ctan.org/macros/latex/contrib/acmart/acmart.dtx"
-    ],
-    checkedOn: "2026-11-10",
-    paper: "letter",
-    styleFiles: [
-      {
-        name: "acmart.cls"
-      }
-    ],
-    textBlock: {
-      widthMm: 177.9
-    },
-    notes: "Each ACM conference sets its own page limit and review rules; set them in overfull.yml (`venue:`) from the call for papers, and use the class option `anonymous` for double-blind review. Layout from acmart v2.21 (2026/11/01): the sigconf format is US Letter with 54 pt inner and outer margins, so the text block is 8.5 in minus 108 pt wide. acmart.cls is generated from acmart.dtx, so no hash is recorded. ACM's own pages (acm.org/publications) could not be read from the build machine."
-  },
-  "aistats-2027": {
-    id: "aistats-2027",
-    name: "AISTATS 2027",
-    extends: "double-blind",
-    year: 2027,
-    source: [
-      "https://virtual.aistats.org/Conferences/2027/CallForPapers",
-      "https://aistats.org/aistats2027/AISTATS2027PaperPack.zip"
-    ],
-    checkedOn: "2026-11-11",
-    paper: "letter",
-    pageLimit: {
-      max: 8,
-      endLabel: "overfull:main-end",
-      counts: "Main text",
-      excludes: [
-        "References",
-        "AI Use Statement",
-        "Reproducibility checklist",
-        "Appendices"
-      ]
-    },
-    anonymous: true,
-    disclosure: "required",
-    styleFiles: [
-      {
-        name: "aistats2027.sty",
-        sha256: "33ab38f8aac4b2f1df9fe67e354928598200584e9568385f32deb889e1b81d42"
-      }
-    ],
-    textBlock: {
-      widthMm: 171.5,
-      leftMm: 22.2
-    },
-    notes: "The call requires an AI Use Statement in every submission, in the ICLR format, and allows generative AI tools otherwise. Papers whose main text is over the limit are desk-rejected; the camera-ready limit is 9 pages. Submissions may use author-year or numeric citations; camera-ready papers must use author-year. Paper size is US Letter (the article class default, emitted by the style file). The hash is of aistats2027.sty (2026/09/02) from AISTATS2027PaperPack.zip downloaded on 2026-11-11. Text block: 6.75 in wide, 0.875 in from the left edge (aistats2027.sty)."
-  },
-  "cvpr-2027": {
-    id: "cvpr-2027",
-    name: "CVPR 2027",
-    extends: "double-blind",
-    year: 2027,
-    source: [
-      "https://cvpr.thecvf.com/Conferences/2027/AuthorGuidelines",
-      "https://media.eventhosts.cc/Conferences/CVPR2027/author-kit-CVPR2027-v1-latex.zip"
-    ],
-    checkedOn: "2026-11-10",
-    paper: "letter",
-    pageLimit: {
-      max: 8,
-      endLabel: "overfull:main-end",
-      counts: "Main text including figures and tables",
-      excludes: [
-        "References",
-        "LLM Usage Statement"
-      ]
-    },
-    anonymous: true,
-    disclosure: "required",
-    styleFiles: [
-      {
-        name: "cvpr.sty",
-        sha256: "1cd7f434b13d41c475df4a1901a5d82d9ca8b80b8cf6205dc4602a5c164286b4"
-      }
-    ],
-    textBlock: {
-      widthMm: 174.6
-    },
-    notes: 'Every submission needs a section titled "LLM Usage Statement" after the main text and before the references; it states "No LLMs or generative AI tools were used in this work" if none were. The camera-ready version must disclose AI-generated content in the Acknowledgments. Paper size is from the check in the official cvpr.sty. The hash is of cvpr.sty from author-kit-CVPR2027-v1-latex.zip downloaded on 2026-11-10. Text block: 6.875 in wide, centred on US Letter (cvpr.sty).'
-  },
-  "eccv-2026": {
-    id: "eccv-2026",
-    name: "ECCV 2026",
-    extends: "double-blind",
-    year: 2026,
-    source: [
-      "https://eccv.ecva.net/Conferences/2026/SubmissionPolicies",
-      "https://eccv.ecva.net/Conferences/2026/CallForPapers"
-    ],
-    checkedOn: "2026-11-11",
-    paper: "any",
-    pageLimit: {
-      max: 14,
-      endLabel: "overfull:main-end",
-      counts: "Main paper including figures and tables",
-      excludes: [
-        "References"
-      ]
-    },
-    anonymous: true,
-    disclosure: "off",
-    styleFiles: [
-      {
-        name: "eccv.sty",
-        sha256: "07785f87dd4741a761e5064d6752e59dbca308b7999de35df983e70dc0a33d80"
-      },
-      {
-        name: "llncs.cls",
-        sha256: "8152fe7afa929cbd3f3679d6f7c1d562525414ed9c5940a69e86cd923416cb2b"
-      }
-    ],
-    textBlock: {
-      widthMm: 122,
-      heightMm: 193,
-      leftMm: 12,
-      topMm: 12
-    },
-    notes: "Papers over 14 pages (excluding references), not anonymized, or not in the ECCV 2026 template are desk-rejected, and so are submissions whose margins, formatting or font were changed (the 2026 template's font differs from CVPR's). The LLM policy allows any tools but makes authors responsible for the content; papers citing non-existent material are rejected. No AI-use statement is asked for. The kit is the one the submission policies link (github.com/paolo-favaro/paper-template, tag Latest, commit da8c09c of 2026-01-23); its own llncs.cls differs from Springer's current one. The review option crops the page to 146 x 217 mm around a 122 x 193 mm text block 12 mm from the left and top edges (eccv.sty), hence no standard paper size."
-  },
-  "emnlp-2026": {
-    id: "emnlp-2026",
-    name: "EMNLP 2026 (main conference)",
-    extends: "double-blind",
-    year: 2026,
-    source: [
-      "https://2026.emnlp.org/calls/main_conference_papers/",
-      "https://aclrollingreview.org/cfp",
-      "https://acl-org.github.io/ACLPUB/formatting.html"
-    ],
-    checkedOn: "2026-11-10",
-    paper: "a4",
-    pageLimit: {
-      max: 8,
-      endLabel: "overfull:main-end",
-      counts: "Content, including figures and tables",
-      excludes: [
-        "Limitations (required section)",
-        "Ethical considerations",
-        "References"
-      ]
-    },
-    anonymous: true,
-    disclosure: "recommended",
-    notes: "Papers go through ACL Rolling Review and follow all ARR submission requirements; the EMNLP page lists long papers (8 pages) and short papers (4 pages). Final versions get one additional page (9 for long papers, 5 for short papers). Exclusions and the A4 size are from the ARR call and the ACL formatting guidelines it links. Writing-assistance disclosure follows the ARR policy. No style file name or hash is recorded because the official style repository was not reachable from this session."
-  },
-  "iclr-2027": {
-    id: "iclr-2027",
-    name: "ICLR 2027",
-    extends: "double-blind",
-    year: 2027,
-    source: [
-      "https://iclr.cc/Conferences/2027/CallForPapers",
-      "https://iclr.cc/Conferences/2027/AuthorGuidelines",
-      "https://iclr.cc/Conferences/2027/AIPolicyForAuthors"
-    ],
-    checkedOn: "2026-11-10",
-    pageLimit: {
-      max: 9,
-      endLabel: "overfull:main-end",
-      counts: "Main text at submission",
-      excludes: [
-        "References",
-        "AI use statement",
-        "Optional ethics statement (at most 1 page)"
-      ]
-    },
-    anonymous: true,
-    disclosure: "required",
-    styleFiles: [
-      {
-        name: "iclr2027_conference.sty",
-        sha256: "797deef41724e93761426ac0cbcca46279a91cc650dd1f0ce76a4f08d2098ea6"
-      }
-    ],
-    textBlock: {
-      widthMm: 139.7
-    },
-    notes: "The page limit is 10 for the discussion phase and the camera-ready version. A mandatory AI use statement section does not count toward the limit. Style files are from iclr-2027-style-files.zip (linked from the author guidelines), downloaded on 2026-11-10 (file dated 2026-07-28 in the archive). Text block: 5.5 in wide with 1.5 in side margins (iclr2027_conference.sty)."
-  },
-  "icml-2026": {
-    id: "icml-2026",
-    name: "ICML 2026",
-    extends: "double-blind",
-    year: 2026,
-    source: [
-      "https://icml.cc/Conferences/2026/CallForPapers",
-      "https://icml.cc/Conferences/2026/AuthorInstructions"
-    ],
-    checkedOn: "2026-11-10",
-    paper: "letter",
-    pageLimit: {
-      max: 8,
-      endLabel: "overfull:main-end",
-      counts: "Main paper",
-      excludes: [
-        "References",
-        "Impact statement",
-        "Appendices"
-      ]
-    },
-    anonymous: true,
-    disclosure: "recommended",
-    styleFiles: [
-      {
-        name: "icml2026.sty",
-        sha256: "7cdcf90f6a59c5219e7f15c88f7ed09fcaf598dad91e6cdddc4dc3cb0e397a95"
-      }
-    ],
-    textBlock: {
-      widthMm: 171.5,
-      leftMm: 19.6
-    },
-    notes: "Final versions of accepted papers get one extra page for the main paper. The call allows generative AI tools and encourages authors to explain notable uses in their methodology; LLMs cannot be authors. The hash is of icml2026.sty (v2.0, 2025/10/29) from icml2026.zip downloaded on 2026-11-10. The ICML 2027 call page exists but has no content yet. Text block: 6.75 in wide, 0.77 in from the left edge (icml2026.sty)."
-  },
-  "ieee-conference": {
-    id: "ieee-conference",
-    name: "IEEE conference proceedings (IEEEtran, conference mode)",
-    extends: "paper",
-    year: "rolling",
-    source: [
-      "https://conferences.ieeeauthorcenter.ieee.org/write-your-paper/authoring-tools-and-templates/",
-      "https://conferences.ieeeauthorcenter.ieee.org/write-your-paper/meet-ieee-xplore-requirements/",
-      "https://conferences.ieeeauthorcenter.ieee.org/author-ethics/guidelines-and-policies/submission-policies/",
-      "https://ctan.org/pkg/ieeetran"
-    ],
-    checkedOn: "2026-11-10",
-    disclosure: "recommended",
-    styleFiles: [
-      {
-        name: "IEEEtran.cls",
-        sha256: "da751920a317ed318b7b5cd7fa585a6cc7d28502d457856382e9be24b10a3bd7"
-      }
-    ],
-    textBlock: {
-      widthMm: 181.4
-    },
-    notes: "Each IEEE conference sets its own page limit, paper size and review rules; set them in overfull.yml (`venue:`) from the call for papers. IEEE's submission policies ask authors to disclose AI-generated content in the acknowledgments (editing and grammar help excepted), so the disclosure is recommended rather than required. IEEE Xplore needs every font embedded. The hash is of IEEEtran.cls V1.8b (2015/08/26) as distributed on CTAN, the current release; IEEE's own template page could not be read from the build machine. The text block is the class's conference-mode width (43 pc, centred)."
-  },
-  "neurips-2026": {
-    id: "neurips-2026",
-    name: "NeurIPS 2026 (main track)",
-    extends: "double-blind",
-    year: 2026,
-    source: [
-      "https://neurips.cc/Conferences/2026/CallForPapers",
-      "https://neurips.cc/Conferences/2026/MainTrackHandbook",
-      "https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip"
-    ],
-    checkedOn: "2026-11-10",
-    paper: "letter",
-    pageLimit: {
-      max: 9,
-      endLabel: "overfull:main-end",
-      counts: "Main text including all figures and tables",
-      excludes: [
-        "References",
-        "Optional technical appendices",
-        "Mandatory paper checklist"
-      ]
-    },
-    anonymous: true,
-    disclosure: "recommended",
-    styleFiles: [
-      {
-        name: "neurips_2026.sty",
-        sha256: "c3fc2894e83d2517ca18b66741d6c595986d97957dc08ec08bb2125a7ec4555a"
-      }
-    ],
-    textBlock: {
-      widthMm: 139.7
-    },
-    notes: "The handbook asks authors to describe agent or LLM use in the experimental setup only when it is an important, original or non-standard part of the method. Accepted papers get one additional content page for the camera-ready version. Paper size is from the letterpaper option in the official style file (the handbook does not state it). The hash is of neurips_2026.sty (dated 2026-01-29) from the kit downloaded on 2026-11-10. Text block: 5.5 in wide, centred on US Letter (geometry in neurips_2026.sty)."
-  },
-  "springer-lncs": {
-    id: "springer-lncs",
-    name: "Springer LNCS proceedings (also LNAI, LNBI, CCIS, LNBIP, LNICST, IFIP AICT)",
-    extends: "paper",
-    year: "rolling",
-    source: [
-      "https://www.springer.com/gp/computer-science/lncs/conference-proceedings-guidelines",
-      "https://cms-resources.apps.public.k8s.springernature.io/springer-cms/rest/v1/content/27852130/data/Instructions%20for%20Authors%20PDF",
-      "https://cms-resources.apps.public.k8s.springernature.io/springer-cms/rest/v1/content/27851904/data/LaTeX2e%20Proceedings%20Template%20ZIP"
-    ],
-    checkedOn: "2026-11-10",
-    accessibility: "recommended",
-    styleFiles: [
-      {
-        name: "llncs.cls",
-        sha256: "04ec99046ad9867f6cd54ffd1ef8c47c767b327d1baec77536db0528cd492fa2"
-      }
-    ],
-    textBlock: {
-      widthMm: 122,
-      leftMm: 47.5
-    },
-    notes: "No page limit or paper size is set by Springer; the volume editors set the limit (full papers are typically 12-15 pages, short papers 6-11). Springer's instructions say proceedings contributions need alternative text for non-text content under WCAG; the level is recommended here because Overfull's accessibility check is about the PDF, not alt text. The hash is of llncs.cls v2.25 (2026/09/03) from the LaTeX2e template downloaded on 2026-11-10. Text block: 12.2 cm wide, 1 in + 63 pt from the left edge (llncs.cls)."
-  }
-};
-
-// ../packages/core/src/venue/profiles.ts
-var ALL_CHECKS = [...CHECK_IDS];
-var builtinProfiles = {
-  generic: {
-    id: "generic",
-    name: "Generic",
-    description: "Any LaTeX document: build, output, references; accessibility as advice.",
-    paper: "any",
-    disclosure: "off",
-    accessibility: "recommended",
-    checks: ALL_CHECKS
-  },
-  thesis: {
-    id: "thesis",
-    name: "Thesis",
-    description: "Theses and dissertations: accessible PDF/UA output required, no page limit.",
-    paper: "any",
-    disclosure: "off",
-    accessibility: "required",
-    checks: ALL_CHECKS
-  },
-  paper: {
-    id: "paper",
-    name: "Paper",
-    description: "Conference or journal paper: AI-use disclosure recommended, accessible (tagged) PDF required.",
-    paper: "any",
-    disclosure: "recommended",
-    accessibility: "required",
-    checks: ALL_CHECKS
-  },
-  arxiv: {
-    id: "arxiv",
-    name: "arXiv",
-    description: "arXiv submission: no absolute paths, no shell escape, .bbl included, pdfLaTeX-safe figures.",
-    paper: "any",
-    disclosure: "off",
-    accessibility: "recommended",
-    arxiv: true,
-    checks: ALL_CHECKS
-  },
-  "double-blind": {
-    id: "double-blind",
-    name: "Double-blind review",
-    description: "Anonymous submission: no author names in the PDF metadata or source, no acknowledgments.",
-    paper: "any",
-    anonymous: true,
-    disclosure: "recommended",
-    accessibility: "recommended",
-    checks: ALL_CHECKS
-  }
-};
-var UnknownProfileError = class extends Error {
-  constructor(name, extra = venueProfileData) {
-    const venues = Object.keys({ ...venueProfileData, ...extra });
-    super(
-      `Unknown profile "${name}". Built-in profiles: ${Object.keys(builtinProfiles).join(", ")}` + (venues.length ? `. Venue profiles: ${venues.join(", ")}` : "")
-    );
-    this.name = "UnknownProfileError";
-  }
-};
-function merge(parent, inline2) {
-  const merged = { ...parent };
-  for (const [k, v] of Object.entries(inline2)) {
-    if (v !== void 0) merged[k] = v;
-  }
-  if (inline2.pageLimit) merged.pageLimit = { ...parent.pageLimit, ...inline2.pageLimit };
-  if (!inline2.id) merged.id = parent.id;
-  return merged;
-}
-function known(name, venues) {
-  return Object.hasOwn(builtinProfiles, name) || Object.hasOwn(venues, name);
-}
-function lookup(name, venues) {
-  const built = Object.hasOwn(builtinProfiles, name) ? builtinProfiles[name] : void 0;
-  if (built) return { ...built };
-  const data = Object.hasOwn(venues, name) ? venues[name] : void 0;
-  if (!data) throw new UnknownProfileError(name, venues);
-  const { extends: base, ...fields } = data;
-  const parent = lookup(base ?? "generic", venues);
-  const withDescription = {
-    description: `${data.name}${data.year !== void 0 ? ` (${data.year})` : ""}`,
-    ...fields
-  };
-  return merge(parent, withDescription);
-}
-function resolveProfile(nameOrInline, venues = venueProfileData) {
-  if (typeof nameOrInline === "string") return lookup(nameOrInline, venues);
-  const { extends: base, ...inline2 } = nameOrInline;
-  const baseName3 = base ?? (inline2.id && known(inline2.id, venues) ? inline2.id : "generic");
-  return merge(lookup(baseName3, venues), inline2);
-}
-
-// ../packages/core/src/venue/rules.ts
-var venueRules = [
-  {
-    id: "page-limit-exceeded",
-    check: "venue",
-    severity: "error",
-    title: "Page limit exceeded",
-    summary: "The document (or its main text, up to the end label) is longer than the venue allows.",
-    fix: "Shorten the main text, or move material to an appendix if the venue does not count it."
-  },
-  {
-    id: "page-limit-label-missing",
-    check: "venue",
-    severity: "warning",
-    title: "Page-limit end label not found",
-    summary: "The profile counts pages up to a label (default `overfull:main-end`), but the .aux has no such label, so all pages were counted.",
-    fix: "Put `\\label{overfull:main-end}` right after the last paragraph of the main text and rebuild."
-  },
-  {
-    id: "page-limit-unchecked",
-    check: "venue",
-    severity: "info",
-    title: "Page limit not checked",
-    summary: "There was no PDF (or .aux label) to count pages from.",
-    fix: "Build the document first (`overfull build`)."
-  },
-  {
-    id: "text-outside-block",
-    check: "venue",
-    severity: "warning",
-    title: "Text outside the text block",
-    summary: "Text on a page of the PDF reaches into the margin, measured against the text block of the venue's style file (2 mm tolerance). Only for venue profiles that record a text block.",
-    fix: "Find the line, table or figure that sticks out (`overfull pages <n>` renders the page) and make it fit. Changing the margins or the text block is usually against the rules."
-  },
-  {
-    id: "paper-size-mismatch",
-    check: "venue",
-    severity: "warning",
-    title: "Wrong paper size",
-    summary: "Pages are not the paper size the venue expects (A4 or US Letter).",
-    fix: "Set the paper size in the class options or with `\\usepackage[a4paper]{geometry}` / `letterpaper`."
-  },
-  {
-    id: "anonymity-pdf-author",
-    check: "venue",
-    severity: "error",
-    title: "Author name in PDF metadata",
-    summary: "The PDF Author field names a person in a double-blind submission.",
-    fix: "Set `\\hypersetup{pdfauthor={Anonymous}}` for the review version."
-  },
-  {
-    id: "anonymity-author-named",
-    check: "venue",
-    severity: "error",
-    title: "Author named in the source",
-    summary: "`\\author{...}` contains names in a double-blind submission.",
-    fix: "Use `\\author{Anonymous}` or the venue class\u2019s anonymous/review option."
-  },
-  {
-    id: "anonymity-acknowledgments",
-    check: "venue",
-    severity: "warning",
-    title: "Acknowledgments in an anonymous submission",
-    summary: "Acknowledgments often name people, grants or institutions and break anonymity.",
-    fix: "Remove the acknowledgments until the camera-ready version."
-  },
-  {
-    id: "anonymity-self-reference",
-    check: "venue",
-    severity: "info",
-    title: "Possible self-identifying phrase",
-    summary: 'Phrases such as "our previous work [3]" reveal who the authors are.',
-    fix: "Refer to your earlier work in the third person."
-  },
-  {
-    id: "disclosure-missing",
-    check: "venue",
-    severity: "error",
-    title: "AI-use disclosure missing",
-    summary: "The venue asks authors to state whether and how generative AI tools were used; no such statement was found.",
-    fix: "Add a short section, e.g. `\\section*{Use of Generative AI}\\label{overfull:disclosure}`. The author writes the statement: which AI tools were used and for what, and that the authors checked the output. Only the author can say whether none were used."
-  },
-  {
-    id: "disclosure-placeholder",
-    check: "venue",
-    severity: "error",
-    title: "AI-use disclosure is a placeholder",
-    summary: "The disclosure section exists but still holds placeholder text or almost nothing. Submitting it as is misstates how the paper was written.",
-    fix: "The author writes the statement: which AI tools were used and for what, and that the authors checked the output. Only the author can say whether none were used."
-  },
-  {
-    id: "arxiv-absolute-path",
-    check: "venue",
-    severity: "error",
-    title: "Absolute path (arXiv)",
-    summary: "arXiv compiles only the uploaded files, so absolute paths break the build.",
-    fix: "Use paths relative to the main file."
-  },
-  {
-    id: "float-after-main-end",
-    check: "venue",
-    severity: "warning",
-    title: "Figure or table floated past the end of the main text",
-    summary: "A main-text figure or table landed on a page after the page-limit end label. It may escape the page count, but reviewers see it among the references or appendix.",
-    fix: "Place the float earlier (`[t]`/`[htbp]`, or closer to its first reference) so it lands before the end label, or move it to the appendix on purpose."
-  },
-  {
-    id: "arxiv-unsupported-engine",
-    check: "venue",
-    severity: "error",
-    title: "Built with LuaLaTeX (arXiv)",
-    summary: "arXiv compiles submissions with pdfLaTeX. A paper that only builds with LuaLaTeX (fontspec, Lua code) fails there, and a LuaLaTeX log says nothing about the arXiv build.",
-    fix: "arXiv compiles with pdfLaTeX; build with `make arxiv` / `latexmk -pdf` and check that log with --log."
-  },
-  {
-    id: "arxiv-eps-pdflatex",
-    check: "venue",
-    severity: "warning",
-    title: "EPS figure with pdfLaTeX (arXiv)",
-    summary: "pdfLaTeX cannot include .eps files directly, and arXiv will not convert them for you.",
-    fix: "Convert figures to PDF with `epstopdf` and include the .pdf."
-  },
-  {
-    id: "arxiv-shell-escape",
-    check: "venue",
-    severity: "warning",
-    title: "Shell escape needed (arXiv)",
-    summary: "Packages such as `minted` need `-shell-escape`, which arXiv does not enable.",
-    fix: "Switch to `listings`, or pre-generate the output and upload it."
-  },
-  {
-    id: "arxiv-missing-bbl",
-    check: "venue",
-    severity: "info",
-    title: ".bbl not present (arXiv)",
-    summary: "arXiv does not run biber; with biblatex you must upload the .bbl generated by your build.",
-    fix: "Build locally, then include the .bbl named like the main file (`main.tex` \u2192 `main.bbl`; a `<jobname>.bbl` must be copied to that name) in the upload."
-  },
-  {
-    id: "arxiv-filename-space",
-    check: "venue",
-    severity: "warning",
-    title: "File name with spaces (arXiv)",
-    summary: "arXiv\u2019s processing breaks on file names containing spaces.",
-    fix: "Rename files using - or _ instead of spaces."
-  },
-  {
-    id: "venue-profile-stale",
-    check: "venue",
-    severity: "info",
-    title: "Venue profile may be out of date",
-    summary: "The profile was last compared with the venue\u2019s official pages more than 14 months ago. Page limits, style files and policies change between years.",
-    fix: "Read the venue\u2019s current author instructions (the profile lists its sources) and compare them with what Overfull reports."
-  },
-  {
-    id: "style-file-modified",
-    check: "venue",
-    severity: "warning",
-    title: "Style file differs from the official one",
-    summary: "The project\u2019s copy of a style or class file named by the profile does not match the SHA-256 recorded for the official file. Venues often reject papers built with a changed style file. Only profiles that record a hash are checked; a copy with Windows line endings is compared after converting them.",
-    fix: "Download the style file again from the venue\u2019s page and keep your own changes in separate files."
-  },
-  {
-    id: "layout-tampering",
-    check: "venue",
-    severity: "warning",
-    title: "Source squeezes the layout",
-    summary: "The source uses a command often used to fit more text on a page: a negative `\\vspace` next to a figure, table or heading, negative float or equation spacing, line spacing below 1, `savetrees`, or (for profiles that name a style file) changed margins, text block or base font size. Overfull cannot tell whether your venue allows it.",
-    fix: "Check that your venue allows this. If it does not, remove the command and shorten the text instead."
-  },
-  {
-    id: "anonymity-link",
-    check: "venue",
-    severity: "warning",
-    title: "Link that can identify the authors",
-    summary: "An anonymous submission links to a personal repository (`github.com/<user>`, GitLab, Bitbucket), a personal page (`*.github.io`, Google Sites, `~user`) or an institutional page. Links to anonymous.4open.science are allowed. A link to someone else\u2019s page is reported too.",
-    fix: "Use an anonymized copy such as anonymous.4open.science, or remove the link for the review version. Ignore the warning for links that are not yours."
-  },
-  {
-    id: "tex-file-skipped",
-    check: "venue",
-    severity: "info",
-    title: "Source file not read",
-    summary: "A .tex/.sty/.cls file in the project was not read for the venue checks: it is not a regular file (a pipe, socket or device) or it is larger than 20 MB.",
-    fix: "Nothing to do if the file is not part of the document. Otherwise replace it with a regular file of normal size."
-  }
-];
-
-// ../packages/core/src/rules.ts
-var cache;
-function allRules() {
-  if (cache) return cache;
-  const seen = /* @__PURE__ */ new Map();
-  for (const r of [...logRules, ...refsRules, ...pdfRules, ...venueRules]) {
-    if (!seen.has(r.id)) seen.set(r.id, r);
-  }
-  cache = [...seen.values()];
-  return cache;
-}
-function getRule(id) {
-  const exact = allRules().find((r) => r.id === id);
-  if (exact) return exact;
-  const m = /^verapdf-(\d[\w-]*)$/.exec(id);
-  const generic = allRules().find((r) => r.id === "verapdf");
-  if (m && generic) {
-    const clause = m[1].replace(/-/g, ".");
-    const info3 = veraPdfClauseInfo(clause);
-    if (info3) {
-      return {
-        ...generic,
-        id,
-        title: `PDF/UA clause ${clause}: ${info3.title} (veraPDF)`,
-        summary: info3.summary,
-        fix: info3.fix
-      };
-    }
-    return { ...generic, id, title: `PDF/UA clause ${clause} failed (veraPDF)` };
-  }
-  return void 0;
-}
-
-// ../packages/core/src/report/sarif.ts
-var SITE = "https://amet13.github.io/overfull/";
-var SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json";
-var LEVEL = {
-  error: "error",
-  warning: "warning",
-  info: "note"
-};
-function joinPath2(root, file) {
-  const f = file.replace(/\\/g, "/").replace(/^\.\//, "");
-  if (!root || root === "." || root === "./") return f;
-  return `${root.replace(/\/+$/, "")}/${f}`;
-}
-function messageOf(p) {
-  const page = p.location?.page && !p.location.file ? `Page ${p.location.page}: ` : "";
-  const text2 = `${page}${oneLine(p.message)}`;
-  return p.fix ? `${text2} Fix: ${oneLine(p.fix)}` : text2;
-}
-function ruleDescriptor(id, problem3) {
-  const info3 = getRule(id);
-  const title = info3?.title ?? oneLine(problem3.message);
-  return {
-    id,
-    name: id,
-    shortDescription: { text: title.slice(0, 1024) },
-    ...info3 ? { fullDescription: { text: info3.summary } } : {},
-    ...info3?.fix ? { help: { text: info3.fix } } : {},
-    helpUri: `${SITE}rules/${encodeURIComponent(id)}/`,
-    defaultConfiguration: { level: LEVEL[info3?.severity ?? problem3.severity] },
-    properties: { tags: [info3?.check ?? problem3.check] }
-  };
-}
-function formatSarif(report, opts = {}) {
-  const problems = sortedProblems(report);
-  const fallback = opts.fallbackFile ?? report.assumed?.main;
-  const ids = [];
-  const first2 = /* @__PURE__ */ new Map();
-  for (const p of problems) {
-    if (!first2.has(p.rule)) {
-      first2.set(p.rule, p);
-      ids.push(p.rule);
-    }
-  }
-  const results = problems.map((p) => {
-    const file = p.location?.file ?? fallback;
-    const line = p.location?.file ? p.location.line : void 0;
-    return {
-      ruleId: p.rule,
-      ruleIndex: ids.indexOf(p.rule),
-      level: LEVEL[p.severity],
-      message: { text: messageOf(p) },
-      ...file ? {
-        locations: [
-          {
-            physicalLocation: {
-              artifactLocation: { uri: joinPath2(opts.root, file), uriBaseId: "%SRCROOT%" },
-              region: { startLine: line && line > 0 ? line : 1 }
-            }
-          }
-        ]
-      } : {}
-    };
-  });
-  const log = {
-    $schema: SCHEMA,
-    version: "2.1.0",
-    runs: [
-      {
-        tool: {
-          driver: {
-            name: "overfull",
-            version: report.version,
-            informationUri: SITE,
-            rules: ids.map((id) => ruleDescriptor(id, first2.get(id)))
-          }
-        },
-        results
-      }
-    ]
-  };
-  return `${JSON.stringify(log, null, 2)}
-`;
-}
-
-// ../packages/cli/src/check.ts
-import { existsSync as existsSync4 } from "node:fs";
-import { join as join5, relative as relative6 } from "node:path";
-
-// ../packages/cli/src/cache.ts
-import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname as dirname2, join, relative, sep } from "node:path";
-function userCacheDir(env, platform = process.platform) {
-  const home = env.HOME || env.USERPROFILE || homedir();
-  if (platform === "win32")
-    return join(env.LOCALAPPDATA || join(home, "AppData", "Local"), "overfull");
-  return join(env.XDG_CACHE_HOME || join(home, ".cache"), "overfull");
-}
-function refsCachePath(root, mode, env) {
-  if (mode === "project") return join(root, ".overfull", "cache", "refs.json");
-  let real = root;
-  try {
-    real = realpathSync(root);
-  } catch {
-  }
-  const key = createHash("sha256").update(real).digest("hex").slice(0, 16);
-  return join(userCacheDir(env), key, "refs.json");
-}
-function symlinkOnPath(root, file) {
-  const parts = relative(root, file).split(sep).filter(Boolean);
-  let p = root;
-  for (const part of parts) {
-    p = join(p, part);
-    try {
-      if (lstatSync(p).isSymbolicLink()) return p;
-    } catch {
-      return void 0;
-    }
-  }
-  return void 0;
-}
-var MemoryCache = class {
-  data = /* @__PURE__ */ new Map();
-  get(key) {
-    return this.data.get(key);
-  }
-  set(key, value) {
-    this.data.set(key, value);
-  }
-  save() {
-  }
-};
-var PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1e3;
-function storedAt(value) {
-  if (!value || typeof value !== "object") return void 0;
-  const at = value.cachedAt;
-  if (typeof at === "number") return at;
-  if (at && typeof at === "object") {
-    const times = Object.values(at).filter((t) => typeof t === "number");
-    return times.length ? Math.max(...times) : void 0;
-  }
-  return void 0;
-}
-var FileCache = class {
-  constructor(path) {
-    this.path = path;
-    try {
-      const parsed = JSON.parse(readFileSync(path, "utf8"));
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
-        this.data = parsed;
-    } catch {
-      this.data = {};
-    }
-  }
-  path;
-  data = {};
-  dirty = false;
-  get(key) {
-    return this.data[key];
-  }
-  set(key, value) {
-    this.data[key] = value;
-    this.dirty = true;
-  }
-  save() {
-    if (!this.dirty) return;
-    const now = Date.now();
-    for (const [key, value] of Object.entries(this.data)) {
-      const at = storedAt(value);
-      if (at !== void 0 && now - at > PRUNE_AFTER_MS) delete this.data[key];
-    }
-    try {
-      mkdirSync(dirname2(this.path), { recursive: true });
-      writeFileSync(this.path, `${JSON.stringify(this.data, null, 1)}
-`);
-      this.dirty = false;
-    } catch {
-    }
-  }
-};
-
-// ../packages/cli/src/config.ts
-import { existsSync as existsSync3, readdirSync as readdirSync2, readFileSync as readFileSync3 } from "node:fs";
-import { basename as basename2, dirname as dirname4, isAbsolute as isAbsolute3, join as join3, resolve as resolve2 } from "node:path";
-var import_yaml = __toESM(require_dist(), 1);
-
-// ../packages/cli/src/io.ts
-var UsageError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "UsageError";
-  }
-};
-
-// ../packages/cli/src/project.ts
-import {
-  closeSync,
-  constants,
-  existsSync as existsSync2,
-  fstatSync,
-  lstatSync as lstatSync3,
-  openSync,
-  readdirSync,
-  readFileSync as readFileSync2,
-  realpathSync as realpathSync3,
-  statSync
-} from "node:fs";
-import { join as join2, relative as relative3, sep as sep3 } from "node:path";
-
-// ../packages/cli/src/safety.ts
-import { randomBytes } from "node:crypto";
-import { existsSync, lstatSync as lstatSync2, realpathSync as realpathSync2 } from "node:fs";
-import { dirname as dirname3, isAbsolute as isAbsolute2, relative as relative2, resolve, sep as sep2 } from "node:path";
-var SAFE_NAME = /^[A-Za-z0-9._/-]+$/;
-function checkName(value, what, allowSlash) {
-  const segments = value.split("/");
-  const ok = SAFE_NAME.test(value) && !value.startsWith("-") && !value.startsWith("/") && (allowSlash || !value.includes("/")) && !segments.includes("..") && !segments.some((s) => s.startsWith("-"));
-  if (!ok) {
-    throw new UsageError(
-      `Unsafe ${what} "${value}": use only letters, digits, ".", "_", "-"${allowSlash ? ' and "/"' : ""}, no leading "-" and no ".." (latexmk passes it to a shell).`
-    );
-  }
-  return value;
-}
-function safeJobname(value) {
-  return checkName(value, "jobname", false);
-}
-function safeRelPath(value, what = "main file") {
-  return checkName(value.split("\\").join("/"), what, true);
-}
-var IMAGE_REF = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?(?::[0-9]+)?\/)?[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*(?:\/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(?:@sha256:[a-f0-9]{64})?$/;
-function safeImage(value, where = "image") {
-  if (value.startsWith("-") || !IMAGE_REF.test(value)) {
-    throw new UsageError(
-      `Invalid Docker image "${value}" (${where}). Use a reference like ghcr.io/owner/name:tag.`
-    );
-  }
-  return value;
-}
-function isInside(root, target) {
-  const rel2 = relative2(root, target);
-  return rel2 === "" || !rel2.startsWith(`..${sep2}`) && rel2 !== ".." && !isAbsolute2(rel2);
-}
-function insideRoot(root, path, what) {
-  const abs = resolve(root, path);
-  let ok = isInside(root, abs);
-  if (ok && existsSync(abs)) {
-    try {
-      ok = isInside(realpathSync2(root), realpathSync2(abs));
-    } catch {
-    }
-  }
-  if (!ok) {
-    throw new UsageError(
-      `${what} "${path}" is outside the project directory (${root}). Overfull only reads and writes files inside the project.`
-    );
-  }
-  return abs;
-}
-function insideRootOrUndefined(root, path) {
-  try {
-    return insideRoot(root, path, "path");
-  } catch {
-    return void 0;
-  }
-}
-var CI_VARS = [
-  "CI",
-  "GITHUB_ACTIONS",
-  "TF_BUILD",
-  "GITLAB_CI",
-  "BUILDKITE",
-  "CIRCLECI",
-  "JENKINS_URL",
-  "TEAMCITY_VERSION"
-];
-function isCI(env) {
-  return CI_VARS.some((k) => {
-    const v = env[k];
-    return v !== void 0 && v !== "" && v.toLowerCase() !== "false" && v !== "0";
-  });
-}
-var LEADING_WS = new RegExp(`^${RUNNER_WHITESPACE}+`);
-function stopCommands() {
-  const token = `overfull-${randomBytes(16).toString("hex")}`;
-  return { start: `::stop-commands::${token}
-`, end: `::${token}::
-` };
-}
-
-// ../packages/cli/src/project.ts
-var SKIP_DIRS = /* @__PURE__ */ new Set([
-  ".git",
-  "node_modules",
-  ".overfull",
-  "_minted",
-  "dist",
-  ".github",
-  ".agents",
-  ".claude"
-]);
-var MAX_FILES = 5e3;
-function listFiles(root) {
-  const out = [];
-  let realRoot = root;
-  try {
-    realRoot = realpathSync3(root);
-  } catch {
-  }
-  const walk = (dir) => {
-    let entries;
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      return;
-    }
-    for (const name of entries.sort()) {
-      if (out.length >= MAX_FILES) return;
-      const full = join2(dir, name);
-      let st;
-      try {
-        st = lstatSync3(full);
-        if (st.isSymbolicLink()) {
-          const target = statSync(full);
-          if (target.isDirectory()) continue;
-          if (!insideRootOrUndefined(realRoot, realpathSync3(full))) continue;
-          st = target;
-        }
-      } catch {
-        continue;
-      }
-      if (st.isDirectory()) {
-        if (!SKIP_DIRS.has(name)) walk(full);
-      } else out.push(relative3(root, full).split(sep3).join("/"));
-    }
-  };
-  walk(root);
-  return out;
-}
-function isDiffArtifact(path) {
-  const name = path.split("/").pop() ?? path;
-  return name.startsWith("overfull-diff") || /-diff[0-9a-f]{4,40}\.tex$/i.test(name);
-}
-var MAX_TEX_BYTES = 20 * 1024 * 1024;
-function readTexFiles(root, files, skipped3 = []) {
-  const out = [];
-  for (const path of files) {
-    if (!/\.(tex|sty|cls)$/i.test(path) || isDiffArtifact(path)) continue;
-    const abs = join2(root, path);
-    let fd;
-    try {
-      fd = openSync(abs, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
-    } catch {
-      continue;
-    }
-    try {
-      const st = fstatSync(fd);
-      if (!st.isFile()) {
-        skipped3.push({ path, reason: "not a regular file" });
-        continue;
-      }
-      if (st.size > MAX_TEX_BYTES) {
-        skipped3.push({ path, reason: `larger than ${MAX_TEX_BYTES / 1024 / 1024} MB` });
-        continue;
-      }
-      out.push({ path, content: readFileSync2(fd, "utf8") });
-    } catch (err) {
-      skipped3.push({ path, reason: err instanceof Error ? err.message : String(err) });
-    } finally {
-      closeSync(fd);
-    }
-  }
-  return out;
-}
-function readIfExists(path) {
-  if (!existsSync2(path)) return void 0;
-  requireRegularFile(path);
-  return readFileSync2(path, "utf8");
-}
-function requireRegularFile(path) {
-  let st;
-  try {
-    st = statSync(path);
-  } catch (err) {
-    throw new UsageError(
-      `Cannot read ${path}: ${err instanceof Error ? err.message : String(err)}`
-    );
-  }
-  if (!st.isFile()) {
-    throw new UsageError(
-      `${path} is not a file (${st.isDirectory() ? "it is a directory" : "it is a pipe, socket or device"}).`
-    );
-  }
-}
-function readAux(root, jobname, auxDir = ".") {
-  const dir = join2(root, auxDir);
-  const mainPath = insideRootOrUndefined(root, join2(dir, `${jobname}.aux`));
-  const main3 = mainPath ? readIfExists(mainPath) : void 0;
-  if (main3 === void 0) return void 0;
-  const parts = [main3];
-  for (const m of main3.matchAll(/\\@input\{([^}]+\.aux)\}/g)) {
-    const p = insideRootOrUndefined(root, join2(dir, m[1]));
-    const extra = p ? readIfExists(p) : void 0;
-    if (extra) parts.push(extra);
-  }
-  return parts.join("\n");
-}
-function detectMain(root, outputDirs = ["."]) {
-  if (isRegular(join2(root, "main.tex")))
-    return { main: "main.tex", how: "main.tex", candidates: [] };
-  let names;
-  try {
-    names = readdirSync(root).sort();
-  } catch {
-    return { candidates: [] };
-  }
-  const candidates = [];
-  for (const name of names) {
-    if (!/\.tex$/i.test(name) || isDiffArtifact(name)) continue;
-    const abs = join2(root, name);
-    let fd;
-    try {
-      fd = openSync(abs, "r");
-      const st = fstatSync(fd);
-      if (!st.isFile() || st.size > MAX_TEX_BYTES) continue;
-      const text2 = readFileSync2(fd, "utf8").replace(/(^|[^\\])%.*$/gm, "$1");
-      if (/\\documentclass\b/.test(text2)) candidates.push(name);
-    } catch {
-    } finally {
-      if (fd !== void 0) closeSync(fd);
-    }
-  }
-  if (candidates.length === 1)
-    return { main: candidates[0], how: "only document", candidates };
-  if (candidates.length > 1) {
-    const built = candidates.filter((c) => {
-      const stem = c.replace(/\.tex$/i, "");
-      return outputDirs.some(
-        (d) => ["log", "pdf"].some((ext) => isRegular(join2(root, d, `${stem}.${ext}`)))
-      );
-    });
-    if (built.length === 1)
-      return { main: built[0], how: "matching build output", candidates };
-  }
-  return { candidates };
-}
-function isRegular(path) {
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
-function ambiguousMainError(candidates) {
-  const first2 = candidates[0] ?? "paper.tex";
-  return new UsageError(
-    `More than one .tex file here has a \\documentclass: ${candidates.join(", ")}.
-Say which is the main file: \`overfull check --main ${first2}\`, or set \`main: ${first2}\` in overfull.yml.`
-  );
-}
-
-// ../packages/cli/src/config.ts
-var DEFAULT_IMAGE = "ghcr.io/amet13/overfull:3";
-var CONFIG_FILE = "overfull.yml";
-function latexmkrcDirs(root) {
-  const out = {};
-  for (const name of [".latexmkrc", "latexmkrc"]) {
-    const p = join3(root, name);
-    if (!existsSync3(p)) continue;
-    const text2 = readFileSync3(p, "utf8").replace(/(^|[^\\$])#.*$/gm, "$1");
-    const o = /\$out_dir\s*=\s*['"]([^'"]+)['"]/.exec(text2);
-    const a = /\$aux_dir\s*=\s*['"]([^'"]+)['"]/.exec(text2);
-    const plain2 = (d) => d !== void 0 && /^[A-Za-z0-9._/-]+$/.test(d) && !d.startsWith("/") && !d.startsWith("-") && !d.split("/").includes("..");
-    if (plain2(o?.[1])) out.outDir = o?.[1];
-    if (plain2(a?.[1])) out.auxDir = a?.[1];
-    const j = /\$jobname\s*=\s*['"]([^'"]+)['"]/.exec(text2);
-    if (j?.[1] && /^[A-Za-z0-9._-]+$/.test(j[1]) && !j[1].startsWith("-")) out.jobname = j[1];
-    break;
-  }
-  return out;
-}
-var TOP_KEYS = ["main", "jobname", "bib", "profile", "checks", "references", "venue", "build"];
-var VENUE_KEYS = [
-  "pageLimit",
-  "paper",
-  "anonymous",
-  "disclosure",
-  "accessibility",
-  "arxiv",
-  "checks",
-  "name",
-  "description",
-  "extends"
-];
-var LEVELS = ["required", "recommended", "off"];
-var ConfigError = class extends UsageError {
-  constructor(file, message) {
-    super(`${basename2(file)}: ${message}`);
-  }
-};
-var isObj2 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-function stringList(v, field, file) {
-  if (typeof v === "string") return [v];
-  if (Array.isArray(v) && v.every((x) => typeof x === "string")) return v;
-  throw new ConfigError(file, `\`${field}\` must be a string or a list of strings`);
-}
-function closest2(word, options) {
-  const dist = (a, b) => {
-    const d = Array.from(
-      { length: a.length + 1 },
-      (_, i) => [i, ...Array(b.length).fill(0)]
-    );
-    for (let j = 1; j <= b.length; j++) d[0][j] = j;
-    for (let i = 1; i <= a.length; i++) {
-      for (let j = 1; j <= b.length; j++) {
-        const row = d[i];
-        const prev = d[i - 1];
-        row[j] = Math.min(
-          prev[j] + 1,
-          row[j - 1] + 1,
-          prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-        );
-      }
-    }
-    return d[a.length][b.length];
-  };
-  const best = options.map((o) => ({ o, d: dist(word.toLowerCase(), o.toLowerCase()) })).sort((x, y) => x.d - y.d)[0];
-  return best && best.d <= Math.max(2, Math.floor(word.length / 3)) ? best.o : void 0;
-}
-function checkKeys(obj, allowed, where, file) {
-  for (const k of Object.keys(obj)) {
-    if (allowed.includes(k)) continue;
-    const hint = closest2(k, allowed);
-    throw new ConfigError(
-      file,
-      `unknown key \`${where}${k}\`${hint ? ` (did you mean \`${where}${hint}\`?)` : ""}`
-    );
-  }
-}
-function validateVenue(v, file) {
-  if (!isObj2(v)) throw new ConfigError(file, "`venue` must be a mapping");
-  checkKeys(v, VENUE_KEYS, "venue.", file);
-  const out = {};
-  if (v.pageLimit !== void 0) {
-    const pl = v.pageLimit;
-    if (typeof pl === "number") out.pageLimit = { max: pl };
-    else if (isObj2(pl) && typeof pl.max === "number" && pl.max > 0) {
-      out.pageLimit = { max: pl.max };
-      if (pl.endLabel !== void 0) {
-        if (typeof pl.endLabel !== "string")
-          throw new ConfigError(file, "`venue.pageLimit.endLabel` must be a string");
-        out.pageLimit.endLabel = pl.endLabel;
-      }
-    } else
-      throw new ConfigError(
-        file,
-        "`venue.pageLimit` must be a number or `{ max: 9, endLabel: overfull:main-end }`"
-      );
-  }
-  if (v.paper !== void 0) {
-    if (!["a4", "letter", "any"].includes(String(v.paper)))
-      throw new ConfigError(file, "`venue.paper` must be a4, letter or any");
-    out.paper = v.paper;
-  }
-  for (const k of ["anonymous", "arxiv"]) {
-    if (v[k] === void 0) continue;
-    if (typeof v[k] !== "boolean")
-      throw new ConfigError(file, `\`venue.${k}\` must be true or false`);
-    out[k] = v[k];
-  }
-  for (const k of ["disclosure", "accessibility"]) {
-    if (v[k] === void 0) continue;
-    if (!LEVELS.includes(String(v[k])))
-      throw new ConfigError(file, `\`venue.${k}\` must be required, recommended or off`);
-    out[k] = v[k];
-  }
-  for (const k of ["name", "description", "extends"]) {
-    if (v[k] !== void 0) out[k] = String(v[k]);
-  }
-  if (v.checks !== void 0) out.checks = parseChecks(v.checks, file, "venue.checks");
-  return out;
-}
-function parseChecks(v, file, field = "checks") {
-  const list3 = stringList(v, field, file);
-  for (const c of list3) {
-    if (!CHECK_IDS.includes(c)) {
-      throw new ConfigError(
-        file,
-        `unknown check "${c}" in \`${field}\`; use ${CHECK_IDS.join(", ")}`
-      );
-    }
-  }
-  return list3;
-}
-function discoverBib(root, main3) {
-  const mainPath = join3(root, main3);
-  if (existsSync3(mainPath)) {
-    const src = readFileSync3(mainPath, "utf8").replace(/(^|[^\\])%.*$/gm, "$1");
-    const found = [];
-    for (const m of src.matchAll(/\\addbibresource(?:\[[^\]]*\])?\{([^}]+)\}/g))
-      found.push(m[1].trim());
-    for (const m of src.matchAll(/\\bibliography\{([^}]+)\}/g)) {
-      for (const b of m[1].split(",")) {
-        const name = b.trim();
-        if (name) found.push(name.endsWith(".bib") ? name : `${name}.bib`);
-      }
-    }
-    const rel2 = dirname4(main3);
-    const resolved = found.map((f) => rel2 === "." || isAbsolute3(f) ? f : join3(rel2, f));
-    if (resolved.length) return [...new Set(resolved)];
-  }
-  try {
-    return readdirSync2(root).filter((f) => f.endsWith(".bib")).sort();
-  } catch {
-    return [];
-  }
-}
-function loadConfig(cwd, explicit, env = {}, opts = {}) {
-  let file;
-  if (explicit) {
-    file = resolve2(cwd, explicit);
-    if (!existsSync3(file)) throw new UsageError(`Config file not found: ${explicit}`);
-  } else if (existsSync3(join3(cwd, CONFIG_FILE))) {
-    file = join3(cwd, CONFIG_FILE);
-  } else if (existsSync3(join3(cwd, "overfull.yaml"))) {
-    file = join3(cwd, "overfull.yaml");
-  }
-  const root = file ? dirname4(file) : cwd;
-  let raw = {};
-  if (file) {
-    let data;
-    try {
-      data = (0, import_yaml.parse)(readFileSync3(file, "utf8"));
-    } catch (err) {
-      throw new ConfigError(
-        file,
-        `invalid YAML: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`
-      );
-    }
-    if (data !== null && data !== void 0 && !isObj2(data))
-      throw new ConfigError(file, "must be a mapping of keys to values");
-    raw = data ?? {};
-    checkKeys(raw, TOP_KEYS, "", file);
-  }
-  const f = file ?? join3(root, CONFIG_FILE);
-  if (raw.main !== void 0 && typeof raw.main !== "string")
-    throw new ConfigError(f, "`main` must be a file name");
-  if (raw.jobname !== void 0 && typeof raw.jobname !== "string")
-    throw new ConfigError(f, "`jobname` must be a string");
-  const rc = latexmkrcDirs(root);
-  let main3;
-  let mainSource;
-  let mainCandidates;
-  if (opts.main !== void 0) {
-    main3 = safeRelPath(opts.main);
-    mainSource = "--main";
-    if (!existsSync3(join3(root, main3))) throw new UsageError(`Main file not found: ${opts.main}`);
-  } else if (raw.main !== void 0) {
-    main3 = safeRelPath(raw.main);
-    mainSource = "overfull.yml";
-  } else {
-    const found = detectMain(root, [
-      .../* @__PURE__ */ new Set([".", rc.outDir ?? ".", rc.auxDir ?? rc.outDir ?? "."])
-    ]);
-    if (found.main) {
-      main3 = found.main;
-      mainSource = found.how === "main.tex" ? "main.tex" : "detected";
-    } else {
-      main3 = "main.tex";
-      mainSource = "default";
-      if (found.candidates.length > 1) mainCandidates = found.candidates;
-    }
-  }
-  const jobnameSource = raw.jobname !== void 0 ? "overfull.yml" : rc.jobname ? ".latexmkrc" : "main file";
-  const jobname = safeJobname(
-    raw.jobname ?? rc.jobname ?? basename2(main3).replace(/\.tex$/i, "")
-  );
-  const bib = raw.bib !== void 0 ? stringList(raw.bib, "bib", f) : discoverBib(root, main3);
-  let inline2 = {};
-  let profileName = "generic";
-  if (typeof raw.profile === "string") profileName = raw.profile;
-  else if (isObj2(raw.profile)) inline2 = validateVenue(raw.profile, f);
-  else if (raw.profile !== void 0) throw new ConfigError(f, "`profile` must be a profile name");
-  if (raw.venue !== void 0) inline2 = { ...inline2, ...validateVenue(raw.venue, f) };
-  let profile;
-  try {
-    profile = resolveProfile({ extends: inline2.extends ?? profileName, ...inline2 });
-  } catch (err) {
-    if (err instanceof UnknownProfileError) throw new ConfigError(f, err.message);
-    throw err;
-  }
-  const checks = raw.checks !== void 0 ? parseChecks(raw.checks, f) : profile.checks ?? [...CHECK_IDS];
-  const refs = raw.references ?? {};
-  if (!isObj2(refs)) throw new ConfigError(f, "`references` must be a mapping");
-  checkKeys(refs, ["mailto", "ignore", "cache", "requireCite", "reportUncited"], "references.", f);
-  const cache2 = refs.cache ?? "user";
-  if (cache2 !== "user" && cache2 !== "project")
-    throw new ConfigError(f, "`references.cache` must be user or project");
-  if (refs.requireCite !== void 0 && typeof refs.requireCite !== "boolean")
-    throw new ConfigError(f, "`references.requireCite` must be true or false");
-  const requireCite = refs.requireCite === true;
-  if (refs.reportUncited !== void 0 && typeof refs.reportUncited !== "boolean")
-    throw new ConfigError(f, "`references.reportUncited` must be true or false");
-  const reportUncited = refs.reportUncited === true;
-  const mailto = (typeof refs.mailto === "string" ? refs.mailto : void 0) ?? env.OVERFULL_MAILTO;
-  const ignore = refs.ignore !== void 0 ? stringList(refs.ignore, "references.ignore", f) : [];
-  const build2 = raw.build ?? {};
-  if (!isObj2(build2)) throw new ConfigError(f, "`build` must be a mapping");
-  checkKeys(build2, ["engine", "image", "outDir"], "build.", f);
-  const engine = build2.engine ?? "auto";
-  if (!["auto", "local", "docker"].includes(engine))
-    throw new ConfigError(f, "`build.engine` must be auto, local or docker");
-  if (build2.image !== void 0 && typeof build2.image !== "string")
-    throw new ConfigError(f, "`build.image` must be a Docker image name");
-  const image = env.OVERFULL_IMAGE ? safeImage(env.OVERFULL_IMAGE, "OVERFULL_IMAGE") : build2.image ? safeImage(build2.image, "build.image in overfull.yml") : DEFAULT_IMAGE;
-  if (build2.outDir !== void 0 && typeof build2.outDir !== "string")
-    throw new ConfigError(f, "`build.outDir` must be a directory name");
-  const norm = (d) => d === "." || d === "./" ? "." : d.replace(/^\.\//, "").replace(/\/+$/, "");
-  const outDir = norm(
-    safeRelPath(build2.outDir ?? rc.outDir ?? ".", "output directory")
-  );
-  const auxDir = build2.outDir !== void 0 ? outDir : norm(safeRelPath(rc.auxDir ?? outDir, "aux directory"));
-  const config = {
-    root,
-    main: main3,
-    mainSource,
-    ...mainCandidates ? { mainCandidates } : {},
-    jobname,
-    bib,
-    bibDiscovered: raw.bib === void 0,
-    jobnameFromConfig: jobnameSource !== "main file",
-    jobnameSource,
-    profile,
-    venue: inline2,
-    checks,
-    references: { ...mailto ? { mailto } : {}, ignore, cache: cache2, requireCite, reportUncited },
-    build: { engine, image, outDir, auxDir, outDirFromConfig: build2.outDir !== void 0 }
-  };
-  if (file) config.file = file;
-  return config;
-}
-function requireMain(config) {
-  if (config.mainCandidates) throw ambiguousMainError(config.mainCandidates);
-}
-
 // ../packages/cli/src/pdf.ts
 import { readFileSync as readFileSync4 } from "node:fs";
 import { relative as relative4 } from "node:path";
-
-// ../packages/cli/src/tools.ts
-import { spawn } from "node:child_process";
-import { accessSync, constants as constants2 } from "node:fs";
-import { delimiter, join as join4 } from "node:path";
-function which(cmd, env = process.env, opts = {}) {
-  const win = (opts.platform ?? process.platform) === "win32";
-  const exts = win ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && (opts.allowBatch || !/^\.(bat|cmd)$/i.test(e))) : [""];
-  const sepChar = win ? ";" : delimiter;
-  for (const dir of (env.PATH ?? env.Path ?? "").split(sepChar)) {
-    if (!dir) continue;
-    for (const ext of exts) {
-      const p = join4(dir, cmd + ext);
-      try {
-        accessSync(p, win ? constants2.F_OK : constants2.X_OK);
-        return p;
-      } catch {
-      }
-    }
-  }
-  return void 0;
-}
-function run(cmd, args, opts = {}) {
-  return new Promise((resolvePromise) => {
-    let stdout = "";
-    let stderr = "";
-    let pending = "";
-    const child = spawn(cmd, args, {
-      cwd: opts.cwd,
-      env: opts.env,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: opts.shell === true
-    });
-    const timer = opts.timeoutMs ? setTimeout(() => child.kill("SIGTERM"), opts.timeoutMs) : void 0;
-    const feed = (chunk) => {
-      if (!opts.onLine) return;
-      pending += chunk;
-      const lines = pending.split(/\r?\n/);
-      pending = lines.pop() ?? "";
-      for (const l of lines) opts.onLine(l);
-    };
-    child.stdout.setEncoding("utf8").on("data", (d) => {
-      stdout += d;
-      feed(d);
-    });
-    child.stderr.setEncoding("utf8").on("data", (d) => {
-      stderr += d;
-      feed(d);
-    });
-    child.on("error", (err) => {
-      if (timer) clearTimeout(timer);
-      resolvePromise({ code: 127, stdout, stderr, error: err.message });
-    });
-    child.on("close", (code3, signal) => {
-      if (timer) clearTimeout(timer);
-      if (pending && opts.onLine) opts.onLine(pending);
-      resolvePromise({ code: code3 ?? (signal ? 124 : 1), stdout, stderr });
-    });
-  });
-}
-async function dockerAvailable(env) {
-  if (!which("docker", env)) return false;
-  const r = await run("docker", ["info", "--format", "{{.ServerVersion}}"], { timeoutMs: 8e3 });
-  return r.code === 0;
-}
-function quoteWindowsArg(arg) {
-  if (/["%!^&|<>\r\n]/.test(arg)) throw new Error(`Unsupported character in argument: ${arg}`);
-  return /[\s]/.test(arg) || arg === "" ? `"${arg}"` : arg;
-}
-async function dockerImagePresent(image) {
-  const r = await run("docker", ["image", "inspect", image], { timeoutMs: 8e3 });
-  return r.code === 0;
-}
-function dockerUser() {
-  return typeof process.getuid === "function" && typeof process.getgid === "function" ? ["--user", `${process.getuid()}:${process.getgid()}`] : ["--user", "65534:65534"];
-}
-function bindMount(dir, readonly = false) {
-  const field = `source=${dir}`;
-  const source = /[",]/.test(field) ? `"${field.replace(/"/g, '""')}"` : field;
-  return ["--mount", `type=bind,${source},target=/work${readonly ? ",readonly" : ""}`];
-}
-function dockerToolArgs(image, dir, tool, args) {
-  return [
-    "run",
-    "--rm",
-    "--network",
-    "none",
-    "--cap-drop",
-    "ALL",
-    "--security-opt",
-    "no-new-privileges",
-    ...dockerUser(),
-    "-e",
-    "HOME=/tmp",
-    ...bindMount(dir, true),
-    "-w",
-    "/work",
-    "--entrypoint",
-    tool,
-    image,
-    ...args
-  ];
-}
-
-// ../packages/cli/src/pdf.ts
-var pdfjsPromise;
 function loadPdfjs() {
   pdfjsPromise ??= (async () => {
     const warn3 = console.warn;
@@ -117684,7 +118300,7 @@ function loadPdfjs() {
     try {
       const worker = await Promise.resolve().then(() => (init_pdf_worker(), pdf_worker_exports));
       globalThis.pdfjsWorker = worker;
-      return await Promise.resolve().then(() => (init_pdf(), pdf_exports));
+      return await Promise.resolve().then(() => (init_pdf2(), pdf_exports));
     } finally {
       console.warn = warn3;
     }
@@ -117710,6 +118326,14 @@ async function readPdfFacts(path, opts = {}) {
   }
   return facts;
 }
+var pdfjsPromise;
+var init_pdf3 = __esm({
+  "../packages/cli/src/pdf.ts"() {
+    "use strict";
+    init_src();
+    init_tools();
+  }
+});
 
 // ../packages/cli/src/verapdf.ts
 import { relative as relative5 } from "node:path";
@@ -117758,17 +118382,26 @@ async function runVeraPdf(pdf, env, opts = {}) {
   const ua1 = await attempt("ua1");
   return ua1.error ? first2 : ua1;
 }
+var init_verapdf2 = __esm({
+  "../packages/cli/src/verapdf.ts"() {
+    "use strict";
+    init_src();
+    init_tools();
+  }
+});
 
 // ../packages/cli/src/version.ts
-var VERSION = true ? "3.1.1" : readVersion();
+var VERSION;
+var init_version = __esm({
+  "../packages/cli/src/version.ts"() {
+    "use strict";
+    VERSION = true ? "3.1.1" : readVersion();
+  }
+});
 
 // ../packages/cli/src/check.ts
-var skipped2 = (check2, reason) => ({
-  check: check2,
-  status: "skipped",
-  problems: [],
-  skippedReason: reason
-});
+import { existsSync as existsSync4 } from "node:fs";
+import { join as join5, relative as relative6 } from "node:path";
 function sourcesOf(inp) {
   if (!inp.sources) {
     const files = listFiles(inp.root);
@@ -117777,7 +118410,6 @@ function sourcesOf(inp) {
   }
   return inp.sources;
 }
-var rel = (root, abs) => relative6(root, abs).split("\\").join("/") || ".";
 function missingInputError(what, given, config) {
   const label = { pdf: "PDF", log: "Log file", aux: "Aux file", bib: "Bibliography file" }[what];
   let hint = "";
@@ -118163,25 +118795,45 @@ function exitCodeFor(report, failOn) {
   if (failOn === "warning" && report.status === "warn") return 1;
   return 0;
 }
+var skipped2, rel;
+var init_check3 = __esm({
+  "../packages/cli/src/check.ts"() {
+    "use strict";
+    init_src();
+    init_cache2();
+    init_config();
+    init_io();
+    init_pdf3();
+    init_project();
+    init_safety();
+    init_tools();
+    init_verapdf2();
+    init_version();
+    skipped2 = (check2, reason) => ({
+      check: check2,
+      status: "skipped",
+      problems: [],
+      skippedReason: reason
+    });
+    rel = (root, abs) => relative6(root, abs).split("\\").join("/") || ".";
+  }
+});
 
-// ../packages/cli/src/commands/diff.ts
-import { basename as basename3, dirname as dirname5, join as join6, relative as relative7 } from "node:path";
-var DIFF_DIR = join6(".overfull", "diff");
+// src/index.ts
+import { appendFileSync, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname as dirname5, join as join6, relative as relative7, resolve as resolve4 } from "node:path";
 
-// ../packages/cli/src/guard/hook.ts
-var MAX_PAYLOAD_BYTES = 1024 * 1024;
-
-// ../packages/cli/src/guard/staged.ts
-var MAX_BLOB_BYTES = 32 * 1024 * 1024;
-
-// ../packages/cli/src/mcp/protocol.ts
-var LEGACY_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
-var LEGACY_LATEST = LEGACY_VERSIONS[0];
-
-// ../packages/cli/src/mcp/stdio.ts
-var MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
+// ../packages/cli/src/index.ts
+init_src();
+init_check3();
+init_config();
+init_io();
 
 // ../packages/cli/src/main.ts
+init_io();
+init_safety();
+init_version();
 var mainHelp = `overfull ${VERSION} \u2014 preflight for LaTeX papers and theses
 
 Usage: overfull <command> [options]
@@ -118201,6 +118853,11 @@ Commands:
 
 Run \`overfull <command> --help\` for options. Docs: https://amet13.github.io/overfull/
 `;
+
+// ../packages/cli/src/index.ts
+init_pdf3();
+init_safety();
+init_version();
 
 // src/inputs.ts
 import { isAbsolute as isAbsolute4, resolve as resolve3 } from "node:path";
@@ -118284,7 +118941,7 @@ async function main2() {
     `${guard.start}${neutralizeWorkflowCommands(formatHuman(report, { color: true, verbose: true }))}${guard.end}`
   );
   if (inputs.annotations) {
-    const root = relative8(workspace, resolve4(inputs.check.cwd ?? workspace)) || ".";
+    const root = relative7(workspace, resolve4(inputs.check.cwd ?? workspace)) || ".";
     for (const line of githubAnnotations(report, { root, limit: 50 }))
       process.stdout.write(`${line}
 `);
@@ -118293,17 +118950,17 @@ async function main2() {
     appendFileSync(env.GITHUB_STEP_SUMMARY, `${formatMarkdown(report)}
 `);
   }
-  const reportPath = join7(env.RUNNER_TEMP ?? tmpdir(), "overfull-report.json");
+  const reportPath = join6(env.RUNNER_TEMP ?? tmpdir(), "overfull-report.json");
   writeFileSync2(reportPath, formatJson(report));
   if (inputs.sarif) {
     const cwd = resolve4(inputs.check.cwd ?? workspace);
     const fallbackFile = sarifFallbackFile(cwd, env);
     const sarifPath = resolve4(workspace, inputs.sarif);
-    mkdirSync2(dirname6(sarifPath), { recursive: true });
+    mkdirSync2(dirname5(sarifPath), { recursive: true });
     writeFileSync2(
       sarifPath,
       formatSarif(report, {
-        root: relative8(workspace, cwd) || ".",
+        root: relative7(workspace, cwd) || ".",
         ...fallbackFile ? { fallbackFile } : {}
       })
     );

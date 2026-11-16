@@ -12,13 +12,9 @@ on:
       - image
       - pages
       - release
-      - bench
-      - update-pins
       - regenerate
+      - maintenance
       - autorelease
-      - venues-watch
-      - sources-health
-      - refresh-recordings
       - automerge
       - OpenSSF Scorecard
     types: [completed]

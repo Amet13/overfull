@@ -237,3 +237,44 @@ describe('overfull pages', () => {
     expect(io.stderrText()).toContain('the PDF has 2 pages');
   });
 });
+
+describe('check: several report files from one run', () => {
+  it('--write writes each format once and keeps the normal output and exit code', async () => {
+    const dir = tempCopy('project');
+    const io = memIo(dir);
+    const code = await main(
+      [
+        'check',
+        '--offline',
+        '--write',
+        'json=out/report.json',
+        '--write',
+        'markdown=out/summary.md',
+        '--write',
+        'annotations=out/annotations.txt',
+        '--write',
+        'html=out/report.html',
+      ],
+      io,
+    );
+    expect(code).toBe(1);
+    expect(io.stdoutText()).toContain('FAIL');
+    const read = (f: string) => readFileSync(join(dir, 'out', f), 'utf8');
+    expect((JSON.parse(read('report.json')) as Report).status).toBe('fail');
+    expect(read('summary.md')).toContain('## Overfull preflight: FAIL');
+    expect(read('annotations.txt')).toMatch(/^::error /m);
+    const html = read('report.html');
+    expect(html).toMatch(/^<!doctype html>/);
+    expect(html).toContain('citation-key-missing');
+    expect(html).not.toContain('<script');
+  });
+
+  it('--html prints the page; a bad --write is a usage error', async () => {
+    const dir = tempCopy('project');
+    const io = memIo(dir);
+    await main(['check', '--offline', '--html'], io);
+    expect(io.stdoutText()).toContain('<title>Overfull report: thesis.pdf</title>');
+    expect(await main(['check', '--offline', '--write', 'pdf=x'], memIo(dir))).toBe(2);
+    expect(await main(['check', '--offline', '--write', 'json'], memIo(dir))).toBe(2);
+  });
+});

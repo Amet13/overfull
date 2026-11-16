@@ -10,20 +10,20 @@ is still yours.
 | When | Workflow | What it does |
 | --- | --- | --- |
 | Mondays | Dependabot | Pull requests for npm packages, GitHub Actions (also in the templates' workflows) and Docker base images, including the pinned TeX Live image. Patch, minor and digest updates are labelled `automerge`; major updates wait for you. |
-| Tuesdays | `update-pins.yml` | Updates what Dependabot cannot: Node.js and veraPDF in `docker/Dockerfile` (version and SHA-256), and pnpm in `packageManager` and `docker/pnpm` together. |
+| Tuesdays | `maintenance.yml` (update-pins) | Updates what Dependabot cannot: Node.js and veraPDF in `docker/Dockerfile` (version and SHA-256), and pnpm in `packageManager` and `docker/pnpm` together. |
 | After each merge, and Wednesdays | `regenerate.yml` | Rebuilds `action/dist`, the agent files in the templates and the venue module, and opens a pull request when they changed (Dependabot cannot rebuild the bundled Action). |
 | When ci or codeql finishes | `automerge.yml` | Merges a same-repository pull request labelled `automerge` once every check on its head commit has passed, then starts ci, image, pages and regenerate on `main` (a merge made by a workflow starts no workflows by itself). |
 | Sundays | `ci.yml` | The full CI on `main`, so a change outside the repository (runner images, registries) is noticed without a commit. |
 | 1st of the month | `autorelease.yml` (propose) | When shipped files changed since the last release, opens "Release vX.Y.Z+1": version bump, a CHANGELOG section from the commit subjects, rebuilt `action/dist`. |
 | Daily | `autorelease.yml` (publish) | When `package.json` holds a version that has no tag yet and CI passed on `main`, starts `release.yml` with publish: tag, GitHub release with executables, Homebrew and Scoop files, and the three images. |
-| 3rd of the month | `bench.yml` | Runs the reference-check benchmark against the live indexes and opens a pull request with `bench/refs/results.json`; the accuracy page renders it. |
-| Wednesdays | `sources-health.yml` | Asks every reference source (doi.org, CrossRef, dblp, arXiv, OpenAlex, Semantic Scholar, ACL Anthology, Europe PMC) for one known work and one invented title. Sources that stop answering, answer with a bot wall, or no longer find the known work are listed in one issue: "Reference sources need a look". |
-| 5th of the month | `venues-watch.yml` | Compares every venue profile's official pages (and arXiv's build pages) with the text stored when a person last read them, and puts the changed lines, the next edition's call for papers, and profiles not checked for a year in one issue: "Venue profiles need a look". Also checks each style file against the venue's official kit and opens a pull request when a hash changed. |
-| 9th of the month | `refresh-recordings.yml` | Records again the live answers that the offline reference tests replay, and opens a pull request: green is merged, red means a source changed its answers or format. |
+| 3rd of the month | `maintenance.yml` (bench) | Runs the reference-check benchmark against the live indexes and opens a pull request with `bench/refs/results.json`; the accuracy page renders it. |
+| Wednesdays | `maintenance.yml` (sources-health) | Asks every reference source (doi.org, CrossRef, dblp, arXiv, OpenAlex, Semantic Scholar, ACL Anthology, Europe PMC) for one known work and one invented title. Sources that stop answering, answer with a bot wall, or no longer find the known work are listed in one issue: "Reference sources need a look". |
+| 5th of the month | `maintenance.yml` (venues-watch) | Compares every venue profile's official pages (and arXiv's build pages) with the text stored when a person last read them, and puts the changed lines, the next edition's call for papers, and profiles not checked for a year in one issue: "Venue profiles need a look". Also checks each style file against the venue's official kit and opens a pull request when a hash changed. |
+| 9th of the month | `maintenance.yml` (refresh-recordings) | Records again the live answers that the offline reference tests replay, and opens a pull request: green is merged, red means a source changed its answers or format. |
 | After any of the above | `watchdog.yml` | Opens "Automation failed: <workflow>" when a run on `main`, a scheduled run or an automation branch fails, and closes it when that workflow next succeeds. |
 
 Every pull request goes through the same CI as a person's: lint, types, unit
-tests on three operating systems, the image builds (full, check-only, medium),
+tests on three operating systems, the image builds (full, slim, check-only, in parallel),
 the corpus on TeX Live and the three templates built and checked. Nothing is
 merged on a red or missing check.
 
@@ -31,7 +31,7 @@ merged on a red or missing check.
 
 - **Major updates.** Dependabot's major-version pull requests are not labelled
   `automerge`. Review the changelog of the dependency, then merge or close.
-- **Venue rules.** `venues-watch.yml` reports which official pages changed and
+- **Venue rules.** The venues-watch task reports which official pages changed and
   shows the changed lines. Read the venue's pages and update or add the profile by
   hand (CONTRIBUTING.md, "Adding a venue"), then run
   `node scripts/venues-watch.mjs --accept <id>` in the same pull request. Page
@@ -66,7 +66,9 @@ use.
 
 ## Turning it off
 
-Disable a workflow under Actions → the workflow → "Disable workflow". To stop
+Disable a workflow under Actions → the workflow → "Disable workflow". The scheduled
+upkeep is one workflow, `maintenance.yml`; any of its tasks can also be run by hand
+(Actions → maintenance → Run workflow → task). To stop
 automatic merges entirely, disable `automerge.yml`; pull requests then stay open
 for you. To stop automatic releases, disable `autorelease.yml`; releasing by hand
 still works (CONTRIBUTING.md, "Cutting a release").

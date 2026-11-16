@@ -15,6 +15,7 @@ import {
   type CheckResult,
   citedKeys,
   extractPdfFacts,
+  formatHtml,
   formatJson,
   formatMarkdown,
   mergeDuplicateFindings,
@@ -592,6 +593,19 @@ export function initCheck(): void {
     'click',
     () => report && void copy(formatMarkdown(report), 'Markdown'),
   );
+  // The same self-contained page as `overfull check --html`: to keep, print or send to
+  // a co-author. Built here, so nothing leaves the computer.
+  $<HTMLButtonElement>('#save-html')?.addEventListener('click', () => {
+    if (!report) return;
+    const blob = new Blob([formatHtml(report)], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'overfull-report.html';
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    copyStatus.textContent = 'Report saved.';
+    window.setTimeout(() => (copyStatus.textContent = ''), 4000);
+  });
 
   // ----- The run -----
   async function run() {

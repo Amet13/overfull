@@ -194,8 +194,11 @@ automation only reports changes (see `MAINTAINING.md`).
   per release. Releases carry build provenance.
 - **Images** (`docker/Dockerfile`): `ghcr.io/amet13/overfull:3` (TeX Live 2026 at
   a pinned digest, fonts, poppler, qpdf, veraPDF, latexdiff, Node 26 and the CLI),
-  `:3-check` (the same without TeX Live) and `:3-medium` (TeX Live's medium scheme
-  plus what the templates need).
+  `:3-slim` (TeX Live's basic scheme plus LuaTeX, the recommended LaTeX packages and
+  fonts, and what the templates use; `overfull build` installs other packages from
+  CTAN on demand; also tagged `:3-medium`, the image it replaced) and `:3-check`
+  (no TeX Live). The CLI is one bundled file added last, so a code change touches
+  only that layer; a release retags the images built on `main` instead of rebuilding.
 - **GitHub Action** (`uses: amet13/overfull@v3`): `overfull check` on what an
   earlier step built; annotations, job summary, optional SARIF, outputs `status`
   and `report`. Bundled to `action/dist` (Node 24).
@@ -216,15 +219,16 @@ Makefile  .github/workflows/paper.yml  .devcontainer/  LICENSE (MIT-0)
 
 Accessible by default: `\DocumentMetadata{… tagging=on}`, LuaLaTeX, alt text on
 every figure, document language and title set. CI builds every template in the
-full and the medium image and requires them to pass their own `overfull check`,
+slim image (the one their workflow uses) and requires them to pass their own `overfull check`,
 veraPDF PDF/UA included (Beamer slides cannot be tagged yet).
 
 ## Automation
 
-The repository maintains itself: Dependabot and `update-pins.yml` keep pinned
-tools current, `regenerate.yml` rebuilds generated files, `automerge.yml` merges
-labelled pull requests once every check passed, `autorelease.yml` proposes and
-publishes releases, `bench.yml` measures the reference check monthly,
-`sources-health.yml` probes every reference source weekly, `venues-watch.yml`
-reports venue changes, and `watchdog.yml` opens an issue when any of them fails.
+The repository maintains itself. Dependabot updates dependencies;
+`maintenance.yml` updates the pins Dependabot cannot, measures the reference check
+monthly, probes every reference source weekly, reports venue page changes and
+refreshes the recorded API answers; `regenerate.yml` rebuilds generated files;
+`automerge.yml` merges labelled pull requests once every check passed;
+`autorelease.yml` proposes and publishes releases (by retagging the images already
+built on `main`); and `watchdog.yml` opens an issue when any of them fails.
 `MAINTAINING.md` has the schedule and what stays with a person.

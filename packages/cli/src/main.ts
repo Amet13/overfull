@@ -1,15 +1,6 @@
-import { oneLine, safeLines } from '@overfull/core';
-import { buildCommand } from './commands/build.js';
-import { checkCommand } from './commands/check.js';
-import { citeCommand } from './commands/cite.js';
-import { diffCommand } from './commands/diff.js';
-import { doctorCommand } from './commands/doctor.js';
-import { explainCommand } from './commands/explain.js';
-import { guardCommand } from './commands/guard.js';
-import { adoptCommand, initCommand } from './commands/init.js';
-import { mcpCommand } from './commands/mcp.js';
-import { pagesCommand } from './commands/pages.js';
-import { closest } from './config.js';
+// The light text helpers only: importing all of @overfull/core here would load every
+// check before a command is even chosen.
+import { oneLine, safeLines } from '@overfull/core/text';
 import { type Io, UsageError } from './io.js';
 import { inGitHubActions, neutralizingWriter, stopCommands } from './safety.js';
 import { VERSION } from './version.js';
@@ -36,18 +27,21 @@ Run \`overfull <command> --help\` for options. Docs: https://amet13.github.io/ov
 
 type Command = (args: string[], io: Io) => Promise<number>;
 
+// Each command's module (and what it imports: pdf.js, the YAML parser, the reference
+// sources) is loaded only when that command runs, so `--version`, `--help` and light
+// commands start without parsing the rest.
 const COMMANDS: Record<string, Command> = {
-  init: initCommand,
-  adopt: adoptCommand,
-  build: buildCommand,
-  check: checkCommand,
-  cite: (args, io) => citeCommand(args, io),
-  pages: pagesCommand,
-  diff: diffCommand,
-  explain: explainCommand,
-  doctor: doctorCommand,
-  guard: (args, io) => guardCommand(args, io),
-  mcp: (args, io) => mcpCommand(args, io, main),
+  init: async (a, io) => (await import('./commands/init.js')).initCommand(a, io),
+  adopt: async (a, io) => (await import('./commands/init.js')).adoptCommand(a, io),
+  build: async (a, io) => (await import('./commands/build.js')).buildCommand(a, io),
+  check: async (a, io) => (await import('./commands/check.js')).checkCommand(a, io),
+  cite: async (a, io) => (await import('./commands/cite.js')).citeCommand(a, io),
+  pages: async (a, io) => (await import('./commands/pages.js')).pagesCommand(a, io),
+  diff: async (a, io) => (await import('./commands/diff.js')).diffCommand(a, io),
+  explain: async (a, io) => (await import('./commands/explain.js')).explainCommand(a, io),
+  doctor: async (a, io) => (await import('./commands/doctor.js')).doctorCommand(a, io),
+  guard: async (a, io) => (await import('./commands/guard.js')).guardCommand(a, io),
+  mcp: async (a, io) => (await import('./commands/mcp.js')).mcpCommand(a, io, main),
 };
 
 /** Runs the CLI and returns the exit code (0 ok, 1 problems found, 2 usage/internal error). */
@@ -91,6 +85,7 @@ async function run(argv: string[], io: Io): Promise<number> {
   }
   const command = COMMANDS[cmd];
   if (!command) {
+    const { closest } = await import('./config.js');
     const hint = closest(cmd, Object.keys(COMMANDS));
     io.stderr(
       `Unknown command "${oneLine(cmd)}".${hint ? ` Did you mean \`overfull ${hint}\`?` : ''}\nRun \`overfull --help\` for the list of commands.\n`,

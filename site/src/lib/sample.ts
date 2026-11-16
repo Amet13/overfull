@@ -87,7 +87,7 @@ export function sampleReport(): Report {
           rule: 'page-limit-exceeded',
           check: 'venue',
           severity: 'error',
-          message: 'Main text runs to page 10; the limit is 9',
+          message: 'The main text is 10 pages; the limit is 9',
           location: { page: 10 },
           fix: 'Cut or move material to the appendix until `\\label{overfull:main-end}` lands on page 9.',
           data: { pages: 10, max: 9 },

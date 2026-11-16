@@ -9,8 +9,9 @@ name: image
 #   every push → sha-<short>
 # A second, much smaller image without TeX Live (CLI, veraPDF, poppler, git)
 # gets the same tags with a "-check" suffix: 3.1.0-check, 3.1-check, 3-check,
-# edge-check, sha-<short>-check. A third builds on TeX Live's medium scheme plus
-# the collections the templates need: "-medium" (3.1.0-medium, 3-medium, ...).
+# edge-check, sha-<short>-check. A third, "-slim" (3.1.0-slim, 3-slim, ...), is TeX
+# Live's basic scheme plus what most papers and the templates use; it installs other
+# packages on demand. It is also tagged "-medium", the name of the image it replaced.
 # Each build is signed with a build provenance attestation.
 
 on:
@@ -64,10 +65,10 @@ jobs:
           - { target: overfull, flavor: full, suffix: "", platform: linux/arm64, runner: ubuntu-26.04-arm, pair: overfull-linux-arm64 }
           - { target: check, flavor: full, suffix: -check, platform: linux/amd64, runner: ubuntu-26.04, pair: check-linux-amd64 }
           - { target: check, flavor: full, suffix: -check, platform: linux/arm64, runner: ubuntu-26.04-arm, pair: check-linux-arm64 }
-          - { target: overfull, flavor: medium, suffix: -medium, platform: linux/amd64, runner: ubuntu-26.04, pair: medium-linux-amd64 }
-          - { target: overfull, flavor: medium, suffix: -medium, platform: linux/arm64, runner: ubuntu-26.04-arm, pair: medium-linux-arm64 }
+          - { target: overfull, flavor: slim, suffix: -slim, platform: linux/amd64, runner: ubuntu-26.04, pair: slim-linux-amd64 }
+          - { target: overfull, flavor: slim, suffix: -slim, platform: linux/arm64, runner: ubuntu-26.04-arm, pair: slim-linux-arm64 }
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
@@ -154,7 +155,7 @@ jobs:
         include:
           - { name: overfull, suffix: "" }
           - { name: check, suffix: -check }
-          - { name: medium, suffix: -medium }
+          - { name: slim, suffix: -slim }
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
@@ -196,6 +197,10 @@ jobs:
           while IFS= read -r tag; do args+=(-t "$tag"); done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           while IFS= read -r ann; do args+=(--annotation "$ann"); done < <(jq -r '.annotations[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           for d in *; do args+=("$IMAGE@sha256:$d"); done
+          # The slim image also answers to the "-medium" tags of the image it replaced.
+          if [ "${{ matrix.name }}" = slim ]; then
+            while IFS= read -r tag; do args+=(-t "${tag%-slim}-medium"); done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          fi
           docker buildx imagetools create "${args[@]}"
           first="$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")"
           docker buildx imagetools inspect "$first"

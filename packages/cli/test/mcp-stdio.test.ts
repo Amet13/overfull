@@ -22,7 +22,10 @@ beforeAll(async () => {
     format: 'cjs',
     target: 'node22',
     logLevel: 'error',
-    alias: { '@overfull/core': join(root, 'packages/core/src/index.ts') },
+    alias: {
+      '@overfull/core/text': join(root, 'packages/core/src/report/shared.ts'),
+      '@overfull/core': join(root, 'packages/core/src/index.ts'),
+    },
     define: {
       __OVERFULL_VERSION__: JSON.stringify('0.0.0-test'),
       __OVERFULL_TEMPLATES__: '{}',

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { neutralizeWorkflowCommands, RUNNER_WHITESPACE } from '@overfull/core';
+import { neutralizeWorkflowCommands, RUNNER_WHITESPACE } from '@overfull/core/text';
 import { UsageError } from './io.js';
 
 /**

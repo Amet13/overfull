@@ -36,11 +36,11 @@ const samples = [
     <p class="runhead"><span>Browser check</span></p>
     <div class="galley">
       <aside class="marginal">
-        <p><span class="mark">Privacy.</span> Your files are read by this page and never uploaded; a .zip is unpacked here, in your browser. Online verification is on by default: each reference’s DOI or title is sent to CrossRef and doi.org, and nothing else. Untick “Verify references online” to keep everything on your computer.</p>
-        <p>The full check, with veraPDF, arXiv and DBLP lookups and the venue rules from <code>overfull.yml</code>, runs from the command line: <code>overfull check</code>.</p>
+        <p><span class="mark">Privacy.</span> Files are read by this page and never uploaded. With “Verify references online”, each reference’s DOI or title goes to CrossRef, OpenAlex and doi.org, and nothing else.</p>
+        <p>The browser cannot ask arXiv or DBLP, or run veraPDF: <code>overfull check</code> does all three.</p>
       </aside>
       <h1>Check your files</h1>
-      <p class="lede">Drop a project <code>.zip</code> (for Overleaf, the source download) or folder, or a build log, a bibliography or a PDF. This page runs the same checks as the <code>overfull</code> command, with two differences: arXiv and DBLP cannot be searched from a browser, so entries only they could confirm show as “could not be checked here”; and veraPDF’s full PDF/UA validation runs only in <code>overfull check</code>.</p>
+      <p class="lede">Drop a project <code>.zip</code> or folder (from Overleaf: the source download), a build log, a <code>.bib</code> or a PDF. The same checks as <code>overfull check</code>, run on this page.</p>
     </div>
 
     <div class="bench">
@@ -84,7 +84,7 @@ const samples = [
           <legend>Options</legend>
           <label class="opt">
             <input type="checkbox" id="online" checked />
-            <span>Verify references online <span class="opt-note">CrossRef and doi.org are checked from your browser. arXiv and DBLP block browser requests, so only <code>overfull check</code> asks them.</span></span>
+            <span>Verify references online <span class="opt-note">CrossRef, OpenAlex and doi.org, asked from your browser.</span></span>
           </label>
           <label class="opt-select" for="profile">
             <span>Venue profile</span>
@@ -112,6 +112,7 @@ const samples = [
           <button type="button" class="btn ghost" id="agent-toggle" aria-pressed="false" aria-controls="agent-view sheet-view">For an AI agent</button>
           <button type="button" class="btn ghost" id="copy-json">Copy JSON</button>
           <button type="button" class="btn ghost" id="copy-md">Copy Markdown</button>
+          <button type="button" class="btn ghost" id="save-html">Download report</button>
           <span id="copy-status" class="copy-status" aria-live="polite"></span>
         </div>
         <div id="sheet-view" class="sheet-view">

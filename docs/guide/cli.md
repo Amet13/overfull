@@ -11,7 +11,8 @@ overfull build [main.tex] [--engine auto|local|docker] [--image name] [--verbose
                [--json] [--config file]
 overfull check [file...] [--main file] [--checks a,b] [--profile p] [--offline] [--refresh] [--watch]
                [--fail-on error|warning|never]
-               [--json | --markdown | --annotations | --sarif] [--verbose]
+               [--json | --markdown | --annotations | --sarif | --html] [--verbose]
+               [--write format=file ...]
                [--pdf file] [--log file] [--aux file] [--bib a.bib,b.bib]
                [--mailto address] [--no-verapdf] [--engine auto|local|docker] [--image name]
                [--config file]
@@ -143,6 +144,8 @@ those files. Any other extension is a usage error (exit 2).
 | `--markdown` | Print a Markdown summary, for PR comments and job summaries. |
 | `--annotations` | Print GitHub workflow annotations. |
 | `--sarif` | Print a SARIF 2.1.0 log, for GitHub code scanning (see [the Action](./action.md#code-scanning-sarif)). Problems without a source file point at the main file, line 1. |
+| `--html` | Print the report as one self-contained HTML page (light and dark, printable, no scripts): to keep, attach to a CI run or send to a co-author. |
+| `--write format=file` | Also write the report to a file, in `json`, `markdown`, `annotations`, `sarif` or `html`. Repeat it for several formats from one run: `--write json=report.json --write html=report.html`. |
 | `--verbose`, `-v` | Show why each problem happened and how to fix it. |
 | `--pdf file` | PDF to check (default `<jobname>.pdf`). |
 | `--log file` | Build log (default `<jobname>.log`). |
@@ -154,7 +157,7 @@ those files. Any other extension is a usage error (exit 2).
 | `--image name` | Docker image for veraPDF and `pdffonts`. Default: `$OVERFULL_IMAGE`, else `ghcr.io/amet13/overfull:3`. |
 | `--config file` | Config file (default `overfull.yml`). |
 
-Use only one of `--json`, `--markdown`, `--annotations` and `--sarif`; combining them is a usage error (exit 2). The exit code is the same for every format.
+Use only one of `--json`, `--markdown`, `--annotations`, `--sarif` and `--html` for what is printed; combining them is a usage error (exit 2). `--write` adds files on top of any of them, so one run can print annotations and write the job summary: `overfull check --annotations --write markdown="$GITHUB_STEP_SUMMARY"`. The exit code is the same for every format.
 
 On an interactive terminal, the references check shows one updating line (`references 12/31`) on stderr. It is not shown in CI, when stderr is redirected, or with `--json`, `--markdown`, `--annotations` or `--sarif`.
 

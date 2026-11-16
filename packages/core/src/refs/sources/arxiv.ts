@@ -114,6 +114,32 @@ export async function arxivById(client: HttpClient, id: string): Promise<WorkRec
   return record ?? null;
 }
 
+/** Most ids asked for in one request (arXiv accepts a comma-separated `id_list`). */
+const BATCH = 50;
+
+const bare = (id: string) => id.replace(/v\d+$/, '').toLowerCase();
+
+/**
+ * The records for many arXiv ids in as few requests as possible, keyed by id without
+ * version. arXiv asks clients to wait 3 seconds between requests, so 40 ids one by one
+ * take two minutes and one batch takes one request. Ids arXiv did not return are left
+ * out (the caller looks those up one by one, which tells "no such paper" from a fluke).
+ */
+export async function arxivByIds(
+  client: HttpClient,
+  ids: string[],
+): Promise<Map<string, WorkRecord>> {
+  const found = new Map<string, WorkRecord>();
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const chunk = ids.slice(i, i + BATCH);
+    const url = `${API}?id_list=${chunk.map(encodeURIComponent).join(',')}&max_results=${chunk.length}`;
+    for (const record of await query(client, url)) {
+      if (record.arxivId) found.set(bare(record.arxivId), record);
+    }
+  }
+  return found;
+}
+
 /** arXiv title phrase search; up to 5 candidates. `title` is plain text. */
 export async function arxivSearch(client: HttpClient, title: string): Promise<WorkRecord[]> {
   return query(client, arxivTitleUrl(title));

@@ -1,6 +1,7 @@
 # Build the PDF in the Overfull image, run the preflight and publish results.
 # Push: PDF artifact + job summary. Pull request: also a PDF of the changes.
-# Uses the image ghcr.io/amet13/overfull:3, published with Overfull v3.0.0.
+# Uses ghcr.io/amet13/overfull:3-slim: TeX Live's basic scheme plus what this template
+# needs (about a fifth of the full image); `overfull build` installs anything else it lacks.
 name: paper
 
 on:
@@ -21,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     container:
-      image: ghcr.io/amet13/overfull:3
+      image: ghcr.io/amet13/overfull:3-slim
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,19 +35,16 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Build
-        run: latexmk
+        run: overfull build
 
       # arXiv only runs pdfLaTeX: make sure that build works too.
       - name: Build with pdfLaTeX (arXiv)
         run: latexmk -pdf -jobname=paper-arxiv
 
-      # The first two runs only report (summary + inline annotations);
-      # the last one sets the job status. Reference lookups are cached.
+      # One run: annotations on the changed lines, the report in the job summary and
+      # as a shareable HTML page; its exit code sets the job status.
       - name: Preflight
-        run: |
-          overfull check --markdown >> "$GITHUB_STEP_SUMMARY" || true
-          overfull check --annotations || true
-          overfull check
+        run: overfull check --annotations --write markdown="$GITHUB_STEP_SUMMARY" --write html=overfull-report.html
 
       - name: Diff against base branch
         if: github.event_name == 'pull_request'
@@ -62,4 +60,5 @@ jobs:
           path: |
             *.pdf
             *.log
+            overfull-report.html
           if-no-files-found: warn

@@ -25,6 +25,7 @@ import {
   type Ctx,
   europepmcByIdCached,
   failureReason,
+  prefetchArxiv,
   resolveDoiCached,
   type SourceFailure,
   sourceAllowed,
@@ -501,6 +502,13 @@ export async function verifyEntries(
   }
   const ctx: Ctx = { client: new HttpClient(opts), opts };
   const ignore = new Set(opts.ignore ?? []);
+  await prefetchArxiv(
+    ctx,
+    entries
+      .filter((e) => !isSkipped(e, ignore))
+      .map((e) => identifiersOf(e).arxivId)
+      .filter((id): id is string => id !== undefined),
+  );
   let done = 0;
   const results = await runPool(entries, opts.concurrency ?? 4, async (e) => {
     const result = await verifyEntry(e, ctx, ignore);

@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./text": {
+      "types": "./dist/report/shared.d.ts",
+      "default": "./dist/report/shared.js"
     }
   },
   "files": [

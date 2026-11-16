@@ -26,7 +26,7 @@ updates:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
       # pnpm is pinned twice (packageManager and docker/pnpm) and must match;
-      # update-pins.yml bumps both together.
+      # maintenance.yml (update-pins) bumps both together.
       - dependency-name: "pnpm"
     groups:
       npm:
