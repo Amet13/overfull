@@ -38,7 +38,8 @@ ARG TARGETARCH
 RUN --mount=type=secret,id=build_ca,required=false \
     set -eux; \
     apt-get update; \
-    apt-get install --no-install-recommends -y ca-certificates curl xz-utils; \
+    # libatomic1: Node.js 26 links against it (the builder stage runs node here).
+    apt-get install --no-install-recommends -y ca-certificates curl xz-utils libatomic1; \
     if [ -s /run/secrets/build_ca ]; then cp /run/secrets/build_ca /usr/local/share/ca-certificates/zz-build-ca.crt && update-ca-certificates >/dev/null; fi; \
     arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
     case "$arch" in \
