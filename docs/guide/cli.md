@@ -139,7 +139,7 @@ those files. Any other extension is a usage error (exit 2).
 | `--offline` | Do not look references up online. The references check is skipped. Missing keys and `.bib` syntax errors are still reported. |
 | `--refresh` | Ignore cached reference answers and look every reference up again. The new answers are still written to the cache. |
 | `--project-cache` | Keep the reference cache in `.overfull/cache/refs.json` instead of your user cache folder (same as `OVERFULL_REFS_CACHE=project`). Never used in CI. `references.cache` in `overfull.yml` cannot turn it on. See [Cache](./config.md#cache). |
-| `--watch` | Keep running and check again whenever the log, PDF, `.aux` or a `.bib` file changes. References are looked up again only when a `.bib` file changed. Stop with Ctrl-C. Human output only. |
+| `--watch` | Keep running and check again whenever the log, PDF, `.aux` or a `.bib` file changes. References are looked up again only when a `.bib` file changed; otherwise each entry keeps its last answer, so a verified entry stays verified. Stop with Ctrl-C. Human output only. |
 | `--fail-on level` | `error` (default), `warning` or `never`. |
 | `--json` | Print the report as JSON (schema below). |
 | `--markdown` | Print a Markdown summary, for PR comments and job summaries. |

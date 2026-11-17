@@ -18,6 +18,7 @@ import {
   type Problem,
   parseBibWithIssues,
   pdfOutputProblems,
+  type RefResult,
   type Report,
   refsCheck,
   reportStatus,
@@ -67,6 +68,13 @@ export interface CheckOptions {
   projectCache?: boolean;
   /** Skip cached reference answers and ask the indexes again; fresh answers are still stored (`--refresh`). */
   refresh?: boolean;
+  /**
+   * Reference answers kept between runs (`check --watch`), by entry text. An entry
+   * whose text has not changed takes its last answer instead of a lookup, even
+   * offline; new definitive answers are added. Offline answers and failed lookups
+   * are not kept.
+   */
+  refsMemo?: Map<string, RefResult>;
   /** Called after each entry is looked up. The CLI passes it only on an interactive stderr. */
   progress?: (done: number, total: number) => void;
   /**
@@ -441,7 +449,7 @@ async function references(inp: Inputs, opts: CheckOptions): Promise<CheckResult>
     checkRetractions: true,
     ...testRefsTiming(env),
   };
-  const results = await verifyEntries(toVerify, refsOptions);
+  const results = await verifyWithMemo(toVerify, refsOptions, opts.refsMemo);
   cache?.save();
   const result = refsCheck(results, {
     entries: toVerify,
@@ -460,6 +468,41 @@ async function references(inp: Inputs, opts: CheckOptions): Promise<CheckResult>
     return { ...result, status: statusOf(result.problems) };
   }
   return result;
+}
+
+/** The memo key of an entry: its file and its text exactly as written. */
+const memoKey = (e: BibEntry) => JSON.stringify([e.file ?? '', e.raw]);
+
+/** An answer worth keeping for the next run: not offline, not a failed or partial lookup. */
+const keepable = (r: RefResult) =>
+  r.reason !== 'offline' &&
+  r.status !== 'error' &&
+  (r.status !== 'unverifiable' || r.reason === 'skipped by author');
+
+/**
+ * `verifyEntries`, taking the answers in `memo` for entries whose text has not changed
+ * (with the entry's current line) and storing the new answers there.
+ */
+async function verifyWithMemo(
+  entries: BibEntry[],
+  refsOptions: Parameters<typeof verifyEntries>[1],
+  memo: Map<string, RefResult> | undefined,
+): Promise<RefResult[]> {
+  if (!memo) return verifyEntries(entries, refsOptions);
+  const todo = entries.filter((e) => !memo.has(memoKey(e)));
+  const fresh = todo.length ? await verifyEntries(todo, refsOptions) : [];
+  todo.forEach((e, i) => {
+    const r = fresh[i];
+    if (r && keepable(r)) memo.set(memoKey(e), r);
+  });
+  let next = 0;
+  return entries.map((e) => {
+    if (todo[next] === e) return fresh[next++] as RefResult;
+    const { location: _old, ...kept } = memo.get(memoKey(e)) as RefResult;
+    return e.line
+      ? { ...kept, location: { line: e.line, ...(e.file ? { file: e.file } : {}) } }
+      : kept;
+  });
 }
 
 /** True when the build log has errors (veraPDF findings on such a PDF are follow-on noise). */

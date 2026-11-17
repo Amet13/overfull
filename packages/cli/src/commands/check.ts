@@ -7,6 +7,7 @@ import {
   formatMarkdown,
   formatSarif,
   githubAnnotations,
+  type RefResult,
 } from '@overfull/core';
 import { list, type Parsed, parse, str } from '../args.js';
 import { exitCodeFor, runCheck, sarifFallbackFile } from '../check.js';
@@ -49,7 +50,8 @@ Options:
                       A relative file must stay inside the project and not be a symlink.
   --verbose, -v       Show why and how to fix each problem
   --watch             Check again whenever the log, PDF, .aux or a .bib file changes
-                      (references are looked up again only when a .bib changed);
+                      (references are looked up again only when a .bib changed;
+                      otherwise each entry keeps its last answer);
                       stop with Ctrl-C. Human output only.
   --pdf file          PDF to check (default <jobname>.pdf)
   --log file          Build log (default <jobname>.log)
@@ -200,8 +202,11 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
       '--watch prints the human report; leave out --json, --markdown, --annotations and --sarif',
     );
   const progress = machine || isCI(io.env) ? undefined : progressLine(io, 'references');
+  // check --watch keeps each entry's last answer, so an offline re-run does not forget them.
+  const refsMemo = values.watch ? new Map<string, RefResult>() : undefined;
   const runOnce = async (offline: boolean) => {
     const report = await runCheck({
+      ...(refsMemo ? { refsMemo } : {}),
       cwd: io.cwd,
       env: io.env,
       ...(io.fetch ? { fetch: io.fetch } : {}),
@@ -330,7 +335,8 @@ async function watch(
     state = next;
     if (!c.any) continue;
     io.stderr(`\n— ${new Date().toLocaleTimeString()} —\n`);
-    // Reference lookups only when a bibliography changed; otherwise the cached answers stand.
+    // Reference lookups only when a bibliography changed; otherwise each entry keeps its
+    // last answer (refsMemo), and entries never answered are reported as not checked.
     code = await runOnce(offline || !c.bib);
   }
   return code;

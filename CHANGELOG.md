@@ -47,6 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   or too old.
 - Docker images: LaTeX starts as fast for a non-root user as for root (it took about a minute in the full image)
 - Slim image: on-demand installs work for any user, survive a critical tlmgr update, and fall back to the frozen repository after the yearly TeX Live release
+- `overfull check --watch` keeps each reference's last answer when only the log, PDF or `.aux` changed; before, re-runs went offline and verified entries became "not checked" errors.
 
 ### Security
 
