@@ -129,9 +129,10 @@ Applies the rules of the profile in `overfull.yml`:
 - presence of an AI-use disclosure, and whether it is still a placeholder
   (`disclosure-missing`, `disclosure-placeholder`);
 - arXiv rules: absolute paths, file names with spaces, `.eps` figures when the
-  log shows pdfLaTeX, `minted` or shell-escape, the `.bbl` file
+  log shows pdfLaTeX, `minted` or shell-escape, the `.bib` or `.bbl` files and the
+  biblatex `.bbl` format
   (`arxiv-absolute-path`, `arxiv-filename-space`, `arxiv-eps-pdflatex`,
-  `arxiv-shell-escape`, `arxiv-missing-bbl`).
+  `arxiv-shell-escape`, `arxiv-missing-bbl`, `arxiv-bbl-version`).
 
 It cannot read a venue's call for papers. The rules are what you configure. It
 cannot detect every way to de-anonymise a paper, such as links to your own

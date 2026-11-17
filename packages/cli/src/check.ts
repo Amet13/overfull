@@ -510,6 +510,20 @@ async function accessibility(
   });
 }
 
+/** `<main>.bbl` for the arXiv checks (its biblatex format line), when the project has it. */
+function arxivBbl(config: Config, files: string[]): { bbl?: { path: string; text: string } } {
+  if (!config.profile.arxiv) return {};
+  const path = config.main.replace(/\.tex$/i, '.bbl');
+  if (!files.includes(path)) return {};
+  const abs = insideRootOrUndefined(config.root, path);
+  try {
+    const text = abs ? readIfExists(abs) : undefined;
+    return text === undefined ? {} : { bbl: { path, text } };
+  } catch {
+    return {};
+  }
+}
+
 function venue(inp: Inputs): CheckResult {
   const { config } = inp;
   // Without the PDF and without the main file there is no document to judge: .tex files
@@ -524,6 +538,7 @@ function venue(inp: Inputs): CheckResult {
     texFiles,
     files,
     main: config.main,
+    ...arxivBbl(config, files),
   });
   if (result.status === 'skipped' && !inp.facts) return skipped('venue', missingPdfReason(inp));
   if (skippedFiles.length) {

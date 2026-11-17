@@ -101,6 +101,8 @@ export interface VenueContext {
   files?: string[];
   /** Project-relative path of the main .tex file. */
   main?: string;
+  /** The `.bbl` named like the main file, when the project has one (arXiv checks). */
+  bbl?: { path: string; text: string };
   /** "Now" for the profile-age note; defaults to the current date. Injectable for tests. */
   now?: Date;
 }

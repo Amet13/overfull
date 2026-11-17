@@ -261,13 +261,24 @@ happened in the repository. You must read, correct and approve it. See
 - no `.eps` figures when the build log shows pdfLaTeX (`arxiv-eps-pdflatex`,
   warning);
 - no `minted` or other shell-escape features (`arxiv-shell-escape`, warning);
-- a `.bbl` file next to the main file, because arXiv does not run biber
-  (`arxiv-missing-bbl`, info).
+- the bibliography sources (`arxiv-missing-bbl`, warning). arXiv runs BibTeX,
+  or Biber when biblatex selects it, on the uploaded `.bib` files, or uses an
+  uploaded `.bbl` named like the main file (`main.tex` → `main.bbl`). The rule
+  fires only when neither is in the project;
+- a shipped biblatex `.bbl` in a format arXiv can read (`arxiv-bbl-version`,
+  warning). The first lines of a biblatex `.bbl` give its format. arXiv's
+  default TeX Live 2025 (biblatex 3.20, Biber 2.20) reads format 3.3 only; its
+  TeX Live 2023 reads 3.2 and 3.3. A `.bbl` built with another TeX Live breaks
+  the bibliography on arXiv: upload the `.bib` files instead, or build the
+  `.bbl` with TeX Live 2025. BibTeX `.bbl` files have no format line and are not
+  checked;
+- a LuaLaTeX build log (`arxiv-unsupported-engine`, error): arXiv compiles with
+  pdfLaTeX or XeLaTeX, not LuaLaTeX.
 
 arXiv's own rules change; read its [submission help](https://info.arxiv.org/help/submit_tex.html)
-before you upload. arXiv's
-[list of supported processors](https://info.arxiv.org/help/faq/texlive.html)
-has not included LuaLaTeX (it lists pdfLaTeX, LaTeX and XeLaTeX).
+before you upload. The TeX Live versions and `.bbl` formats above were read
+from that page and arXiv's [TeX Live page](https://info.arxiv.org/help/faq/texlive.html)
+on 2026-11-17.
 
 The paper template handles this: it builds with LuaLaTeX by default and with
 pdfLaTeX for arXiv, using `make arxiv` or `latexmk -pdf`. The `.eps` rule reads

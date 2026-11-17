@@ -191,7 +191,8 @@ describe('anonymity', () => {
 });
 
 describe('anonymity with a class that hides the authors', () => {
-  const body = '\\author{Ada Lovelace \\\\ University of London}\n\\begin{document}x\\end{document}\n';
+  const body =
+    '\\author{Ada Lovelace \\\\ University of London}\n\\begin{document}x\\end{document}\n';
   const doc = (preamble: string) => tex(`\\documentclass{article}\n${preamble}\n${body}`);
   const named = (id: string, preamble: string) =>
     venueCheck(resolveProfile(id), { texFiles: [doc(preamble)] }).problems.filter(
@@ -386,21 +387,89 @@ describe('arXiv engine and .bbl name', () => {
     expect(venueRules.some((x) => x.id === 'arxiv-unsupported-engine')).toBe(true);
   });
 
-  it('requires <main>.bbl; a <jobname>.bbl must be renamed', () => {
-    const run = (files: string[]) =>
+  it('needs the .bib files or <main>.bbl; a <jobname>.bbl must be renamed', () => {
+    const run = (files: string[], sources = texFiles) =>
       venueCheck(profile, {
-        texFiles,
+        texFiles: sources,
         log: 'This is pdfTeX, Version 3',
         main: 'main.tex',
         files,
       }).problems.filter((p) => p.rule === 'arxiv-missing-bbl');
     expect(run(['main.tex', 'main.bbl'])).toEqual([]);
+    // arXiv runs Biber or BibTeX itself when the .bib is uploaded.
+    expect(run(['main.tex', 'refs.bib'])).toEqual([]);
     const [renamed] = run(['main.tex', 'thesis.bbl']);
     expect(renamed?.message).toBe(
-      'Found thesis.bbl, but arXiv compiles main.tex and reads main.bbl; rename or copy it to main.bbl',
+      'Found thesis.bbl, but arXiv reads main.bbl (named like main.tex), and refs.bib is not in the project',
     );
+    expect(renamed?.severity).toBe('warning');
     const [missing] = run(['main.tex']);
-    expect(missing?.message).toMatch(/^No main\.bbl next to main\.tex/);
+    expect(missing?.message).toBe(
+      'Neither main.bbl nor refs.bib is in the project; arXiv needs one of them to build the bibliography',
+    );
+    expect(missing?.message).not.toMatch(/biber/i);
+    // \bibliography{a,b} names a.bib and b.bib relative to the main file.
+    const bibtex = [tex('\\bibliography{bib/a, b}', 'paper/main.tex')];
+    const check = (files: string[]) =>
+      venueCheck(profile, { texFiles: bibtex, main: 'paper/main.tex', files }).problems.filter(
+        (p) => p.rule === 'arxiv-missing-bbl',
+      );
+    expect(check(['paper/main.tex', 'paper/bib/a.bib', 'paper/b.bib'])).toEqual([]);
+    expect(check(['paper/main.tex', 'paper/bib/a.bib'])[0]?.data).toMatchObject({
+      missingBibs: ['paper/b.bib'],
+    });
+  });
+});
+
+describe('arxiv-bbl-version', () => {
+  const profile = resolveProfile('arxiv');
+  const bbl = (format: string) =>
+    `% $ biblatex auxiliary file $\n% $ biblatex bbl format version ${format} $\n% Do not modify the above lines!\n\\begingroup\n`;
+  const run = (text: string, path = 'main.bbl') =>
+    venueCheck(profile, {
+      texFiles: [tex('\\addbibresource{refs.bib}')],
+      main: 'main.tex',
+      files: ['main.tex', 'main.bbl', 'refs.bib'],
+      bbl: { path, text },
+    }).problems.filter((p) => p.rule === 'arxiv-bbl-version');
+
+  it('accepts the format of arXiv’s default TeX Live and BibTeX .bbl files', () => {
+    expect(run(bbl('3.3'))).toEqual([]);
+    expect(run('\\begin{thebibliography}{1}\n\\bibitem{a} A.\n\\end{thebibliography}\n')).toEqual(
+      [],
+    );
+  });
+
+  it('warns about a newer format', () => {
+    const [p] = run(bbl('3.4'));
+    expect(p).toMatchObject({
+      severity: 'warning',
+      location: { file: 'main.bbl' },
+      data: { format: '3.4', arxivFormats: ['3.3'], texLive: 2025 },
+    });
+    expect(p?.message).toBe(
+      'main.bbl has biblatex .bbl format 3.4, which arXiv cannot read (TeX Live 2025, the default, reads format 3.3)',
+    );
+    expect(p?.fix).toContain('Upload the .bib files without the .bbl');
+    expect(p?.fix).toContain('biblatex 3.20, Biber 2.20');
+  });
+
+  it('names the older TeX Live arXiv offers for an older format', () => {
+    const [p] = run(bbl('3.2'));
+    expect(p?.message).toContain('only TeX Live 2023 reads it');
+    expect(p?.fix).toContain('choose TeX Live 2023');
+  });
+
+  it('only checks the .bbl named like the main file', () => {
+    expect(run(bbl('3.4'), 'other.bbl')).toEqual([]);
+  });
+
+  it('is documented, with the source and date of the arXiv facts', () => {
+    const rule = venueRules.find((r) => r.id === 'arxiv-bbl-version');
+    expect(rule?.summary).toContain('3.3');
+    expect(venueRules.find((r) => r.id === 'arxiv-missing-bbl')?.summary).not.toMatch(
+      /does not run biber/i,
+    );
   });
 });
 
