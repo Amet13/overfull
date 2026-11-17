@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { main } from '../src/main.js';
@@ -62,11 +62,7 @@ describe('overfull diff', () => {
       expect(io.stderrText()).toContain('comparing your uncommitted changes with HEAD');
       expect(io.stdoutText()).toBe('overfull-diff.pdf\n');
       const head = git('rev-parse', '--short', 'HEAD');
-      expect(
-        execFileSync('cat', [join(dir, '.revision')])
-          .toString()
-          .trim(),
-      ).toBe(head);
+      expect(readFileSync(join(dir, '.revision'), 'utf8').trim()).toBe(head);
     },
   );
 
