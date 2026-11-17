@@ -185,15 +185,8 @@ CMD ["bash"]
 # image stays the default (last) stage.
 FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS check
 
-ARG VERSION=dev
 ARG VERAPDF_VERSION=1.30.4
 ARG VERAPDF_SHA256=04415ef3f149526a3048b9889723e81320ddf013bd891bcc7f0f297f3eadcc23
-
-LABEL org.opencontainers.image.title="overfull (check only)" \
-      org.opencontainers.image.description="The overfull CLI with veraPDF, poppler and git, without TeX Live: checks PDFs, logs and bibliographies built elsewhere" \
-      org.opencontainers.image.source="https://github.com/amet13/overfull" \
-      org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.version="${VERSION}"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     DEBCONF_NONINTERACTIVE_SEEN=true \
@@ -218,6 +211,14 @@ RUN --mount=type=secret,id=build_ca,required=false \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
     verapdf --version; pdfinfo -v; git --version
+
+# The version and labels come after the heavy layer above, so a release reuses it.
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="overfull (check only)" \
+      org.opencontainers.image.description="The overfull CLI with veraPDF, poppler and git, without TeX Live: checks PDFs, logs and bibliographies built elsewhere" \
+      org.opencontainers.image.source="https://github.com/amet13/overfull" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${VERSION}"
 
 COPY --from=node-dist /opt/node/bin/node /usr/local/bin/node
 COPY --from=builder /opt/overfull/overfull.cjs /opt/overfull/overfull.cjs
