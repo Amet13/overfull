@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ### Security
 
+- `overfull cite` keeps only an allowlist of TeX commands (accents, formatting, text and math symbols) in publisher BibTeX; every other command is printed, not run, so a crafted DOI record cannot embed local files in the PDF
 - A project's own `overfull.yml` can no longer turn on its in-repository reference cache (`references.cache: project` is ignored with a notice), so a planted cache cannot mark made-up references as verified
 
 ## [v3.1.2] - 2026-11-16
