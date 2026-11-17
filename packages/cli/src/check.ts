@@ -248,6 +248,7 @@ export function mergeOutput(output: CheckResult, pdfProblems: Problem[]): CheckR
 export function bibliographyAttribution(
   config: Config,
   bib: string[] = config.bib,
+  texFiles?: TexFile[],
 ): (problems: Problem[]) => Problem[] {
   const root = config.root;
   const bblRel = join(config.build.auxDir, `${config.jobname}.bbl`).split('\\').join('/');
@@ -270,7 +271,9 @@ export function bibliographyAttribution(
     }
   }
   const bbl = { path: bblRel.replace(/^\.\//, ''), text: bblText };
-  return (problems) => attributeBibliography(problems, { bbl, bibs });
+  // The .tex sources tell where the bibliography is printed (biblatex reports that line).
+  const tex = texFiles ?? readTexFiles(root, listFiles(root));
+  return (problems) => attributeBibliography(problems, { bbl, bibs, texFiles: tex });
 }
 
 function buildAndOutput(inp: Inputs, wanted: Set<CheckId>): CheckResult[] {
@@ -294,7 +297,7 @@ function buildAndOutput(inp: Inputs, wanted: Set<CheckId>): CheckResult[] {
     return out;
   }
   const analyzed = analyzeLog(inp.log, { root: inp.root });
-  const attribute = bibliographyAttribution(inp.config);
+  const attribute = bibliographyAttribution(inp.config, inp.config.bib, sourcesOf(inp).texFiles);
   const build = { ...analyzed.build, problems: attribute(analyzed.build.problems) };
   const output = { ...analyzed.output, problems: attribute(analyzed.output.problems) };
   if (wanted.has('build')) out.push(build);
