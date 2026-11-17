@@ -16,9 +16,13 @@ For each entry that your document cites (keys come from the `.aux` or `.bcf`; if
 neither exists, every entry is checked):
 
 1. If it has a DOI, resolve it through doi.org and CrossRef (DataCite DOIs for
-   datasets and software resolve through doi.org too).
+   datasets and software resolve through doi.org too). TeX escapes in the field
+   (`10.1007/978-3-030-58452-8\_13`) are read as the plain DOI. When doi.org
+   cannot be reached, OpenAlex is asked for the record of that one DOI.
 2. Else, if it has an arXiv id (`eprint` with `archivePrefix = {arXiv}`, or an
-   arXiv URL), query the arXiv API.
+   arXiv URL), query the arXiv API. When arXiv cannot be reached (or may not be
+   asked, as in the browser check), OpenAlex is asked for arXiv's DOI of the paper
+   (`10.48550/arXiv.<id>`).
 3. Else, if it names an ACL Anthology id or URL (`2020.acl-main.1`,
    `aclanthology.org/P19-1001`), fetch the record from the ACL Anthology; if it
    has a PubMed or PubMed Central id (`pmid`, `pmcid`, or a PubMed URL), fetch it
@@ -48,6 +52,16 @@ not found; open the link to confirm it.
 
 Entries that are websites, software, datasets, standards or manuals are not
 looked up. An entry with a DOI or arXiv id is judged by that identifier alone.
+When doi.org could not check the DOI and the work was found another way, the
+entry is verified only if the record found carries the same DOI. A record with
+another DOI is a mismatch; a record without a DOI leaves the DOI unchecked, and
+the entry "could not be checked".
+
+Titles in any script are compared by their own letters: Cyrillic, Greek,
+Arabic, Chinese, Japanese and so on (diacritics are ignored, and each Chinese or
+Japanese character counts as a word). A title with no letter or digit at all
+(`title = {???}`) cannot be searched; such an entry is never reported as not
+found.
 
 Results are cached in your user cache folder (`~/.cache/overfull`, see
 [Configuration](./config.md#cache)), so repeat runs are fast and make few
@@ -66,6 +80,11 @@ skipped for the rest of the run, so one slow service cannot stall the check. A
 request must start answering within 4 seconds and finish within 10. The
 indexes for one entry are asked at the same time, with the per-host spacing
 unchanged.
+
+Requests to CrossRef are spaced to stay inside its limits: one at a time,
+about 1.1 seconds apart, in the public pool; up to three at a time, about 0.35
+seconds apart, with a `mailto` (see [Configuration](#configuration)). arXiv
+requests are 3 seconds apart, as arXiv asks.
 
 ## The outcomes
 
@@ -91,7 +110,7 @@ that contains it, or move it in), `reference-unproven` and
 `reference-not-reverified` (see [Provenance](#provenance)), and
 `refs-cache-ignored` (info, see [Configuration](./config.md#cache)).
 
-Four more rules look at the entries themselves:
+Five more rules look at the entries themselves:
 
 | Rule id | Severity | Meaning |
 | --- | --- | --- |
@@ -99,6 +118,7 @@ Four more rules look at the entries themselves:
 | `reference-published-version` | info | An arXiv entry whose arXiv record names a published DOI. Cite the published version with `overfull cite <doi>` if your venue prefers it. |
 | `reference-duplicate` | warning | Two entries with the same DOI, the same arXiv id, or the same title and year. Works offline. |
 | `reference-uncited` | info | No `\cite` uses the entry. Off by default: set `references.reportUncited: true`. Needs the cited keys from the `.aux`, `.bcf` or sources. |
+| `reference-retraction-unchecked` | info | CrossRef could not be asked about some matched works (a request failed). The ones it answered for were checked; the message names the reason and the entries. |
 
 ## Why it never says "fake"
 
@@ -207,8 +227,15 @@ references:
 ```
 
 `mailto` puts your requests in CrossRef's "polite pool", which is faster and more
-reliable. You can also set it with the `OVERFULL_MAILTO` environment variable or
-`--mailto`. It is sent only to CrossRef and OpenAlex. `mailto` does not turn
+reliable. CrossRef counts requests per contact address, and without one every
+user shares the slower public pool, so Overfull has to wait longer between
+requests (see [How it works](#how-it-works)). You can also set it with the
+`OVERFULL_MAILTO` environment variable or `--mailto`.
+
+`overfull init` (for a new project and with `--here`) offers to fill in
+`mailto` from `git config user.email`. It asks on a terminal and writes the
+address only when you answer yes; without a terminal it writes nothing and
+prints a one-line hint. It is sent only to CrossRef and OpenAlex. `mailto` does not turn
 OpenAlex on. OpenAlex title search runs only when the `OPENALEX_API_KEY`
 environment variable is set; it is not an `overfull.yml` key, so the key stays out
 of your repository.
