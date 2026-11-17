@@ -21,6 +21,9 @@ styleFiles:
     kit: https://aaai.org/authorkit27/
 textBlock:
   widthMm: 177.8
+anonymizedByClass:
+  package: aaai2027
+  withOptions: [submission]
 notes: >-
   The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for
   references. Acknowledgements are omitted from papers submitted for review. The author
@@ -29,3 +32,4 @@ notes: >-
   downloaded on 2026-11-10. The AAAI-28 call page redirects to AAAI-26 content, so
   AAAI-27 is the latest published.
   Text block: 7 in wide, centred on US Letter (aaai2027.sty).
+  aaai2027.sty prints "Anonymous submission" with the submission option.

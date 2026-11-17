@@ -1,0 +1,7 @@
+{
+  "title": "Line break after a blank line",
+  "engine": "pdflatex",
+  "check": "build",
+  "expect": ["no-line-to-end"],
+  "run": "once"
+}

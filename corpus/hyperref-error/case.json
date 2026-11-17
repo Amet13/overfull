@@ -1,0 +1,7 @@
+{
+  "title": "Invalid value for an \\href key (hyperref)",
+  "engine": "pdflatex",
+  "check": "build",
+  "expect": ["hyperref-error"],
+  "run": "once"
+}

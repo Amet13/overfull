@@ -26,6 +26,10 @@ textBlock:
   heightMm: 193
   leftMm: 12
   topMm: 12
+anonymizedByClass:
+  package: eccv
+  withOptions: [review]
+  unlessOptions: [final]
 notes: >-
   Papers over 14 pages (excluding references), not anonymized, or not in the ECCV 2026
   template are desk-rejected, and so are submissions whose margins, formatting or font
@@ -36,3 +40,4 @@ notes: >-
   da8c09c of 2026-01-23); its own llncs.cls differs from Springer's current one. The
   review option crops the page to 146 x 217 mm around a 122 x 193 mm text block 12 mm
   from the left and top edges (eccv.sty), hence no standard paper size.
+  eccv.sty prints "Anonymous ECCV Submission" with the review option.

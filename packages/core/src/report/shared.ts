@@ -16,43 +16,60 @@ export function formatLocation(loc: Location | undefined): string {
   return '';
 }
 
+const checkIndex = (c: string) => CHECK_IDS.indexOf(c as (typeof CHECK_IDS)[number]);
+
 /**
- * Problems of one check in reading order: errors, then warnings, then notes;
- * within a severity by file and line (problems without a file last), else as found.
+ * The one reading order every format uses: errors, then warnings, then notes; then by
+ * check (in `CHECK_IDS` order); then by file and line, problems without a file last
+ * (by page); else as found.
  */
+function compareProblems(a: { p: Problem; i: number }, b: { p: Problem; i: number }): number {
+  const fa = a.p.location?.file;
+  const fb = b.p.location?.file;
+  return (
+    SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] ||
+    checkIndex(a.p.check) - checkIndex(b.p.check) ||
+    (fa === undefined ? 1 : 0) - (fb === undefined ? 1 : 0) ||
+    (fa ?? '').localeCompare(fb ?? '') ||
+    (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) ||
+    (a.p.location?.page ?? 0) - (b.p.location?.page ?? 0) ||
+    a.i - b.i
+  );
+}
+
+/** Problems in reading order (see `compareProblems`). */
 export function sortProblems(problems: Problem[]): Problem[] {
   return problems
     .map((p, i) => ({ p, i }))
-    .sort((a, b) => {
-      const fa = a.p.location?.file;
-      const fb = b.p.location?.file;
-      return (
-        SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] ||
-        (fa === undefined ? 1 : 0) - (fb === undefined ? 1 : 0) ||
-        (fa ?? '').localeCompare(fb ?? '') ||
-        (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) ||
-        a.i - b.i
-      );
-    })
+    .sort(compareProblems)
     .map(({ p }) => p);
 }
 
-/** Problems from all checks, sorted by severity, check order, then location. */
+/** Problems from all checks in reading order (see `compareProblems`). */
 export function sortedProblems(report: Report): Problem[] {
-  const checkIndex = (c: string) => CHECK_IDS.indexOf(c as (typeof CHECK_IDS)[number]);
-  return report.checks
-    .flatMap((c) => c.problems)
-    .map((p, i) => ({ p, i }))
-    .sort(
-      (a, b) =>
-        SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] ||
-        checkIndex(a.p.check) - checkIndex(b.p.check) ||
-        (a.p.location?.file ?? '').localeCompare(b.p.location?.file ?? '') ||
-        (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) ||
-        (a.p.location?.page ?? 0) - (b.p.location?.page ?? 0) ||
-        a.i - b.i,
-    )
-    .map(({ p }) => p);
+  return sortProblems(report.checks.flatMap((c) => c.problems));
+}
+
+/** A piece of message text; `code` pieces were inside a matched pair of backticks. */
+export interface TextSpan {
+  code: boolean;
+  text: string;
+}
+
+/**
+ * Splits text at matched `backtick` pairs (on one line, not empty). A backtick without a
+ * partner stays in the text, so it cannot turn the rest of the message into code.
+ */
+export function codeSpans(s: string): TextSpan[] {
+  const out: TextSpan[] = [];
+  let last = 0;
+  for (const m of s.matchAll(/`([^`\n]+)`/g)) {
+    if (m.index > last) out.push({ code: false, text: s.slice(last, m.index) });
+    out.push({ code: true, text: m[1] as string });
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push({ code: false, text: s.slice(last) });
+  return out;
 }
 
 export interface Tally {

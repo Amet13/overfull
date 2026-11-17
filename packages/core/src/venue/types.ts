@@ -33,8 +33,29 @@ export interface VenueProfile {
    * centred horizontally; without `topMm` (or `heightMm`) only the width is checked.
    */
   textBlock?: TextBlock;
+  /**
+   * The venue's class or style hides the author names itself in review mode, so names in
+   * `\author` are expected there and `anonymity-author-named` is not reported.
+   */
+  anonymizedByClass?: AnonymizedByClass;
   /** Free-text notes shown in the docs. */
   notes?: string;
+}
+
+/**
+ * When a venue class or package prints "Anonymous" instead of the authors. Review mode is on
+ * when `package` is loaded (`\documentclass` or `\usepackage`), with one of `withOptions`
+ * if that list is given, with none of `unlessOptions`, and none of `unlessCommands` is used.
+ */
+export interface AnonymizedByClass {
+  /** Class or package name without extension, e.g. `neurips_2026`. */
+  package: string;
+  /** Review mode needs one of these options (e.g. `review`). Without it, review is the default. */
+  withOptions?: string[];
+  /** Any of these options turns review mode off (e.g. `final`). */
+  unlessOptions?: string[];
+  /** Any of these commands in the source turns review mode off (e.g. `iclrfinalcopy`). */
+  unlessCommands?: string[];
 }
 
 export interface TextBlock {
@@ -80,6 +101,8 @@ export interface VenueContext {
   files?: string[];
   /** Project-relative path of the main .tex file. */
   main?: string;
+  /** The `.bbl` named like the main file, when the project has one (arXiv checks). */
+  bbl?: { path: string; text: string };
   /** "Now" for the profile-age note; defaults to the current date. Injectable for tests. */
   now?: Date;
 }

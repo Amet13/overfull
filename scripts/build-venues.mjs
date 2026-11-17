@@ -43,6 +43,7 @@ const KEYS = [
   'arxiv',
   'styleFiles',
   'textBlock',
+  'anonymizedByClass',
   'notes',
 ];
 const REQUIRED = ['id', 'name', 'year', 'source', 'checkedOn'];
@@ -186,6 +187,30 @@ export function validateProfile(raw, file) {
         }
       }
       data.textBlock = o;
+    }
+  }
+  if (raw.anonymizedByClass !== undefined) {
+    const a = raw.anonymizedByClass;
+    const name = /^[A-Za-z0-9_@.-]+$/;
+    if (!isObj(a) || !isStr(a.package) || !name.test(a.package)) {
+      err('"anonymizedByClass" must be a mapping with a class or package name in "package"');
+    } else {
+      const o = { package: a.package };
+      for (const k of Object.keys(a)) {
+        if (k === 'package') continue;
+        if (!['withOptions', 'unlessOptions', 'unlessCommands'].includes(k)) {
+          err(`unknown anonymizedByClass field "${k}"`);
+        } else if (
+          !Array.isArray(a[k]) ||
+          !a[k].length ||
+          !a[k].every((x) => isStr(x) && /^[A-Za-z@][\w@-]*$/.test(x))
+        ) {
+          err(`"anonymizedByClass.${k}" must be a list of option or command names`);
+        } else {
+          o[k] = a[k];
+        }
+      }
+      data.anonymizedByClass = o;
     }
   }
   if (raw.notes !== undefined) {

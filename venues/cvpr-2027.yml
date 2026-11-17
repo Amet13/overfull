@@ -20,6 +20,9 @@ styleFiles:
     kit: https://media.eventhosts.cc/Conferences/CVPR2027/author-kit-CVPR2027-v1-latex.zip
 textBlock:
   widthMm: 174.6
+anonymizedByClass:
+  package: cvpr
+  withOptions: [review, rebuttal]
 notes: >-
   Every submission needs a section titled "LLM Usage Statement" after the main text and
   before the references; it states "No LLMs or generative AI tools were used in this
@@ -27,3 +30,4 @@ notes: >-
   Acknowledgments. Paper size is from the check in the official cvpr.sty. The hash is of
   cvpr.sty from author-kit-CVPR2027-v1-latex.zip downloaded on 2026-11-10.
   Text block: 6.875 in wide, centred on US Letter (cvpr.sty).
+  cvpr.sty hides the authors with the review or rebuttal option.

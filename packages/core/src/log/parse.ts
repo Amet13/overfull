@@ -9,6 +9,7 @@
 
 import { LineReader, type LogicalLine } from './lines.js';
 import {
+  isDistributionPath,
   isFileToken,
   normalizePath,
   SPACED_PATH_SOURCE,
@@ -96,8 +97,17 @@ function joinParts(parts: string[]): string {
 
 /** The stack of files TeX has open, as printed with `(` and `)`. */
 class FileStack {
-  /** `null` marks a parenthesis that did not open a file. */
-  private readonly entries: (string | null)[] = [];
+  /**
+   * One entry per open parenthesis: `path` is `null` for a parenthesis that did not open
+   * a file; `innermost` is the innermost file open at that depth, so `current()` is O(1)
+   * even under many unmatched `(`.
+   */
+  private readonly entries: {
+    path: string | null;
+    innermost: string | undefined;
+    /** Innermost file at this depth that is not part of the TeX distribution. */
+    project: string | undefined;
+  }[] = [];
   lastClosed: string | undefined;
   readonly opened: string[] = [];
   /** Last page number shipped out (`[12]`). */
@@ -110,11 +120,17 @@ class FileStack {
   }
 
   current(): string | undefined {
-    for (let i = this.entries.length - 1; i >= 0; i--) {
-      const entry = this.entries[i];
-      if (entry) return entry;
-    }
-    return this.lastClosed;
+    return this.entries[this.entries.length - 1]?.innermost ?? this.lastClosed;
+  }
+
+  /**
+   * When the innermost open file belongs to the TeX distribution (a package raised the
+   * error while loading), the innermost project file that loaded it; else undefined.
+   */
+  loader(): string | undefined {
+    const top = this.entries[this.entries.length - 1];
+    if (!top || top.innermost === top.project) return undefined;
+    return top.project;
   }
 
   scan(text: string): void {
@@ -147,17 +163,20 @@ class FileStack {
     const unquoted = token.startsWith('"') ? token.slice(1, -1) : token;
     if (isFileToken(unquoted)) {
       const path = normalizePath(unquoted, this.root);
-      this.entries.push(path);
+      const below = this.entries[this.entries.length - 1];
+      const project = isDistributionPath(unquoted) ? below?.project : path;
+      this.entries.push({ path, innermost: path, project });
       this.opened.push(path);
       return end;
     }
-    this.entries.push(null);
+    const below = this.entries[this.entries.length - 1];
+    this.entries.push({ path: null, innermost: below?.innermost, project: below?.project });
     return start;
   }
 
   private close(): void {
     const entry = this.entries.pop();
-    if (entry) this.lastClosed = entry;
+    if (entry?.path) this.lastClosed = entry.path;
   }
 
   private maybePage(text: string, i: number): void {
@@ -313,7 +332,13 @@ class Parser {
       error.line = Number(fle[2]);
     } else {
       const file = this.stack.current();
-      if (file) error.file = file;
+      const loader = this.stack.loader();
+      if (loader) {
+        // Raised inside a package of the distribution while it loads: its `l.` line is in
+        // the package, which the author cannot change. Point at the file that loaded it.
+        error.file = loader;
+        delete error.line;
+      } else if (file) error.file = file;
     }
     if (
       /^(?:Emergency stop|==> Fatal error occurred|TeX capacity exceeded|Interruption)/.test(
@@ -431,7 +456,13 @@ class Parser {
       // "lines 13--1": the paragraph began in an \input file that has closed since; the
       // end line is in the current file, so point there rather than at a wrong line.
       warning.line = Math.min(from, to);
-      if (from > to) data.spansFiles = true;
+      if (from > to) {
+        data.spansFiles = true;
+        // The file the paragraph began in: the one that closed last.
+        if (this.stack.lastClosed && this.stack.lastClosed !== warning.file) {
+          data.fromFile = this.stack.lastClosed;
+        }
+      }
     }
     warning.page = this.stack.page + 1;
   }
@@ -461,7 +492,11 @@ function classifyWarning(
   }
   m = /^Label [`']([^']+)' multiply defined/.exec(message);
   if (m) return { kind: 'duplicate-label', data: { label: m[1] } };
-  if (/^Label\(s\) may have changed/.test(message)) return { kind: 'labels-changed', data: {} };
+  // Only these mean labels moved, so undefined references may resolve on the next run.
+  // Other reruns (rerunfilecheck's outlines, longtable widths) do not touch labels.
+  if (/^Label\(s\) may have changed|Rerun to get cross-references right/.test(message)) {
+    return { kind: 'labels-changed', data: {} };
+  }
   if (/Please \(re\)run Biber/i.test(message)) return { kind: 'rerun-biber', data: {} };
   if (/Please \(re\)run BibTeX/i.test(message)) return { kind: 'rerun-bibtex', data: {} };
   m = /^The following entry could not be found in the database: (\S+)/.exec(message);

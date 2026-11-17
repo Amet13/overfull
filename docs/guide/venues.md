@@ -59,6 +59,7 @@ Each file records where its values came from, so you can check them:
 | `disclosure`, `accessibility` | `required`, `recommended` or `off`. |
 | `styleFiles` | Required style or class file names, each with an optional `sha256` of the official file. |
 | `textBlock` | The text block from the official style file, in millimetres: `widthMm`, and optionally `heightMm`, `leftMm`, `topMm`. Without `leftMm` the block is centred; without `topMm` and `heightMm` only the width is checked. |
+| `anonymizedByClass` | The class or style that prints "Anonymous" itself in review mode: `package`, and optionally `withOptions` (review mode needs one of them), `unlessOptions` and `unlessCommands` (these turn it off). While it is in review mode, names in `\author` are not reported. |
 | `notes` | Free text. |
 
 The files are checked and compiled into the generated module
@@ -195,7 +196,13 @@ profiles that set a page limit or name a style file, never for `generic` or
 With `anonymous: true` (or the `double-blind` profile), Overfull checks:
 
 - the PDF's Author metadata field (`anonymity-pdf-author`, error);
-- the content of `\author` (`anonymity-author-named`, error);
+- the content of `\author` (`anonymity-author-named`, error). Simple macros
+  defined in the project (`\newcommand\PaperAuthors{...}`, `\def`) are expanded
+  first, so `\author{\PaperAuthors}` is checked too. Many venue classes print
+  "Anonymous" themselves in review mode and ask you to keep the real names in
+  `\author`; for those profiles (NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, AISTATS,
+  ACL Rolling Review, EMNLP) the check is skipped while the class is loaded in
+  review mode, and its fix names the option to change when it is not;
 - an acknowledgments section, which often names people and grants
   (`anonymity-acknowledgments`, warning);
 - phrases such as "our previous work" (`anonymity-self-reference`, info).
@@ -254,13 +261,24 @@ happened in the repository. You must read, correct and approve it. See
 - no `.eps` figures when the build log shows pdfLaTeX (`arxiv-eps-pdflatex`,
   warning);
 - no `minted` or other shell-escape features (`arxiv-shell-escape`, warning);
-- a `.bbl` file next to the main file, because arXiv does not run biber
-  (`arxiv-missing-bbl`, info).
+- the bibliography sources (`arxiv-missing-bbl`, warning). arXiv runs BibTeX,
+  or Biber when biblatex selects it, on the uploaded `.bib` files, or uses an
+  uploaded `.bbl` named like the main file (`main.tex` → `main.bbl`). The rule
+  fires only when neither is in the project;
+- a shipped biblatex `.bbl` in a format arXiv can read (`arxiv-bbl-version`,
+  warning). The first lines of a biblatex `.bbl` give its format. arXiv's
+  default TeX Live 2025 (biblatex 3.20, Biber 2.20) reads format 3.3 only; its
+  TeX Live 2023 reads 3.2 and 3.3. A `.bbl` built with another TeX Live breaks
+  the bibliography on arXiv: upload the `.bib` files instead, or build the
+  `.bbl` with TeX Live 2025. BibTeX `.bbl` files have no format line and are not
+  checked;
+- a LuaLaTeX build log (`arxiv-unsupported-engine`, error): arXiv compiles with
+  pdfLaTeX or XeLaTeX, not LuaLaTeX.
 
 arXiv's own rules change; read its [submission help](https://info.arxiv.org/help/submit_tex.html)
-before you upload. arXiv's
-[list of supported processors](https://info.arxiv.org/help/faq/texlive.html)
-has not included LuaLaTeX (it lists pdfLaTeX, LaTeX and XeLaTeX).
+before you upload. The TeX Live versions and `.bbl` formats above were read
+from that page and arXiv's [TeX Live page](https://info.arxiv.org/help/faq/texlive.html)
+on 2026-11-17.
 
 The paper template handles this: it builds with LuaLaTeX by default and with
 pdfLaTeX for arXiv, using `make arxiv` or `latexmk -pdf`. The `.eps` rule reads

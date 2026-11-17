@@ -1164,6 +1164,9 @@ function spacedPathLength(text2, start) {
   const m = SPACED_PATH_AT.exec(text2.slice(start, start + 1100));
   return m ? m[0].length : 0;
 }
+function isDistributionPath(path) {
+  return DISTRIBUTION_DIR.test(path.trim().replace(/\\/g, "/"));
+}
 function basename(path) {
   const parts = path.split("/");
   return parts[parts.length - 1] || path;
@@ -2029,7 +2032,9 @@ function classifyWarning(source, message) {
   }
   m = /^Label [`']([^']+)' multiply defined/.exec(message);
   if (m) return { kind: "duplicate-label", data: { label: m[1] } };
-  if (/^Label\(s\) may have changed/.test(message)) return { kind: "labels-changed", data: {} };
+  if (/^Label\(s\) may have changed|Rerun to get cross-references right/.test(message)) {
+    return { kind: "labels-changed", data: {} };
+  }
   if (/Please \(re\)run Biber/i.test(message)) return { kind: "rerun-biber", data: {} };
   if (/Please \(re\)run BibTeX/i.test(message)) return { kind: "rerun-bibtex", data: {} };
   m = /^The following entry could not be found in the database: (\S+)/.exec(message);
@@ -2080,7 +2085,11 @@ var init_parse2 = __esm({
     HAS_TEX_EXTENSION = new RegExp(`\\.${TEX_EXTENSION_GROUP}$`, "i");
     PLAIN_MESSAGE = /^(?:Package: |File: |Document Class: |Language: |Dictionary: |\\[A-Za-z@]+=\\|\\openout\d+ = |\([\w@.-]+\) {2,})/;
     FileStack = class {
-      /** `null` marks a parenthesis that did not open a file. */
+      /**
+       * One entry per open parenthesis: `path` is `null` for a parenthesis that did not open
+       * a file; `innermost` is the innermost file open at that depth, so `current()` is O(1)
+       * even under many unmatched `(`.
+       */
       entries = [];
       lastClosed;
       opened = [];
@@ -2091,11 +2100,16 @@ var init_parse2 = __esm({
         this.root = root;
       }
       current() {
-        for (let i = this.entries.length - 1; i >= 0; i--) {
-          const entry = this.entries[i];
-          if (entry) return entry;
-        }
-        return this.lastClosed;
+        return this.entries[this.entries.length - 1]?.innermost ?? this.lastClosed;
+      }
+      /**
+       * When the innermost open file belongs to the TeX distribution (a package raised the
+       * error while loading), the innermost project file that loaded it; else undefined.
+       */
+      loader() {
+        const top = this.entries[this.entries.length - 1];
+        if (!top || top.innermost === top.project) return void 0;
+        return top.project;
       }
       scan(text2) {
         for (let i = 0; i < text2.length; i++) {
@@ -2121,16 +2135,19 @@ var init_parse2 = __esm({
         const unquoted = token.startsWith('"') ? token.slice(1, -1) : token;
         if (isFileToken(unquoted)) {
           const path = normalizePath(unquoted, this.root);
-          this.entries.push(path);
+          const below2 = this.entries[this.entries.length - 1];
+          const project = isDistributionPath(unquoted) ? below2?.project : path;
+          this.entries.push({ path, innermost: path, project });
           this.opened.push(path);
           return end;
         }
-        this.entries.push(null);
+        const below = this.entries[this.entries.length - 1];
+        this.entries.push({ path: null, innermost: below?.innermost, project: below?.project });
         return start;
       }
       close() {
         const entry = this.entries.pop();
-        if (entry) this.lastClosed = entry;
+        if (entry?.path) this.lastClosed = entry.path;
       }
       maybePage(text2, i) {
         const before = i === 0 ? " " : text2[i - 1] ?? " ";
@@ -2272,7 +2289,11 @@ var init_parse2 = __esm({
           error.line = Number(fle[2]);
         } else {
           const file = this.stack.current();
-          if (file) error.file = file;
+          const loader = this.stack.loader();
+          if (loader) {
+            error.file = loader;
+            delete error.line;
+          } else if (file) error.file = file;
         }
         if (/^(?:Emergency stop|==> Fatal error occurred|TeX capacity exceeded|Interruption)/.test(
           message
@@ -2372,7 +2393,12 @@ var init_parse2 = __esm({
         if (lines) {
           const [from, to] = [Number(lines[1]), Number(lines[2] ?? lines[1])];
           warning.line = Math.min(from, to);
-          if (from > to) data.spansFiles = true;
+          if (from > to) {
+            data.spansFiles = true;
+            if (this.stack.lastClosed && this.stack.lastClosed !== warning.file) {
+              data.fromFile = this.stack.lastClosed;
+            }
+          }
         }
         warning.page = this.stack.page + 1;
       }
@@ -2554,19 +2580,26 @@ function undefinedReferences(list2) {
     });
   });
 }
-function staleState(parsed, w) {
-  const noBbl = w.get("no-file").some((x) => extension(String(x.data.file)) === "bbl");
+function stem(path) {
+  return basename(path).replace(/\.[^.]*$/, "");
+}
+function staleState(parsed, w, packages) {
+  const bbl = w.get("no-file").find((x) => extension(String(x.data.file)) === "bbl");
   const stale = parsed.rerunNeeded.biber || parsed.rerunNeeded.bibtex;
+  const biber = parsed.rerunNeeded.biber || packages.has("biblatex") && !parsed.rerunNeeded.bibtex;
+  const rerunFile = [...w.get("rerun-biber"), ...w.get("rerun-bibtex")].map((x) => /\bon the file(?:\(s\))?:?\s+([^\s,]+)/.exec(x.message)?.[1]).find((f) => f !== void 0);
+  const named = bbl ? String(bbl.data.file) : rerunFile ?? parsed.outputFile?.name;
   return {
-    bibliography: noBbl ? "missing" : stale ? "stale" : void 0,
-    bibTool: parsed.rerunNeeded.bibtex && !parsed.rerunNeeded.biber ? "BibTeX" : "Biber",
+    bibliography: bbl ? "missing" : stale ? "stale" : void 0,
+    bibTool: biber ? "Biber" : "BibTeX",
+    job: named && stem(named) || "main",
     references: parsed.rerunNeeded.latex
   };
 }
 function bibliographyProblem(state, citations, raw) {
   const keys = [...new Set(citations.map((c) => String(c.data.key)))];
   const tool = state.bibTool;
-  const command = tool === "Biber" ? "`biber main`" : "`bibtex main`";
+  const command = code2(`${tool === "Biber" ? "biber" : "bibtex"} ${state.job}`);
   const missing = state.bibliography === "missing";
   const suffix = keys.length > 0 ? ` (${plural(keys.length, "citation")} ${keys.length === 1 ? "shows" : "show"} as [?])` : "";
   return compact({
@@ -2581,8 +2614,19 @@ function bibliographyProblem(state, citations, raw) {
     data: keys.length > 0 ? { tool, keys } : { tool }
   });
 }
-function rerunProblem(references2, raw) {
+function rerunProblem(references2, raw, labelsChanged) {
   const labels = [...new Set(references2.map((r) => String(r.data.label)))];
+  if (!labelsChanged) {
+    return compact({
+      rule: "rerun-needed",
+      check: "output",
+      severity: "warning",
+      message: "LaTeX needs another run",
+      detail: "A package reported that its data changed during this run (for example the PDF bookmarks or table widths), so the PDF is not final until LaTeX runs again.",
+      fix: "Build with `latexmk`, which reruns LaTeX as needed, or run LaTeX once more.",
+      evidence: evidence(raw)
+    });
+  }
   return compact({
     rule: "rerun-needed",
     check: "output",
@@ -2619,8 +2663,15 @@ function boxText(raw) {
 function overlapsError(box, errors) {
   const lines = box.data.lines;
   if (!lines) return false;
+  const [from, to] = lines;
+  if (box.data.spansFiles) {
+    const fromFile = box.data.fromFile;
+    return errors.some(
+      (e) => e.line !== void 0 && e.logLine < box.logLine && (e.file === box.file && e.line <= to || fromFile !== void 0 && e.file === fromFile && e.line >= from)
+    );
+  }
   return errors.some(
-    (e) => e.file === box.file && e.line !== void 0 && e.line >= lines[0] && e.line <= lines[1]
+    (e) => e.file === box.file && e.line !== void 0 && e.line >= from && e.line <= to
   );
 }
 function overfullBoxes(list2, thresholdPt, errors) {
@@ -2648,7 +2699,7 @@ function overfullBoxes(list2, thresholdPt, errors) {
       rule: "overfull-box",
       check: "output",
       severity: "warning",
-      message: vertical ? `Content is ${amount.toFixed(1)}pt too tall for the page${where ? ` (${where})` : ""}` : `Text sticks ${amount.toFixed(1)}pt into the margin${where ? ` (${where})` : ""}${others > 0 ? `; ${plural(others, "more overfull box")} in this file` : ""}`,
+      message: vertical ? `Content is ${amount.toFixed(1)}pt too tall for the page${where ? ` (${where})` : ""}` : `Text sticks ${amount.toFixed(1)}pt into the margin${where ? ` (${where})` : ""}${others > 0 ? `; ${plural(others, "more overfull box", "more overfull boxes")} in this file` : ""}`,
       location: location(worst.file, worst.line, worst.page),
       detail: vertical ? "A page or box holds more material than fits vertically." : `TeX could not break the line without exceeding the text width${text2 ? `: ${code2(text2)}` : ""}. Long URLs, code, file names and unhyphenated words are the usual cause.`,
       fix: vertical ? "Shrink the float or table, allow it to break across pages, or move material." : "Rephrase or allow a break: use `\\url{}`/`\\path{}` for URLs and identifiers, `\\-` to suggest hyphenation, or load `microtype` for finer spacing. Wide tables and figures: scale them to `\\linewidth`.",
@@ -2774,9 +2825,9 @@ function missingIncludes(w) {
     })
   );
 }
-function warningProblems(parsed, buildFailed2, thresholdPt) {
+function warningProblems(parsed, buildFailed2, thresholdPt, packages) {
   const w = indexWarnings(parsed.warnings);
-  const state = staleState(parsed, w);
+  const state = staleState(parsed, w, packages);
   const problems = [];
   const notInBib = new Set(w.get("bib-entry-not-found").map((x) => String(x.data.key)));
   let citations = w.get("undefined-citation");
@@ -2787,15 +2838,18 @@ function warningProblems(parsed, buildFailed2, thresholdPt) {
   }
   problems.push(...undefinedCitations(citations, notInBib));
   let references2 = w.get("undefined-reference");
+  const labelsChanged = state.references && w.get("labels-changed").length > 0;
   if (state.references) {
     const raw = [...w.get("labels-changed"), ...w.get("rerun-latex")].map((x) => x.raw);
-    if (!buildFailed2) problems.push(rerunProblem(references2, raw));
-    references2 = [];
+    if (!buildFailed2) {
+      problems.push(rerunProblem(labelsChanged ? references2 : [], raw, labelsChanged));
+    }
+    if (labelsChanged || buildFailed2) references2 = [];
   }
   problems.push(...undefinedReferences(references2));
   const anyUndefined = w.get("undefined-citation").length + w.get("undefined-reference").length > 0;
   const summary = w.get("undefined-references-summary")[0];
-  if (summary && !anyUndefined && !state.bibliography && !state.references) {
+  if (summary && !anyUndefined && !state.bibliography && !labelsChanged) {
     problems.push({
       rule: "undefined-reference",
       check: "output",
@@ -2862,7 +2916,8 @@ function analyzeLog(text2, opts = {}) {
     };
   }
   const threshold = opts.overfullThresholdPt ?? DEFAULT_OVERFULL_PT;
-  const fromErrors = errorProblems(parsed, { packages: packagesOf(parsed) });
+  const packages = packagesOf(parsed);
+  const fromErrors = errorProblems(parsed, { packages });
   const buildProblems = [
     ...fromErrors.filter((p) => p.check === "build"),
     ...fatalWithoutError(parsed, fromErrors)
@@ -2870,7 +2925,7 @@ function analyzeLog(text2, opts = {}) {
   const buildFailed2 = buildProblems.length > 0;
   const outputProblems = [
     ...fromErrors.filter((p) => p.check === "output"),
-    ...warningProblems(parsed, buildFailed2, threshold)
+    ...warningProblems(parsed, buildFailed2, threshold, packages)
   ];
   const build2 = {
     check: "build",
@@ -2908,7 +2963,7 @@ var init_analyze = __esm({
     MAX_EVIDENCE_LINES = 40;
     DEFAULT_OVERFULL_PT = 10;
     code2 = (text2) => `\`${text2}\``;
-    plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+    plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
     CONSEQUENCE_RULES = /* @__PURE__ */ new Set([
       "missing-dollar",
       "missing-brace",
@@ -2920,487 +2975,6 @@ var init_analyze = __esm({
       "illegal-parameter-number",
       "tex-error"
     ]);
-  }
-});
-
-// ../packages/core/src/log/bibliography.ts
-function bblEntries(text2) {
-  const out = [];
-  const re = /\\(?:bibitem\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}|entry\s*\{([^}]+)\})/g;
-  for (let m = re.exec(text2); m; m = re.exec(text2)) {
-    const key = (m[1] ?? m[2] ?? "").trim();
-    if (!key) continue;
-    out.push({ key, offset: m.index, line: text2.slice(0, m.index).split("\n").length });
-  }
-  return out;
-}
-function argumentSnippet(evidence2) {
-  const m = /^<argument> (.+)$/m.exec(evidence2 ?? "");
-  const text2 = m?.[1]?.replace(/[&_^#$%\\]+\s*$/, "").trim();
-  return text2 && text2.length >= 8 ? text2 : void 0;
-}
-function attributeBibliography(problems, src) {
-  if (!src.bbl) return problems;
-  const entries = bblEntries(src.bbl.text);
-  if (!entries.length) return problems;
-  let bibIndex;
-  const bibLocation = (key) => {
-    if (!bibIndex) {
-      bibIndex = /* @__PURE__ */ new Map();
-      for (const b of src.bibs) {
-        for (const e of parseBib(b.text)) {
-          if (!bibIndex.has(e.key)) bibIndex.set(e.key, { file: b.file, line: e.line });
-        }
-      }
-    }
-    return bibIndex.get(key);
-  };
-  return problems.map((p) => {
-    if (p.data?.bibKey) return p;
-    let key;
-    const loc = p.location;
-    if (loc?.file && loc.line && sameFile(loc.file, src.bbl?.path ?? "")) {
-      key = [...entries].reverse().find((e) => e.line <= loc.line)?.key;
-    } else {
-      const snippet2 = argumentSnippet(p.evidence);
-      const at = snippet2 ? src.bbl?.text.indexOf(snippet2) ?? -1 : -1;
-      if (at >= 0) key = [...entries].reverse().find((e) => e.offset <= at)?.key;
-    }
-    if (!key) return p;
-    const where = bibLocation(key);
-    return {
-      ...p,
-      message: `${p.message} in the bibliography entry \`${key}\``,
-      ...where ? { location: { file: where.file, line: where.line } } : {},
-      data: { ...p.data ?? {}, bibKey: key, ...loc ? { reportedAt: loc } : {} }
-    };
-  });
-}
-var sameFile;
-var init_bibliography = __esm({
-  "../packages/core/src/log/bibliography.ts"() {
-    "use strict";
-    init_parse();
-    sameFile = (a, b) => a.replace(/^\.\//, "") === b.replace(/^\.\//, "") || a.split("/").pop() === b.split("/").pop();
-  }
-});
-
-// ../packages/core/src/log/rules.ts
-var logRules;
-var init_rules = __esm({
-  "../packages/core/src/log/rules.ts"() {
-    "use strict";
-    logRules = [
-      // build
-      {
-        id: "undefined-control-sequence",
-        check: "build",
-        severity: "error",
-        title: "Unknown command",
-        summary: "The document uses a command that no loaded package defines: a typo, a missing package, or a command from another citation package.",
-        fix: "Fix the spelling or load the package that defines the command.",
-        corpus: "undefined-control-sequence"
-      },
-      {
-        id: "missing-dollar",
-        check: "build",
-        severity: "error",
-        title: "Math symbol outside math mode",
-        summary: "A `_`, `^` or math command appears in running text, or a formula is not closed, so TeX inserted a `$`.",
-        fix: "Escape `_` as `\\_` in text, or put the formula inside `$\u2026$`.",
-        corpus: "underscore-in-text"
-      },
-      {
-        id: "missing-brace",
-        check: "build",
-        severity: "error",
-        title: "Missing brace",
-        summary: "A `{` group is still open where TeX needs it closed, for example at the end of a formula.",
-        fix: "Close every `{` before the formula or environment ends.",
-        corpus: "missing-brace-inserted"
-      },
-      {
-        id: "extra-brace",
-        check: "build",
-        severity: "error",
-        title: "Extra closing brace",
-        summary: "A `}` closes nothing: there are more closing braces than opening ones.",
-        fix: "Delete the extra `}` or add the missing `{`.",
-        corpus: "too-many-braces"
-      },
-      {
-        id: "runaway-argument",
-        check: "build",
-        severity: "error",
-        title: "Unclosed command argument",
-        summary: "The argument of a command is never closed, so TeX read to the end of the paragraph or file.",
-        fix: "Add the missing `}` after the argument.",
-        corpus: "unclosed-brace"
-      },
-      {
-        id: "missing-package",
-        check: "build",
-        severity: "error",
-        title: "Package or class not installed",
-        summary: "A `\\usepackage` or `\\documentclass` names a file that is not in the TeX installation.",
-        fix: "Check the spelling, install it with `tlmgr install <name>`, or build in the Overfull Docker image.",
-        corpus: "missing-package"
-      },
-      {
-        id: "missing-file",
-        check: "build",
-        severity: "error",
-        title: "Input file not found",
-        summary: "An `\\input` or `\\include` points to a file that does not exist.",
-        fix: "Fix the path; it is relative to the main file and case-sensitive.",
-        corpus: "missing-input-file"
-      },
-      {
-        id: "option-clash",
-        check: "build",
-        severity: "error",
-        title: "Package loaded twice with different options",
-        summary: "A package was loaded again with options it was not first loaded with.",
-        fix: "Load it once with all options, or use `\\PassOptionsToPackage` before `\\documentclass`.",
-        corpus: "option-clash"
-      },
-      {
-        id: "unknown-graphics-extension",
-        check: "build",
-        severity: "error",
-        title: "Unsupported image format",
-        summary: "`\\includegraphics` was given a format such as SVG or GIF that the engine cannot embed.",
-        fix: "Convert the image to PDF, PNG or JPEG.",
-        corpus: "unknown-graphics-extension"
-      },
-      {
-        id: "environment-undefined",
-        check: "build",
-        severity: "error",
-        title: "Unknown environment",
-        summary: "A `\\begin{\u2026}` names an environment that is not defined (theorem environments must be declared).",
-        fix: "Load the package that defines it, declare it with `\\newtheorem`, or fix the spelling.",
-        corpus: "environment-undefined"
-      },
-      {
-        id: "environment-mismatch",
-        check: "build",
-        severity: "error",
-        title: "Environment closed with the wrong \\end",
-        summary: "A `\\begin{a}` is closed by `\\end{b}`.",
-        fix: "Make each `\\end{\u2026}` match the innermost open `\\begin{\u2026}`.",
-        corpus: "environment-mismatch"
-      },
-      {
-        id: "lonely-item",
-        check: "build",
-        severity: "error",
-        title: "\\item outside a list",
-        summary: "`\\item` is used outside `itemize`, `enumerate` or `description`.",
-        fix: "Wrap the items in a list environment.",
-        corpus: "lonely-item"
-      },
-      {
-        id: "missing-item",
-        check: "build",
-        severity: "error",
-        title: "Missing \\item",
-        summary: "LaTeX expected `\\item`, typically because text appears in a list before the first item.",
-        fix: "Start each entry with `\\item` and move other text out of the list.",
-        corpus: "missing-item"
-      },
-      {
-        id: "no-line-to-end",
-        check: "build",
-        severity: "error",
-        title: "Line break with no line to end",
-        summary: "`\\\\` is used after a blank line or at the start of a paragraph.",
-        fix: "Remove the `\\\\`; use a blank line or `\\vspace` for spacing."
-      },
-      {
-        id: "missing-begin-document",
-        check: "build",
-        severity: "error",
-        title: "Text in the preamble",
-        summary: "Typeset text appears before `\\begin{document}`.",
-        fix: "Move the text after `\\begin{document}` or comment it out.",
-        corpus: "missing-begin-document"
-      },
-      {
-        id: "preamble-only",
-        check: "build",
-        severity: "error",
-        title: "Preamble command in the document body",
-        summary: "A command such as `\\usepackage` is used after `\\begin{document}`.",
-        fix: "Move it above `\\begin{document}`.",
-        corpus: "usepackage-after-begin-document"
-      },
-      {
-        id: "unicode-character",
-        check: "build",
-        severity: "error",
-        title: "Unicode character pdfLaTeX cannot typeset",
-        summary: "The source contains a character pdfLaTeX does not know, or is not saved as UTF-8.",
-        fix: "Compile with LuaLaTeX, or replace the character with a LaTeX command.",
-        corpus: "inputenc-unicode"
-      },
-      {
-        id: "font-not-found",
-        check: "build",
-        severity: "error",
-        title: "Font not installed",
-        summary: "A font requested with fontspec (or a font package) is not available on this machine.",
-        fix: "Use a font shipped with TeX Live, or add the font files to the project and load them by file name.",
-        corpus: "fontspec-font-not-found"
-      },
-      {
-        id: "biblatex-error",
-        check: "build",
-        severity: "error",
-        title: "biblatex error",
-        summary: "biblatex stopped: BibTeX commands used with biblatex, an incompatible package, or a backend/version mismatch.",
-        fix: "Use biblatex options instead of BibTeX commands; delete the .bbl and rebuild on mismatches.",
-        corpus: "biblatex-bibliographystyle"
-      },
-      {
-        id: "illegal-parameter-number",
-        check: "build",
-        severity: "error",
-        title: "Misused # character",
-        summary: "A macro definition uses `#n` beyond its declared arguments, or a literal `#` appears in text.",
-        fix: "Declare enough arguments, or write `\\#` for a hash sign.",
-        corpus: "illegal-parameter-number"
-      },
-      {
-        id: "double-script",
-        check: "build",
-        severity: "error",
-        title: "Double subscript or superscript",
-        summary: "A symbol has two subscripts (or superscripts), such as `w_i_j`.",
-        fix: "Group them in braces: `w_{ij}`.",
-        corpus: "double-subscript"
-      },
-      {
-        id: "misplaced-alignment-tab",
-        check: "build",
-        severity: "error",
-        title: "Unescaped & in text",
-        summary: "`&` separates table columns and cannot appear in running text or a .bib field unescaped.",
-        fix: "Write `\\&`.",
-        corpus: "ampersand-in-text"
-      },
-      {
-        id: "undefined-color",
-        check: "build",
-        severity: "error",
-        title: "Undefined color",
-        summary: "A color name is used that xcolor does not know.",
-        fix: "Define it with `\\definecolor`, or load xcolor with `dvipsnames`/`svgnames`.",
-        corpus: "undefined-color"
-      },
-      {
-        id: "not-in-outer-par-mode",
-        check: "build",
-        severity: "error",
-        title: "Float inside a box",
-        summary: "A figure, table or margin note is placed inside a minipage, parbox or another float.",
-        fix: "Move the float out, or use `\\captionof` inside a minipage.",
-        corpus: "figure-in-minipage"
-      },
-      {
-        id: "dimension-too-large",
-        check: "build",
-        severity: "error",
-        title: "Length too large",
-        summary: "A length exceeds TeX\u2019s maximum of about 16383pt (5.75 m).",
-        fix: "Fix the length or rescale plot data.",
-        corpus: "dimension-too-large"
-      },
-      {
-        id: "tex-capacity-exceeded",
-        check: "build",
-        severity: "error",
-        title: "TeX ran out of capacity",
-        summary: "Usually infinite recursion (a command that calls itself); otherwise a very large figure.",
-        fix: "Check recent `\\newcommand`/`\\renewcommand` definitions; for big figures use LuaLaTeX or externalize them.",
-        corpus: "infinite-recursion"
-      },
-      {
-        id: "tikz-error",
-        check: "build",
-        severity: "error",
-        title: "TikZ/PGF error",
-        summary: "TikZ stopped on an unknown option, a missing semicolon, or an undefined node.",
-        fix: "Fix the option spelling, end paths with `;`, or load the needed TikZ library.",
-        corpus: "tikz-unknown-key"
-      },
-      {
-        id: "hyperref-error",
-        check: "build",
-        severity: "error",
-        title: "hyperref error",
-        summary: "hyperref reported an error, typically a driver or option conflict.",
-        fix: "Load hyperref last and set options with `\\hypersetup`."
-      },
-      {
-        id: "command-already-defined",
-        check: "build",
-        severity: "error",
-        title: "Command already defined",
-        summary: "`\\newcommand` tried to define a name that already exists.",
-        fix: "Choose another name, or use `\\renewcommand` deliberately."
-      },
-      {
-        id: "unknown-package-option",
-        check: "build",
-        severity: "error",
-        title: "Unknown package option",
-        summary: "A package or class was given an option it does not support.",
-        fix: "Check the option against the package documentation."
-      },
-      {
-        id: "tex-error",
-        check: "build",
-        severity: "error",
-        title: "TeX error",
-        summary: "TeX reported an error Overfull has no specific explanation for; the original message is shown.",
-        fix: "Read the message and fix the first error in the log first."
-      },
-      // output
-      {
-        id: "undefined-citation",
-        check: "output",
-        severity: "error",
-        title: "Undefined citation",
-        summary: "A cited key has no bibliography entry, so the PDF shows the key or [?].",
-        fix: "Fix the key or add the entry to the .bib file, then rebuild; or remove the `\\cite` if the source is not known.",
-        corpus: "biblatex-undefined-citation"
-      },
-      {
-        id: "undefined-reference",
-        check: "output",
-        severity: "error",
-        title: "Undefined reference",
-        summary: "A `\\ref` points to a label that does not exist, so the PDF shows ??.",
-        fix: "Add the `\\label` or fix the spelling in `\\ref`.",
-        corpus: "undefined-reference"
-      },
-      {
-        id: "bibliography-missing",
-        check: "output",
-        severity: "error",
-        title: "Bibliography not built",
-        summary: "Biber or BibTeX was never run, so all citations are undefined and the bibliography is empty.",
-        fix: "Build with `latexmk`, or run biber/bibtex and then LaTeX twice.",
-        corpus: "biblatex-rerun-biber"
-      },
-      {
-        id: "bibliography-stale",
-        check: "output",
-        severity: "warning",
-        title: "Bibliography out of date",
-        summary: "Citations changed since Biber or BibTeX last ran.",
-        fix: "Build with `latexmk`, or rerun biber/bibtex and LaTeX."
-      },
-      {
-        id: "rerun-needed",
-        check: "output",
-        severity: "warning",
-        title: "LaTeX needs another run",
-        summary: "Labels changed during the run; references and page numbers may be wrong until LaTeX runs again.",
-        fix: "Build with `latexmk`, which reruns LaTeX as needed.",
-        corpus: "labels-changed"
-      },
-      {
-        id: "empty-bibliography",
-        check: "output",
-        severity: "warning",
-        title: "Empty bibliography",
-        summary: "The bibliography printed no entries.",
-        fix: "Cite sources, check `\\addbibresource`, or use `\\nocite{*}`.",
-        corpus: "empty-bibliography"
-      },
-      {
-        id: "missing-figure",
-        check: "output",
-        severity: "error",
-        title: "Figure file not found",
-        summary: "An `\\includegraphics` file does not exist, so the PDF has an empty box.",
-        fix: "Fix the path and file name (case-sensitive).",
-        corpus: "missing-figure"
-      },
-      {
-        id: "duplicate-label",
-        check: "output",
-        severity: "warning",
-        title: "Label defined twice",
-        summary: "Two `\\label`s share a name, so references may point to the wrong place.",
-        fix: "Give each label a unique name.",
-        corpus: "duplicate-label"
-      },
-      {
-        id: "overfull-box",
-        check: "output",
-        severity: "warning",
-        title: "Text in the margin",
-        summary: "A line is wider than the text block by more than the threshold (default 10pt). The worst box per file is reported.",
-        fix: "Rephrase, use `\\url`/`\\path` for long identifiers, or scale wide material to `\\linewidth`.",
-        corpus: "overfull-hbox"
-      },
-      {
-        id: "font-substitution",
-        check: "output",
-        severity: "warning",
-        title: "Font shape substituted",
-        summary: "The font lacks a requested shape (e.g. bold small caps) and another one was used.",
-        fix: "Use a font family that has the shape, or avoid the combination.",
-        corpus: "font-shape-substitution"
-      },
-      {
-        id: "missing-glyph",
-        check: "output",
-        severity: "error",
-        title: "Characters missing from the font",
-        summary: "The font has no glyph for some characters, which are silently dropped from the PDF.",
-        fix: "Use a font that covers the characters (e.g. a CJK font with xeCJK or luatexja).",
-        corpus: "missing-glyph"
-      },
-      {
-        id: "pdf-string-token",
-        check: "output",
-        severity: "info",
-        title: "Heading simplified in PDF bookmarks",
-        summary: "hyperref removed math or commands from a heading when making the PDF bookmark.",
-        fix: "Use `\\texorpdfstring{TeX}{plain text}` in the heading.",
-        corpus: "math-in-pdf-bookmark"
-      },
-      {
-        id: "float-too-large",
-        check: "output",
-        severity: "warning",
-        title: "Float taller than the page",
-        summary: "A figure or table does not fit on a page.",
-        fix: "Scale it down or split it."
-      },
-      {
-        id: "font-feature-missing",
-        check: "output",
-        severity: "warning",
-        title: "Font lacks a requested feature",
-        summary: "fontspec could not apply a requested OpenType feature or script.",
-        fix: "Pick a font that supports it or drop the option."
-      }
-    ];
-  }
-});
-
-// ../packages/core/src/log/index.ts
-var init_log = __esm({
-  "../packages/core/src/log/index.ts"() {
-    "use strict";
-    init_analyze();
-    init_bibliography();
-    init_rules();
   }
 });
 
@@ -3550,6 +3124,514 @@ var init_tex2 = __esm({
     "use strict";
     MAX_OPTIONAL = 4096;
     CITE_COMMAND = /\\([A-Za-z]{0,12}cite[A-Za-z]{0,8})\*?(?![A-Za-z@])/g;
+  }
+});
+
+// ../packages/core/src/log/bibliography.ts
+function bblEntries(text2) {
+  const out = [];
+  const re = /\\(?:bibitem\s*(?:\[[^\]]{0,2000}\])?\s*\{([^}]{1,1000})\}|entry\s*\{([^}]{1,1000})\})/g;
+  let pos = 0;
+  let line = 1;
+  for (let m = re.exec(text2); m; m = re.exec(text2)) {
+    const key = (m[1] ?? m[2] ?? "").trim();
+    if (!key) continue;
+    for (; pos < m.index; pos++) if (text2.charCodeAt(pos) === 10) line++;
+    out.push({ key, offset: m.index, line });
+  }
+  return out;
+}
+function lastAtOrBefore(entries, field, value) {
+  let lo = 0;
+  let hi = entries.length;
+  while (lo < hi) {
+    const mid = lo + hi >>> 1;
+    if (entries[mid][field] <= value) lo = mid + 1;
+    else hi = mid;
+  }
+  return entries[lo - 1];
+}
+function argumentSnippet(evidence2) {
+  const m = /^<argument> (.+)$/m.exec(evidence2 ?? "");
+  const text2 = m?.[1]?.replace(/[&_^#$%\\]+\s*$/, "").trim();
+  return text2 && text2.length >= 8 ? text2 : void 0;
+}
+function attributeBibliography(problems, src) {
+  if (!src.bbl) return problems;
+  const entries = bblEntries(src.bbl.text);
+  if (!entries.length) return problems;
+  let bibIndex;
+  const bibLocation = (key) => {
+    if (!bibIndex) {
+      bibIndex = /* @__PURE__ */ new Map();
+      for (const b of src.bibs) {
+        for (const e of parseBib(b.text)) {
+          if (!bibIndex.has(e.key)) bibIndex.set(e.key, { file: b.file, line: e.line });
+        }
+      }
+    }
+    return bibIndex.get(key);
+  };
+  let printed;
+  const inBibliography = (loc) => {
+    printed ??= src.texFiles ? grepTex(src.texFiles, PRINTED) : [];
+    return printed.some((at) => sameFile(at.file, loc.file) && loc.line >= at.line);
+  };
+  return problems.map((p) => {
+    if (p.data?.bibKey) return p;
+    let key;
+    const loc = p.location;
+    if (loc?.file && loc.line && sameFile(loc.file, src.bbl?.path ?? "")) {
+      key = lastAtOrBefore(entries, "line", loc.line)?.key;
+    } else if (loc?.file && loc.line && inBibliography({ file: loc.file, line: loc.line })) {
+      const snippet2 = argumentSnippet(p.evidence);
+      const at = snippet2 ? src.bbl?.text.indexOf(snippet2) ?? -1 : -1;
+      if (at >= 0) key = lastAtOrBefore(entries, "offset", at)?.key;
+    }
+    if (!key) return p;
+    const where = bibLocation(key);
+    return {
+      ...p,
+      message: `${p.message} in the bibliography entry \`${key}\``,
+      ...where ? { location: { file: where.file, line: where.line } } : {},
+      data: { ...p.data ?? {}, bibKey: key, ...loc ? { reportedAt: loc } : {} }
+    };
+  });
+}
+var PRINTED, sameFile;
+var init_bibliography = __esm({
+  "../packages/core/src/log/bibliography.ts"() {
+    "use strict";
+    init_parse();
+    init_tex2();
+    PRINTED = /\\(?:printbibliography|bibliography\s*\{|begin\s*\{thebibliography\}|printbibheading)(?![A-Za-z@])/;
+    sameFile = (a, b) => a.replace(/^\.\//, "") === b.replace(/^\.\//, "") || a.split("/").pop() === b.split("/").pop();
+  }
+});
+
+// ../packages/core/src/log/rules.ts
+var logRules;
+var init_rules = __esm({
+  "../packages/core/src/log/rules.ts"() {
+    "use strict";
+    logRules = [
+      // build
+      {
+        id: "undefined-control-sequence",
+        check: "build",
+        severity: "error",
+        title: "Unknown command",
+        summary: "The document uses a command that no loaded package defines: a typo, a missing package, or a command from another citation package.",
+        fix: "Fix the spelling or load the package that defines the command.",
+        corpus: "undefined-control-sequence"
+      },
+      {
+        id: "missing-dollar",
+        check: "build",
+        severity: "error",
+        title: "Math symbol outside math mode",
+        summary: "A `_`, `^` or math command appears in running text, or a formula is not closed, so TeX inserted a `$`.",
+        fix: "Escape `_` as `\\_` in text, or put the formula inside `$\u2026$`.",
+        corpus: "underscore-in-text"
+      },
+      {
+        id: "missing-brace",
+        check: "build",
+        severity: "error",
+        title: "Missing brace",
+        summary: "A `{` group is still open where TeX needs it closed, for example at the end of a formula.",
+        fix: "Close every `{` before the formula or environment ends.",
+        corpus: "missing-brace-inserted"
+      },
+      {
+        id: "extra-brace",
+        check: "build",
+        severity: "error",
+        title: "Extra closing brace",
+        summary: "A `}` closes nothing: there are more closing braces than opening ones.",
+        fix: "Delete the extra `}` or add the missing `{`.",
+        corpus: "too-many-braces"
+      },
+      {
+        id: "runaway-argument",
+        check: "build",
+        severity: "error",
+        title: "Unclosed command argument",
+        summary: "The argument of a command is never closed, so TeX read to the end of the paragraph or file.",
+        fix: "Add the missing `}` after the argument.",
+        corpus: "unclosed-brace"
+      },
+      {
+        id: "missing-package",
+        check: "build",
+        severity: "error",
+        title: "Package or class not installed",
+        summary: "A `\\usepackage` or `\\documentclass` names a file that is not in the TeX installation.",
+        fix: "Check the spelling, install it with `tlmgr install <name>`, or build in the Overfull Docker image.",
+        corpus: "missing-package"
+      },
+      {
+        id: "missing-file",
+        check: "build",
+        severity: "error",
+        title: "Input file not found",
+        summary: "An `\\input` or `\\include` points to a file that does not exist.",
+        fix: "Fix the path; it is relative to the main file and case-sensitive.",
+        corpus: "missing-input-file"
+      },
+      {
+        id: "option-clash",
+        check: "build",
+        severity: "error",
+        title: "Package loaded twice with different options",
+        summary: "A package was loaded again with options it was not first loaded with.",
+        fix: "Load it once with all options, or use `\\PassOptionsToPackage` before `\\documentclass`.",
+        corpus: "option-clash"
+      },
+      {
+        id: "unknown-graphics-extension",
+        check: "build",
+        severity: "error",
+        title: "Unsupported image format",
+        summary: "`\\includegraphics` was given a format such as SVG or GIF that the engine cannot embed.",
+        fix: "Convert the image to PDF, PNG or JPEG.",
+        corpus: "unknown-graphics-extension"
+      },
+      {
+        id: "environment-undefined",
+        check: "build",
+        severity: "error",
+        title: "Unknown environment",
+        summary: "A `\\begin{\u2026}` names an environment that is not defined (theorem environments must be declared).",
+        fix: "Load the package that defines it, declare it with `\\newtheorem`, or fix the spelling.",
+        corpus: "environment-undefined"
+      },
+      {
+        id: "environment-mismatch",
+        check: "build",
+        severity: "error",
+        title: "Environment closed with the wrong \\end",
+        summary: "A `\\begin{a}` is closed by `\\end{b}`.",
+        fix: "Make each `\\end{\u2026}` match the innermost open `\\begin{\u2026}`.",
+        corpus: "environment-mismatch"
+      },
+      {
+        id: "lonely-item",
+        check: "build",
+        severity: "error",
+        title: "\\item outside a list",
+        summary: "`\\item` is used outside `itemize`, `enumerate` or `description`.",
+        fix: "Wrap the items in a list environment.",
+        corpus: "lonely-item"
+      },
+      {
+        id: "missing-item",
+        check: "build",
+        severity: "error",
+        title: "Missing \\item",
+        summary: "LaTeX expected `\\item`, typically because text appears in a list before the first item.",
+        fix: "Start each entry with `\\item` and move other text out of the list.",
+        corpus: "missing-item"
+      },
+      {
+        id: "no-line-to-end",
+        check: "build",
+        severity: "error",
+        title: "Line break with no line to end",
+        summary: "`\\\\` is used after a blank line or at the start of a paragraph.",
+        fix: "Remove the `\\\\`; use a blank line or `\\vspace` for spacing.",
+        corpus: "no-line-to-end"
+      },
+      {
+        id: "missing-begin-document",
+        check: "build",
+        severity: "error",
+        title: "Text in the preamble",
+        summary: "Typeset text appears before `\\begin{document}`.",
+        fix: "Move the text after `\\begin{document}` or comment it out.",
+        corpus: "missing-begin-document"
+      },
+      {
+        id: "preamble-only",
+        check: "build",
+        severity: "error",
+        title: "Preamble command in the document body",
+        summary: "A command such as `\\usepackage` is used after `\\begin{document}`.",
+        fix: "Move it above `\\begin{document}`.",
+        corpus: "usepackage-after-begin-document"
+      },
+      {
+        id: "unicode-character",
+        check: "build",
+        severity: "error",
+        title: "Unicode character pdfLaTeX cannot typeset",
+        summary: "The source contains a character pdfLaTeX does not know, or is not saved as UTF-8.",
+        fix: "Compile with LuaLaTeX, or replace the character with a LaTeX command.",
+        corpus: "inputenc-unicode"
+      },
+      {
+        id: "font-not-found",
+        check: "build",
+        severity: "error",
+        title: "Font not installed",
+        summary: "A font requested with fontspec (or a font package) is not available on this machine.",
+        fix: "Use a font shipped with TeX Live, or add the font files to the project and load them by file name.",
+        corpus: "fontspec-font-not-found"
+      },
+      {
+        id: "biblatex-error",
+        check: "build",
+        severity: "error",
+        title: "biblatex error",
+        summary: "biblatex stopped: BibTeX commands used with biblatex, an incompatible package, or a backend/version mismatch.",
+        fix: "Use biblatex options instead of BibTeX commands; delete the .bbl and rebuild on mismatches.",
+        corpus: "biblatex-bibliographystyle"
+      },
+      {
+        id: "illegal-parameter-number",
+        check: "build",
+        severity: "error",
+        title: "Misused # character",
+        summary: "A macro definition uses `#n` beyond its declared arguments, or a literal `#` appears in text.",
+        fix: "Declare enough arguments, or write `\\#` for a hash sign.",
+        corpus: "illegal-parameter-number"
+      },
+      {
+        id: "double-script",
+        check: "build",
+        severity: "error",
+        title: "Double subscript or superscript",
+        summary: "A symbol has two subscripts (or superscripts), such as `w_i_j`.",
+        fix: "Group them in braces: `w_{ij}`.",
+        corpus: "double-subscript"
+      },
+      {
+        id: "misplaced-alignment-tab",
+        check: "build",
+        severity: "error",
+        title: "Unescaped & in text",
+        summary: "`&` separates table columns and cannot appear in running text or a .bib field unescaped.",
+        fix: "Write `\\&`.",
+        corpus: "ampersand-in-text"
+      },
+      {
+        id: "undefined-color",
+        check: "build",
+        severity: "error",
+        title: "Undefined color",
+        summary: "A color name is used that xcolor does not know.",
+        fix: "Define it with `\\definecolor`, or load xcolor with `dvipsnames`/`svgnames`.",
+        corpus: "undefined-color"
+      },
+      {
+        id: "not-in-outer-par-mode",
+        check: "build",
+        severity: "error",
+        title: "Float inside a box",
+        summary: "A figure, table or margin note is placed inside a minipage, parbox or another float.",
+        fix: "Move the float out, or use `\\captionof` inside a minipage.",
+        corpus: "figure-in-minipage"
+      },
+      {
+        id: "dimension-too-large",
+        check: "build",
+        severity: "error",
+        title: "Length too large",
+        summary: "A length exceeds TeX\u2019s maximum of about 16383pt (5.75 m).",
+        fix: "Fix the length or rescale plot data.",
+        corpus: "dimension-too-large"
+      },
+      {
+        id: "tex-capacity-exceeded",
+        check: "build",
+        severity: "error",
+        title: "TeX ran out of capacity",
+        summary: "Usually infinite recursion (a command that calls itself); otherwise a very large figure.",
+        fix: "Check recent `\\newcommand`/`\\renewcommand` definitions; for big figures use LuaLaTeX or externalize them.",
+        corpus: "infinite-recursion"
+      },
+      {
+        id: "tikz-error",
+        check: "build",
+        severity: "error",
+        title: "TikZ/PGF error",
+        summary: "TikZ stopped on an unknown option, a missing semicolon, or an undefined node.",
+        fix: "Fix the option spelling, end paths with `;`, or load the needed TikZ library.",
+        corpus: "tikz-unknown-key"
+      },
+      {
+        id: "hyperref-error",
+        check: "build",
+        severity: "error",
+        title: "hyperref error",
+        summary: "hyperref reported an error, typically a driver or option conflict.",
+        fix: "Load hyperref last and set options with `\\hypersetup`.",
+        corpus: "hyperref-error"
+      },
+      {
+        id: "command-already-defined",
+        check: "build",
+        severity: "error",
+        title: "Command already defined",
+        summary: "`\\newcommand` tried to define a name that already exists.",
+        fix: "Choose another name, or use `\\renewcommand` deliberately.",
+        corpus: "command-already-defined"
+      },
+      {
+        id: "unknown-package-option",
+        check: "build",
+        severity: "error",
+        title: "Unknown package option",
+        summary: "A package or class was given an option it does not support.",
+        fix: "Check the option against the package documentation.",
+        corpus: "unknown-package-option"
+      },
+      {
+        id: "tex-error",
+        check: "build",
+        severity: "error",
+        title: "TeX error",
+        summary: "TeX reported an error Overfull has no specific explanation for; the original message is shown.",
+        fix: "Read the message and fix the first error in the log first."
+      },
+      // output
+      {
+        id: "undefined-citation",
+        check: "output",
+        severity: "error",
+        title: "Undefined citation",
+        summary: "A cited key has no bibliography entry, so the PDF shows the key or [?].",
+        fix: "Fix the key or add the entry to the .bib file, then rebuild; or remove the `\\cite` if the source is not known.",
+        corpus: "biblatex-undefined-citation"
+      },
+      {
+        id: "undefined-reference",
+        check: "output",
+        severity: "error",
+        title: "Undefined reference",
+        summary: "A `\\ref` points to a label that does not exist, so the PDF shows ??.",
+        fix: "Add the `\\label` or fix the spelling in `\\ref`.",
+        corpus: "undefined-reference"
+      },
+      {
+        id: "bibliography-missing",
+        check: "output",
+        severity: "error",
+        title: "Bibliography not built",
+        summary: "Biber or BibTeX was never run, so all citations are undefined and the bibliography is empty.",
+        fix: "Build with `latexmk`, or run biber/bibtex and then LaTeX twice.",
+        corpus: "biblatex-rerun-biber"
+      },
+      {
+        id: "bibliography-stale",
+        check: "output",
+        severity: "warning",
+        title: "Bibliography out of date",
+        summary: "Citations changed since Biber or BibTeX last ran.",
+        fix: "Build with `latexmk`, or rerun biber/bibtex and LaTeX.",
+        corpus: "bibliography-stale"
+      },
+      {
+        id: "rerun-needed",
+        check: "output",
+        severity: "warning",
+        title: "LaTeX needs another run",
+        summary: "Labels changed during the run; references and page numbers may be wrong until LaTeX runs again.",
+        fix: "Build with `latexmk`, which reruns LaTeX as needed.",
+        corpus: "labels-changed"
+      },
+      {
+        id: "empty-bibliography",
+        check: "output",
+        severity: "warning",
+        title: "Empty bibliography",
+        summary: "The bibliography printed no entries.",
+        fix: "Cite sources, check `\\addbibresource`, or use `\\nocite{*}`.",
+        corpus: "empty-bibliography"
+      },
+      {
+        id: "missing-figure",
+        check: "output",
+        severity: "error",
+        title: "Figure file not found",
+        summary: "An `\\includegraphics` file does not exist, so the PDF has an empty box.",
+        fix: "Fix the path and file name (case-sensitive).",
+        corpus: "missing-figure"
+      },
+      {
+        id: "duplicate-label",
+        check: "output",
+        severity: "warning",
+        title: "Label defined twice",
+        summary: "Two `\\label`s share a name, so references may point to the wrong place.",
+        fix: "Give each label a unique name.",
+        corpus: "duplicate-label"
+      },
+      {
+        id: "overfull-box",
+        check: "output",
+        severity: "warning",
+        title: "Text in the margin",
+        summary: "A line is wider than the text block by more than the threshold (default 10pt). The worst box per file is reported.",
+        fix: "Rephrase, use `\\url`/`\\path` for long identifiers, or scale wide material to `\\linewidth`.",
+        corpus: "overfull-hbox"
+      },
+      {
+        id: "font-substitution",
+        check: "output",
+        severity: "warning",
+        title: "Font shape substituted",
+        summary: "The font lacks a requested shape (e.g. bold small caps) and another one was used.",
+        fix: "Use a font family that has the shape, or avoid the combination.",
+        corpus: "font-shape-substitution"
+      },
+      {
+        id: "missing-glyph",
+        check: "output",
+        severity: "error",
+        title: "Characters missing from the font",
+        summary: "The font has no glyph for some characters, which are silently dropped from the PDF.",
+        fix: "Use a font that covers the characters (e.g. a CJK font with xeCJK or luatexja).",
+        corpus: "missing-glyph"
+      },
+      {
+        id: "pdf-string-token",
+        check: "output",
+        severity: "info",
+        title: "Heading simplified in PDF bookmarks",
+        summary: "hyperref removed math or commands from a heading when making the PDF bookmark.",
+        fix: "Use `\\texorpdfstring{TeX}{plain text}` in the heading.",
+        corpus: "math-in-pdf-bookmark"
+      },
+      {
+        id: "float-too-large",
+        check: "output",
+        severity: "warning",
+        title: "Float taller than the page",
+        summary: "A figure or table does not fit on a page.",
+        fix: "Scale it down or split it.",
+        corpus: "float-too-large"
+      },
+      {
+        id: "font-feature-missing",
+        check: "output",
+        severity: "warning",
+        title: "Font lacks a requested feature",
+        summary: "fontspec could not apply a requested OpenType feature or script.",
+        fix: "Pick a font that supports it or drop the option.",
+        corpus: "font-feature-missing"
+      }
+    ];
+  }
+});
+
+// ../packages/core/src/log/index.ts
+var init_log = __esm({
+  "../packages/core/src/log/index.ts"() {
+    "use strict";
+    init_analyze();
+    init_bibliography();
+    init_rules();
   }
 });
 
@@ -7526,18 +7608,27 @@ function formatLocation(loc) {
   if (loc.page) return `p.${loc.page}`;
   return "";
 }
+function compareProblems(a, b) {
+  const fa = a.p.location?.file;
+  const fb = b.p.location?.file;
+  return SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] || checkIndex(a.p.check) - checkIndex(b.p.check) || (fa === void 0 ? 1 : 0) - (fb === void 0 ? 1 : 0) || (fa ?? "").localeCompare(fb ?? "") || (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) || (a.p.location?.page ?? 0) - (b.p.location?.page ?? 0) || a.i - b.i;
+}
 function sortProblems(problems) {
-  return problems.map((p, i) => ({ p, i })).sort((a, b) => {
-    const fa = a.p.location?.file;
-    const fb = b.p.location?.file;
-    return SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] || (fa === void 0 ? 1 : 0) - (fb === void 0 ? 1 : 0) || (fa ?? "").localeCompare(fb ?? "") || (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) || a.i - b.i;
-  }).map(({ p }) => p);
+  return problems.map((p, i) => ({ p, i })).sort(compareProblems).map(({ p }) => p);
 }
 function sortedProblems(report) {
-  const checkIndex = (c) => CHECK_IDS.indexOf(c);
-  return report.checks.flatMap((c) => c.problems).map((p, i) => ({ p, i })).sort(
-    (a, b) => SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] || checkIndex(a.p.check) - checkIndex(b.p.check) || (a.p.location?.file ?? "").localeCompare(b.p.location?.file ?? "") || (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) || (a.p.location?.page ?? 0) - (b.p.location?.page ?? 0) || a.i - b.i
-  ).map(({ p }) => p);
+  return sortProblems(report.checks.flatMap((c) => c.problems));
+}
+function codeSpans(s) {
+  const out = [];
+  let last = 0;
+  for (const m of s.matchAll(/`([^`\n]+)`/g)) {
+    if (m.index > last) out.push({ code: false, text: s.slice(last, m.index) });
+    out.push({ code: true, text: m[1] });
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push({ code: false, text: s.slice(last) });
+  return out;
 }
 function tally(report) {
   const all = report.checks.flatMap((c) => c.problems);
@@ -7583,12 +7674,13 @@ function neutralizeWorkflowCommands(text2) {
   } while (out !== prev);
   return out;
 }
-var SEVERITY_ORDER, RUNNER_WHITESPACE, UNSAFE_CHARS, COMMAND_AT_LINE_START;
+var SEVERITY_ORDER, checkIndex, RUNNER_WHITESPACE, UNSAFE_CHARS, COMMAND_AT_LINE_START;
 var init_shared = __esm({
   "../packages/core/src/report/shared.ts"() {
     "use strict";
     init_types();
     SEVERITY_ORDER = { error: 0, warning: 1, info: 2 };
+    checkIndex = (c) => CHECK_IDS.indexOf(c);
     RUNNER_WHITESPACE = "[\\s\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff\\f\\v]";
     UNSAFE_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
     COMMAND_AT_LINE_START = new RegExp(`(^|[\\r\\n])(${RUNNER_WHITESPACE}*?)(::|##\\[)`, "g");
@@ -7800,13 +7892,13 @@ function escapeMarkdown(s) {
   return escapeHtml(oneLine(s)).replace(/([\\`*_{}[\]|~#])/g, "\\$1");
 }
 function inline(s) {
-  return oneLine(s).split("`").map(
-    (part, i) => i % 2 === 1 ? `<code>${escapeHtml(part).replace(/\|/g, "&#124;")}</code>` : escapeMarkdown(part)
+  return codeSpans(oneLine(s)).map(
+    (span) => span.code ? `<code>${escapeHtml(span.text).replace(/\|/g, "&#124;")}</code>` : escapeMarkdown(span.text)
   ).join("");
 }
 function problemItem(p) {
   const loc = formatLocation(p.location);
-  const head = `- **${p.severity}**${loc ? ` <code>${escapeHtml(oneLine(loc))}</code>` : ""} ${escapeMarkdown(p.message)} <sub>${escapeHtml(oneLine(p.rule))}</sub>`;
+  const head = `- **${p.severity}**${loc ? ` <code>${escapeHtml(oneLine(loc))}</code>` : ""} ${inline(p.message)} <sub>${escapeHtml(oneLine(p.rule))}</sub>`;
   const sub = [];
   if (p.detail) sub.push(`  - Why: ${inline(p.detail)}`);
   if (p.fix) sub.push(`  - Fix: ${inline(p.fix)}`);
@@ -7848,6 +7940,32 @@ var init_markdown = __esm({
   }
 });
 
+// ../packages/core/src/venue/arxiv-texlive.ts
+function bblFormatVersion(text2) {
+  return /biblatex bbl format version (\d+(?:\.\d+)*)/.exec(text2.slice(0, 2e3))?.[1];
+}
+var ARXIV_TEXLIVE;
+var init_arxiv_texlive = __esm({
+  "../packages/core/src/venue/arxiv-texlive.ts"() {
+    "use strict";
+    ARXIV_TEXLIVE = {
+      source: [
+        "https://info.arxiv.org/help/submit_tex.html",
+        "https://info.arxiv.org/help/faq/texlive.html"
+      ],
+      checkedOn: "2026-11-17",
+      /** The TeX Live arXiv uses unless the submitter picks another one. */
+      defaultYear: 2025,
+      versions: [
+        { year: 2025, biblatex: "3.20", biber: "2.20", bblFormats: ["3.3"] },
+        { year: 2023, biblatex: "3.19", biber: "2.19", bblFormats: ["3.2", "3.3"] }
+      ],
+      /** TeX processors arXiv offers for LaTeX (besides `latex` in DVI mode). */
+      engines: ["pdflatex", "xelatex"]
+    };
+  }
+});
+
 // ../packages/core/src/venue/arxiv.ts
 function detectEngine(log) {
   if (!log) return void 0;
@@ -7863,6 +7981,58 @@ function isAbsolute(p) {
 function dirname(p) {
   const i = p.lastIndexOf("/");
   return i < 0 ? "" : p.slice(0, i + 1);
+}
+function joinPath2(dir, rel2) {
+  const out = [];
+  for (const part of `${dir}${rel2}`.replace(/\\/g, "/").split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") out.pop();
+    else out.push(part);
+  }
+  return out.join("/");
+}
+function bibFiles(uses, main3) {
+  const out = [];
+  for (const use of uses) {
+    if (use.name === "addbibresource") {
+      const arg = use.arg.trim();
+      if (/location\s*=\s*remote/.test(use.optional ?? "") || /^[a-z]+:\/\//i.test(arg)) continue;
+      if (arg && !isAbsolute(arg)) out.push(joinPath2(dirname(main3), arg));
+    } else if (use.name === "bibliography") {
+      for (const raw of use.arg.split(",")) {
+        const name = raw.trim();
+        if (!name || isAbsolute(name)) continue;
+        out.push(joinPath2(dirname(main3), /\.bib$/i.test(name) ? name : `${name}.bib`));
+      }
+    }
+  }
+  return [...new Set(out)];
+}
+function bblVersionProblems(bbl) {
+  const format = bblFormatVersion(bbl.text);
+  if (!format) return [];
+  const { versions, defaultYear } = ARXIV_TEXLIVE;
+  const current = versions.find((v) => v.year === defaultYear);
+  if (!current || current.bblFormats.includes(format)) return [];
+  const older = versions.find((v) => v.bblFormats.includes(format));
+  const supported = `TeX Live ${current.year}, the default, reads format ${current.bblFormats.join(" or ")}`;
+  return [
+    {
+      rule: "arxiv-bbl-version",
+      check: "venue",
+      severity: "warning",
+      message: older ? `${bbl.path} has biblatex .bbl format ${format}; on arXiv only TeX Live ${older.year} reads it (${supported})` : `${bbl.path} has biblatex .bbl format ${format}, which arXiv cannot read (${supported})`,
+      location: { file: bbl.path },
+      fix: `Upload the .bib files without the .bbl, so arXiv runs Biber or BibTeX itself, or build the .bbl with TeX Live ${current.year} (biblatex ${current.biblatex}, Biber ${current.biber})${older ? `, or choose TeX Live ${older.year} when you submit` : ""}`,
+      data: {
+        format,
+        arxivFormats: current.bblFormats,
+        texLive: current.year,
+        source: ARXIV_TEXLIVE.source[0],
+        checkedOn: ARXIV_TEXLIVE.checkedOn
+      }
+    }
+  ];
 }
 function arxivProblems(ctx) {
   const problems = [];
@@ -7897,8 +8067,8 @@ function arxivProblems(ctx) {
       rule: "arxiv-unsupported-engine",
       check: "venue",
       severity: "error",
-      message: "This build used LuaLaTeX, but arXiv compiles with pdfLaTeX",
-      fix: "arXiv compiles with pdfLaTeX; build with `make arxiv` / `latexmk -pdf` and check that log with --log",
+      message: "This build used LuaLaTeX, which arXiv does not offer (it compiles with pdfLaTeX or XeLaTeX)",
+      fix: "Build with pdfLaTeX (`latexmk -pdf`) or XeLaTeX (`latexmk -xelatex`) and check that log with `--log`",
       data: { engine }
     });
   }
@@ -7936,22 +8106,32 @@ function arxivProblems(ctx) {
         fix: "Rename the file without spaces (use - or _)"
       });
     }
+    const has = (f) => ctx.files?.some((x) => x.toLowerCase() === f.toLowerCase());
+    const stem2 = ctx.main.replace(/\.tex$/i, "");
+    const expected = `${stem2}.bbl`;
+    const bibs = bibFiles(uses, ctx.main);
     const usesBib = uses.some((u) => u.name === "addbibresource" || u.name === "bibliography");
-    const stem = ctx.main.replace(/\.tex$/i, "");
-    const expected = `${stem}.bbl`;
-    const hasBbl = ctx.files.some((f) => f.toLowerCase() === expected.toLowerCase());
-    if (usesBib && !hasBbl) {
+    const missingBibs = bibs.filter((b) => !has(b));
+    if (usesBib && !has(expected) && (missingBibs.length > 0 || bibs.length === 0)) {
       const other = ctx.files.find(
         (f) => f.toLowerCase().endsWith(".bbl") && dirname(f) === dirname(ctx.main ?? "")
       );
+      const bibText = missingBibs.length ? missingBibs.join(", ") : "the .bib file";
       problems.push({
         rule: "arxiv-missing-bbl",
         check: "venue",
-        severity: "info",
-        message: other ? `Found ${other}, but arXiv compiles ${ctx.main} and reads ${expected}; rename or copy it to ${expected}` : `No ${expected} next to ${ctx.main}; arXiv does not run biber`,
-        fix: other ? `Copy the .bbl to ${expected} (arXiv runs on the main file, not on your jobname)` : "Build once, then upload the generated .bbl (named like your main file) with your sources",
-        data: { expected, ...other ? { found: other } : {} }
+        severity: "warning",
+        message: other ? `Found ${other}, but arXiv reads ${expected} (named like ${ctx.main}), and ${bibText} is not in the project` : `Neither ${expected} nor ${bibText} is in the project; arXiv needs one of them to build the bibliography`,
+        fix: other ? `Copy ${other} to ${expected}, or add ${bibText} to the upload so arXiv builds the bibliography itself` : `Add ${bibText} to the project (arXiv runs BibTeX or Biber on it), or upload the ${expected} your build made`,
+        data: {
+          expected,
+          ...missingBibs.length ? { missingBibs } : {},
+          ...other ? { found: other } : {}
+        }
       });
+    }
+    if (ctx.bbl && ctx.bbl.path.toLowerCase() === expected.toLowerCase()) {
+      problems.push(...bblVersionProblems(ctx.bbl));
     }
   }
   const seen = /* @__PURE__ */ new Set();
@@ -7966,6 +8146,7 @@ var PATH_COMMANDS;
 var init_arxiv2 = __esm({
   "../packages/core/src/venue/arxiv.ts"() {
     "use strict";
+    init_arxiv_texlive();
     init_tex2();
     PATH_COMMANDS = [
       "includegraphics",
@@ -8018,10 +8199,91 @@ var init_aux_file = __esm({
 });
 
 // ../packages/core/src/venue/anonymity.ts
-function authorText(arg) {
-  return arg.replace(/\\(and|And|AND|thanks|footnote|email|affil|inst|orcid)\b(\s*\{[^}]*\})?/g, " ").replace(/\\\\(\[[^\]]*\])?/g, " ").replace(/\\[A-Za-z@]+\*?/g, " ").replace(/[{}$^_~&,;]/g, " ").replace(/\s+/g, " ").trim();
+function simpleMacros(files) {
+  const macros = /* @__PURE__ */ new Map();
+  const re = /\\(?:(?:re)?newcommand|providecommand)\*?\s*(?:\{\s*\\([A-Za-z@]+)\s*\}|\\([A-Za-z@]+))\s*(?=\{)|\\[gex]?def\s*\\([A-Za-z@]+)\s*(?=\{)/g;
+  for (const f of files) {
+    const src = stripComments(f.content);
+    re.lastIndex = 0;
+    for (let m = re.exec(src); m; m = re.exec(src)) {
+      const name = m[1] ?? m[2] ?? m[3];
+      const group = readGroup(src, m.index + m[0].length);
+      if (!name || !group || group.value.length > MAX_BODY) continue;
+      macros.set(name, group.value);
+      re.lastIndex = group.end;
+    }
+  }
+  return macros;
 }
-function anonymityProblems(ctx) {
+function expandMacros(text2, macros) {
+  if (!macros.size) return text2;
+  let out = text2;
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    let changed = false;
+    let budget = MAX_BODY * 4;
+    out = out.replace(/\\(?:([A-Za-z@]+)|[\s\S])/g, (whole, name) => {
+      const body = name === void 0 ? void 0 : macros.get(name);
+      if (body === void 0 || body.length > budget) return whole;
+      budget -= body.length;
+      changed = true;
+      return ` ${body} `;
+    });
+    if (!changed) break;
+  }
+  return out;
+}
+function optionNames(optional) {
+  if (!optional) return [];
+  return optional.split(",").map((o) => o.trim()).filter((o) => o && !/=\s*false\s*$/i.test(o)).map((o) => o.replace(/\s*=.*$/s, ""));
+}
+function classAnonymity(rule, sources) {
+  const files = sources.filter((f) => /\.tex$/i.test(f.path));
+  const loads = findCommands(files, ["documentclass", "usepackage", "RequirePackage"]).filter(
+    (use) => use.arg.split(",").map((n) => n.trim()).includes(rule.package)
+  );
+  if (!loads.length) return { loaded: false, anonymized: false };
+  const options = new Set(loads.flatMap((use) => optionNames(use.optional)));
+  const off = rule.unlessOptions?.find((o) => options.has(o));
+  if (off) {
+    return {
+      loaded: true,
+      anonymized: false,
+      reason: `it is loaded with the \`${off}\` option`,
+      how: "remove that option"
+    };
+  }
+  if (rule.withOptions && !rule.withOptions.some((o) => options.has(o))) {
+    const need = rule.withOptions.map((o) => `\`${o}\``).join(" or ");
+    return {
+      loaded: true,
+      anonymized: false,
+      reason: `it is loaded without the ${need} option`,
+      how: `add the \`${rule.withOptions[0]}\` option`
+    };
+  }
+  for (const cmd of rule.unlessCommands ?? []) {
+    if (grepTex(files, new RegExp(`\\\\${cmd}(?![A-Za-z@])`)).length) {
+      return {
+        loaded: true,
+        anonymized: false,
+        reason: `the source uses \`\\${cmd}\``,
+        how: "remove or comment out that command"
+      };
+    }
+  }
+  return { loaded: true, anonymized: true };
+}
+function authorText(arg, macros = /* @__PURE__ */ new Map()) {
+  return expandMacros(arg, macros).replace(/\\(and|And|AND|thanks|footnote|email|affil|inst|orcid)\b(\s*\{[^}]*\})?/g, " ").replace(/\\\\(\[[^\]]*\])?/g, " ").replace(/\\[A-Za-z@]+\*?/g, " ").replace(/[{}$^_~&,;]/g, " ").replace(/\s+/g, " ").trim();
+}
+function authorFix(profile, cls) {
+  const rule = profile?.anonymizedByClass;
+  if (rule && cls?.reason) {
+    return `\`${rule.package}\` hides the authors only in review mode, but ${cls.reason}: ${cls.how} for the review version, or use \`\\author{Anonymous}\``;
+  }
+  return "Use `\\author{Anonymous}` or the venue class\u2019s review/anonymous option";
+}
+function anonymityProblems(ctx, profile) {
   const problems = [];
   const pdfAuthor = ctx.facts?.info.author ?? ctx.facts?.xmp.creators?.join(", ");
   if (pdfAuthor && !ANON.test(pdfAuthor)) {
@@ -8035,8 +8297,11 @@ function anonymityProblems(ctx) {
     });
   }
   const files = ctx.texFiles ?? [];
-  for (const use of findCommands(files, ["author"])) {
-    const text2 = authorText(use.arg);
+  const cls = profile?.anonymizedByClass ? classAnonymity(profile.anonymizedByClass, files) : void 0;
+  const authors = cls?.anonymized ? [] : findCommands(files, ["author"]);
+  const macros = authors.length ? simpleMacros(files) : /* @__PURE__ */ new Map();
+  for (const use of authors) {
+    const text2 = authorText(use.arg, macros);
     if (!text2 || ANON.test(text2)) continue;
     if (!new RegExp("\\p{L}{2,}", "u").test(text2)) continue;
     problems.push({
@@ -8045,7 +8310,7 @@ function anonymityProblems(ctx) {
       severity: "error",
       message: `\\author names someone: "${text2.slice(0, 60)}${text2.length > 60 ? "\u2026" : ""}"`,
       location: { file: use.file, line: use.line },
-      fix: "Use `\\author{Anonymous}` or the venue class\u2019s review/anonymous option"
+      fix: authorFix(profile, cls)
     });
   }
   const ack = /\\(?:section|chapter|subsection|paragraph|subsubsection)\*?\s*\{\s*Acknowledg|\\begin\{acknowledg|\\acknowledg(?:e)?ments\b/i;
@@ -8072,12 +8337,14 @@ function anonymityProblems(ctx) {
   }
   return problems;
 }
-var ANON;
+var ANON, MAX_BODY, MAX_ROUNDS;
 var init_anonymity = __esm({
   "../packages/core/src/venue/anonymity.ts"() {
     "use strict";
     init_tex2();
     ANON = /anonym|blind|submission|paper\s*id|author\s*names?\s*(hidden|withheld)/i;
+    MAX_BODY = 2e3;
+    MAX_ROUNDS = 4;
   }
 });
 
@@ -8662,7 +8929,7 @@ function venueCheck(profile, ctx) {
   const problems = [
     ...pageLimitProblems(profile, ctx),
     ...paperSizeProblems(profile, ctx),
-    ...profile.anonymous ? [...anonymityProblems(ctx), ...anonymityLinkProblems(ctx)] : [],
+    ...profile.anonymous ? [...anonymityProblems(ctx, profile), ...anonymityLinkProblems(ctx)] : [],
     ...styleFileProblems(profile, ctx.texFiles ?? []),
     ...layoutProblems(profile, ctx),
     ...marginProblems(profile, ctx),
@@ -8736,7 +9003,13 @@ var init_venues_generated = __esm({
         textBlock: {
           widthMm: 177.8
         },
-        notes: "The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for references. Acknowledgements are omitted from papers submitted for review. The author policy allows judicious use of generative AI tools; the pages read state no disclosure requirement. The hash is of aaai2027.sty (2027/10/21) from the AuthorKit27 archive downloaded on 2026-11-10. The AAAI-28 call page redirects to AAAI-26 content, so AAAI-27 is the latest published. Text block: 7 in wide, centred on US Letter (aaai2027.sty)."
+        anonymizedByClass: {
+          package: "aaai2027",
+          withOptions: [
+            "submission"
+          ]
+        },
+        notes: 'The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for references. Acknowledgements are omitted from papers submitted for review. The author policy allows judicious use of generative AI tools; the pages read state no disclosure requirement. The hash is of aaai2027.sty (2027/10/21) from the AuthorKit27 archive downloaded on 2026-11-10. The AAAI-28 call page redirects to AAAI-26 content, so AAAI-27 is the latest published. Text block: 7 in wide, centred on US Letter (aaai2027.sty). aaai2027.sty prints "Anonymous submission" with the submission option.'
       },
       "acl-rolling-review": {
         id: "acl-rolling-review",
@@ -8761,7 +9034,13 @@ var init_venues_generated = __esm({
         },
         anonymous: true,
         disclosure: "recommended",
-        notes: "Short papers have 4 pages of content. Final versions of long papers get one more page (9). Missing a Limitations section is a desk-rejection reason. Use of generative AI for writing or coding must be disclosed in the Responsible NLP Checklist, with details in the Acknowledgements; some uses (language polishing, short-form input assistance) need no disclosure. The official style files are at https://github.com/acl-org/acl-style-files (not reachable from this session, so no file name or hash is recorded)."
+        anonymizedByClass: {
+          package: "acl",
+          withOptions: [
+            "review"
+          ]
+        },
+        notes: 'Short papers have 4 pages of content. Final versions of long papers get one more page (9). Missing a Limitations section is a desk-rejection reason. Use of generative AI for writing or coding must be disclosed in the Responsible NLP Checklist, with details in the Acknowledgements; some uses (language polishing, short-form input assistance) need no disclosure. The official style files are at https://github.com/acl-org/acl-style-files (not reachable from this session, so no file name or hash is recorded). acl.sty prints "Anonymous ACL submission" with the review option (https://github.com/acl-org/acl-style-files, read on 2026-11-17).'
       },
       "acm-sigconf": {
         id: "acm-sigconf",
@@ -8782,7 +9061,13 @@ var init_venues_generated = __esm({
         textBlock: {
           widthMm: 177.9
         },
-        notes: "Each ACM conference sets its own page limit and review rules; set them in overfull.yml (`venue:`) from the call for papers, and use the class option `anonymous` for double-blind review. Layout from acmart v2.21 (2026/11/01): the sigconf format is US Letter with 54 pt inner and outer margins, so the text block is 8.5 in minus 108 pt wide. acmart.cls is generated from acmart.dtx, so no hash is recorded. ACM's own pages (acm.org/publications) could not be read from the build machine."
+        anonymizedByClass: {
+          package: "acmart",
+          withOptions: [
+            "anonymous"
+          ]
+        },
+        notes: "Each ACM conference sets its own page limit and review rules; set them in overfull.yml (`venue:`) from the call for papers, and use the class option `anonymous` for double-blind review. Layout from acmart v2.21 (2026/11/01): the sigconf format is US Letter with 54 pt inner and outer margins, so the text block is 8.5 in minus 108 pt wide. acmart.cls is generated from acmart.dtx, so no hash is recorded. ACM's own pages (acm.org/publications) could not be read from the build machine. acmart.cls hides the authors with the anonymous option (acmart.dtx v2.21)."
       },
       "aistats-2027": {
         id: "aistats-2027",
@@ -8818,7 +9103,14 @@ var init_venues_generated = __esm({
           widthMm: 171.5,
           leftMm: 22.2
         },
-        notes: "The call requires an AI Use Statement in every submission, in the ICLR format, and allows generative AI tools otherwise. Papers whose main text is over the limit are desk-rejected; the camera-ready limit is 9 pages. Submissions may use author-year or numeric citations; camera-ready papers must use author-year. Paper size is US Letter (the article class default, emitted by the style file). The hash is of aistats2027.sty (2026/09/02) from AISTATS2027PaperPack.zip downloaded on 2026-11-11. Text block: 6.75 in wide, 0.875 in from the left edge (aistats2027.sty)."
+        anonymizedByClass: {
+          package: "aistats2027",
+          unlessOptions: [
+            "accepted",
+            "preprint"
+          ]
+        },
+        notes: 'The call requires an AI Use Statement in every submission, in the ICLR format, and allows generative AI tools otherwise. Papers whose main text is over the limit are desk-rejected; the camera-ready limit is 9 pages. Submissions may use author-year or numeric citations; camera-ready papers must use author-year. Paper size is US Letter (the article class default, emitted by the style file). The hash is of aistats2027.sty (2026/09/02) from AISTATS2027PaperPack.zip downloaded on 2026-11-11. Text block: 6.75 in wide, 0.875 in from the left edge (aistats2027.sty). aistats2027.sty prints "Anonymous Author" unless the accepted or preprint option is given.'
       },
       "cvpr-2027": {
         id: "cvpr-2027",
@@ -8851,7 +9143,14 @@ var init_venues_generated = __esm({
         textBlock: {
           widthMm: 174.6
         },
-        notes: 'Every submission needs a section titled "LLM Usage Statement" after the main text and before the references; it states "No LLMs or generative AI tools were used in this work" if none were. The camera-ready version must disclose AI-generated content in the Acknowledgments. Paper size is from the check in the official cvpr.sty. The hash is of cvpr.sty from author-kit-CVPR2027-v1-latex.zip downloaded on 2026-11-10. Text block: 6.875 in wide, centred on US Letter (cvpr.sty).'
+        anonymizedByClass: {
+          package: "cvpr",
+          withOptions: [
+            "review",
+            "rebuttal"
+          ]
+        },
+        notes: 'Every submission needs a section titled "LLM Usage Statement" after the main text and before the references; it states "No LLMs or generative AI tools were used in this work" if none were. The camera-ready version must disclose AI-generated content in the Acknowledgments. Paper size is from the check in the official cvpr.sty. The hash is of cvpr.sty from author-kit-CVPR2027-v1-latex.zip downloaded on 2026-11-10. Text block: 6.875 in wide, centred on US Letter (cvpr.sty). cvpr.sty hides the authors with the review or rebuttal option.'
       },
       "eccv-2026": {
         id: "eccv-2026",
@@ -8890,7 +9189,16 @@ var init_venues_generated = __esm({
           leftMm: 12,
           topMm: 12
         },
-        notes: "Papers over 14 pages (excluding references), not anonymized, or not in the ECCV 2026 template are desk-rejected, and so are submissions whose margins, formatting or font were changed (the 2026 template's font differs from CVPR's). The LLM policy allows any tools but makes authors responsible for the content; papers citing non-existent material are rejected. No AI-use statement is asked for. The kit is the one the submission policies link (github.com/paolo-favaro/paper-template, tag Latest, commit da8c09c of 2026-01-23); its own llncs.cls differs from Springer's current one. The review option crops the page to 146 x 217 mm around a 122 x 193 mm text block 12 mm from the left and top edges (eccv.sty), hence no standard paper size."
+        anonymizedByClass: {
+          package: "eccv",
+          withOptions: [
+            "review"
+          ],
+          unlessOptions: [
+            "final"
+          ]
+        },
+        notes: `Papers over 14 pages (excluding references), not anonymized, or not in the ECCV 2026 template are desk-rejected, and so are submissions whose margins, formatting or font were changed (the 2026 template's font differs from CVPR's). The LLM policy allows any tools but makes authors responsible for the content; papers citing non-existent material are rejected. No AI-use statement is asked for. The kit is the one the submission policies link (github.com/paolo-favaro/paper-template, tag Latest, commit da8c09c of 2026-01-23); its own llncs.cls differs from Springer's current one. The review option crops the page to 146 x 217 mm around a 122 x 193 mm text block 12 mm from the left and top edges (eccv.sty), hence no standard paper size. eccv.sty prints "Anonymous ECCV Submission" with the review option.`
       },
       "emnlp-2026": {
         id: "emnlp-2026",
@@ -8916,7 +9224,13 @@ var init_venues_generated = __esm({
         },
         anonymous: true,
         disclosure: "recommended",
-        notes: "Papers go through ACL Rolling Review and follow all ARR submission requirements; the EMNLP page lists long papers (8 pages) and short papers (4 pages). Final versions get one additional page (9 for long papers, 5 for short papers). Exclusions and the A4 size are from the ARR call and the ACL formatting guidelines it links. Writing-assistance disclosure follows the ARR policy. No style file name or hash is recorded because the official style repository was not reachable from this session."
+        anonymizedByClass: {
+          package: "acl",
+          withOptions: [
+            "review"
+          ]
+        },
+        notes: 'Papers go through ACL Rolling Review and follow all ARR submission requirements; the EMNLP page lists long papers (8 pages) and short papers (4 pages). Final versions get one additional page (9 for long papers, 5 for short papers). Exclusions and the A4 size are from the ARR call and the ACL formatting guidelines it links. Writing-assistance disclosure follows the ARR policy. No style file name or hash is recorded because the official style repository was not reachable from this session. acl.sty prints "Anonymous ACL submission" with the review option (https://github.com/acl-org/acl-style-files, read on 2026-11-17).'
       },
       "iclr-2027": {
         id: "iclr-2027",
@@ -8950,7 +9264,13 @@ var init_venues_generated = __esm({
         textBlock: {
           widthMm: 139.7
         },
-        notes: "The page limit is 10 for the discussion phase and the camera-ready version. A mandatory AI use statement section does not count toward the limit. Style files are from iclr-2027-style-files.zip (linked from the author guidelines), downloaded on 2026-11-10 (file dated 2026-07-28 in the archive). Text block: 5.5 in wide with 1.5 in side margins (iclr2027_conference.sty)."
+        anonymizedByClass: {
+          package: "iclr2027_conference",
+          unlessCommands: [
+            "iclrfinalcopy"
+          ]
+        },
+        notes: 'The page limit is 10 for the discussion phase and the camera-ready version. A mandatory AI use statement section does not count toward the limit. Style files are from iclr-2027-style-files.zip (linked from the author guidelines), downloaded on 2026-11-10 (file dated 2026-07-28 in the archive). Text block: 5.5 in wide with 1.5 in side margins (iclr2027_conference.sty). iclr2027_conference.sty prints "Anonymous authors" until \\iclrfinalcopy is used.'
       },
       "icml-2026": {
         id: "icml-2026",
@@ -8985,7 +9305,14 @@ var init_venues_generated = __esm({
           widthMm: 171.5,
           leftMm: 19.6
         },
-        notes: "Final versions of accepted papers get one extra page for the main paper. The call allows generative AI tools and encourages authors to explain notable uses in their methodology; LLMs cannot be authors. The hash is of icml2026.sty (v2.0, 2025/10/29) from icml2026.zip downloaded on 2026-11-10. The ICML 2027 call page exists but has no content yet. Text block: 6.75 in wide, 0.77 in from the left edge (icml2026.sty)."
+        anonymizedByClass: {
+          package: "icml2026",
+          unlessOptions: [
+            "accepted",
+            "preprint"
+          ]
+        },
+        notes: 'Final versions of accepted papers get one extra page for the main paper. The call allows generative AI tools and encourages authors to explain notable uses in their methodology; LLMs cannot be authors. The hash is of icml2026.sty (v2.0, 2025/10/29) from icml2026.zip downloaded on 2026-11-10. The ICML 2027 call page exists but has no content yet. Text block: 6.75 in wide, 0.77 in from the left edge (icml2026.sty). icml2026.sty prints "Anonymous Authors" unless the accepted or preprint option is given.'
       },
       "ieee-conference": {
         id: "ieee-conference",
@@ -9044,7 +9371,18 @@ var init_venues_generated = __esm({
         textBlock: {
           widthMm: 139.7
         },
-        notes: "The handbook asks authors to describe agent or LLM use in the experimental setup only when it is an important, original or non-standard part of the method. Accepted papers get one additional content page for the camera-ready version. Paper size is from the letterpaper option in the official style file (the handbook does not state it). The hash is of neurips_2026.sty (dated 2026-01-29) from the kit downloaded on 2026-11-10. Text block: 5.5 in wide, centred on US Letter (geometry in neurips_2026.sty)."
+        anonymizedByClass: {
+          package: "neurips_2026",
+          unlessOptions: [
+            "final",
+            "preprint",
+            "nonanonymous",
+            "creativeai",
+            "education",
+            "sglblindworkshop"
+          ]
+        },
+        notes: 'The handbook asks authors to describe agent or LLM use in the experimental setup only when it is an important, original or non-standard part of the method. Accepted papers get one additional content page for the camera-ready version. Paper size is from the letterpaper option in the official style file (the handbook does not state it). The hash is of neurips_2026.sty (dated 2026-01-29) from the kit downloaded on 2026-11-10. Text block: 5.5 in wide, centred on US Letter (geometry in neurips_2026.sty). neurips_2026.sty prints "Anonymous Author(s)" unless one of the options final, preprint, nonanonymous, creativeai, education or sglblindworkshop is given.'
       },
       "springer-lncs": {
         id: "springer-lncs",
@@ -9144,7 +9482,7 @@ var init_profiles = __esm({
       arxiv: {
         id: "arxiv",
         name: "arXiv",
-        description: "arXiv submission: no absolute paths, no shell escape, .bbl included, pdfLaTeX-safe figures.",
+        description: "arXiv submission: no absolute paths, no shell escape, .bib or a matching .bbl included, pdfLaTeX-safe figures.",
         paper: "any",
         disclosure: "off",
         accessibility: "recommended",
@@ -9289,8 +9627,8 @@ var init_rules3 = __esm({
         check: "venue",
         severity: "error",
         title: "Built with LuaLaTeX (arXiv)",
-        summary: "arXiv compiles submissions with pdfLaTeX. A paper that only builds with LuaLaTeX (fontspec, Lua code) fails there, and a LuaLaTeX log says nothing about the arXiv build.",
-        fix: "arXiv compiles with pdfLaTeX; build with `make arxiv` / `latexmk -pdf` and check that log with --log."
+        summary: "arXiv compiles LaTeX with pdfLaTeX or XeLaTeX, not LuaLaTeX. A paper that only builds with LuaLaTeX (Lua code, luatexja) fails there, and a LuaLaTeX log says nothing about the arXiv build.",
+        fix: "Build with pdfLaTeX (`latexmk -pdf`) or XeLaTeX (`latexmk -xelatex`) and check that log with `--log`."
       },
       {
         id: "arxiv-eps-pdflatex",
@@ -9311,10 +9649,18 @@ var init_rules3 = __esm({
       {
         id: "arxiv-missing-bbl",
         check: "venue",
-        severity: "info",
-        title: ".bbl not present (arXiv)",
-        summary: "arXiv does not run biber; with biblatex you must upload the .bbl generated by your build.",
-        fix: "Build locally, then include the .bbl named like the main file (`main.tex` \u2192 `main.bbl`; a `<jobname>.bbl` must be copied to that name) in the upload."
+        severity: "warning",
+        title: "Neither .bbl nor .bib in the upload (arXiv)",
+        summary: "arXiv builds the bibliography itself from the uploaded .bib files (BibTeX, or Biber when biblatex selects it), or uses an uploaded .bbl named like the main file. With neither, it blocks the submission.",
+        fix: "Add the .bib files the document names to the project, or upload the .bbl named like the main file (`main.tex` \u2192 `main.bbl`; copy a `<jobname>.bbl` to that name)."
+      },
+      {
+        id: "arxiv-bbl-version",
+        check: "venue",
+        severity: "warning",
+        title: "biblatex .bbl in a format arXiv cannot read",
+        summary: "A biblatex .bbl must match the biblatex and Biber on arXiv: TeX Live 2025, the default, reads .bbl format 3.3 only (checked 2026-11-17). A .bbl from a newer or older TeX Live breaks the bibliography there.",
+        fix: "Upload the .bib files without the .bbl so arXiv runs Biber itself, or build the .bbl with arXiv\u2019s TeX Live (2025: biblatex 3.20, Biber 2.20)."
       },
       {
         id: "arxiv-filename-space",
@@ -9421,7 +9767,7 @@ var init_rules4 = __esm({
 });
 
 // ../packages/core/src/report/sarif.ts
-function joinPath2(root, file) {
+function joinPath3(root, file) {
   const f = file.replace(/\\/g, "/").replace(/^\.\//, "");
   if (!root || root === "." || root === "./") return f;
   return `${root.replace(/\/+$/, "")}/${f}`;
@@ -9468,7 +9814,7 @@ function formatSarif(report, opts = {}) {
         locations: [
           {
             physicalLocation: {
-              artifactLocation: { uri: joinPath2(opts.root, file), uriBaseId: "%SRCROOT%" },
+              artifactLocation: { uri: joinPath3(opts.root, file), uriBaseId: "%SRCROOT%" },
               region: { startLine: line && line > 0 ? line : 1 }
             }
           }
@@ -17314,9 +17660,9 @@ function detectMain(root, outputDirs = ["."]) {
     return { main: candidates[0], how: "only document", candidates };
   if (candidates.length > 1) {
     const built = candidates.filter((c) => {
-      const stem = c.replace(/\.tex$/i, "");
+      const stem2 = c.replace(/\.tex$/i, "");
       return outputDirs.some(
-        (d) => ["log", "pdf"].some((ext) => isRegular(join2(root, d, `${stem}.${ext}`)))
+        (d) => ["log", "pdf"].some((ext) => isRegular(join2(root, d, `${stem2}.${ext}`)))
       );
     });
     if (built.length === 1)
@@ -118902,7 +119248,7 @@ function mergeOutput(output, pdfProblems) {
   const problems = [...output.problems, ...extra];
   return { ...output, status: statusOf(problems), problems, summary: outputSummary(problems) };
 }
-function bibliographyAttribution(config, bib = config.bib) {
+function bibliographyAttribution(config, bib = config.bib, texFiles) {
   const root = config.root;
   const bblRel = join5(config.build.auxDir, `${config.jobname}.bbl`).split("\\").join("/");
   const bblAbs = insideRootOrUndefined(root, bblRel);
@@ -118923,7 +119269,8 @@ function bibliographyAttribution(config, bib = config.bib) {
     }
   }
   const bbl = { path: bblRel.replace(/^\.\//, ""), text: bblText };
-  return (problems) => attributeBibliography(problems, { bbl, bibs });
+  const tex = texFiles ?? readTexFiles(root, listFiles(root));
+  return (problems) => attributeBibliography(problems, { bbl, bibs, texFiles: tex });
 }
 function buildAndOutput(inp, wanted) {
   const out = [];
@@ -118944,7 +119291,7 @@ function buildAndOutput(inp, wanted) {
     return out;
   }
   const analyzed = analyzeLog(inp.log, { root: inp.root });
-  const attribute = bibliographyAttribution(inp.config);
+  const attribute = bibliographyAttribution(inp.config, inp.config.bib, sourcesOf(inp).texFiles);
   const build2 = { ...analyzed.build, problems: attribute(analyzed.build.problems) };
   const output = { ...analyzed.output, problems: attribute(analyzed.output.problems) };
   if (wanted.has("build")) out.push(build2);
@@ -118954,15 +119301,15 @@ function buildAndOutput(inp, wanted) {
 }
 async function references(inp, opts) {
   const { config, root } = inp;
-  const bibFiles = opts.bib ?? config.bib;
-  if (bibFiles.length === 0)
+  const bibFiles2 = opts.bib ?? config.bib;
+  if (bibFiles2.length === 0)
     return skipped2("references", "No .bib file found (set `bib:` in overfull.yml)");
   const entries = [];
   const parseProblems = [];
   const missingFiles = [];
   const discovered = !opts.bib && config.bibDiscovered;
   const outside = [];
-  for (const file of bibFiles) {
+  for (const file of bibFiles2) {
     const abs = discovered ? insideRootOrUndefined(root, file) : insideRoot(root, file, "Bibliography file");
     if (abs === void 0) {
       outside.push(file);
@@ -118994,7 +119341,7 @@ async function references(inp, opts) {
     fix: "Pass it explicitly with `--bib` from a directory that contains it, or move it into the project.",
     data: { file: f }
   }));
-  if (missingFiles.length + outside.length === bibFiles.length) {
+  if (missingFiles.length + outside.length === bibFiles2.length) {
     if (!outside.length)
       return skipped2("references", `Bibliography not found: ${missingFiles.join(", ")}`);
     return {
@@ -119144,6 +119491,18 @@ async function accessibility(inp, opts, results) {
     ...verapdf === null ? { verapdfNotRun: await verapdfNotRun(opts) } : {}
   });
 }
+function arxivBbl(config, files) {
+  if (!config.profile.arxiv) return {};
+  const path = config.main.replace(/\.tex$/i, ".bbl");
+  if (!files.includes(path)) return {};
+  const abs = insideRootOrUndefined(config.root, path);
+  try {
+    const text2 = abs ? readIfExists(abs) : void 0;
+    return text2 === void 0 ? {} : { bbl: { path, text: text2 } };
+  } catch {
+    return {};
+  }
+}
 function venue(inp) {
   const { config } = inp;
   if (!inp.facts && !existsSync4(join5(config.root, config.main)))
@@ -119155,7 +119514,8 @@ function venue(inp) {
     ...inp.log !== void 0 ? { log: inp.log } : {},
     texFiles,
     files,
-    main: config.main
+    main: config.main,
+    ...arxivBbl(config, files)
   });
   if (result.status === "skipped" && !inp.facts) return skipped2("venue", missingPdfReason(inp));
   if (skippedFiles.length) {

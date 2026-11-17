@@ -21,6 +21,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 - Commands run from a subfolder use the nearest `overfull.yml` above (up to the Git root) and say `Using ../overfull.yml.`
 - `overfull mcp --allow-build` adds a `build` tool (only for projects you trust: `latexmk` runs the project's `.latexmkrc`).
 - `overfull init --yes` asks nothing and takes the defaults.
+- Venue: new rule `arxiv-bbl-version` warns when a shipped biblatex `.bbl` has a
+  format arXiv's TeX Live cannot read (TeX Live 2025, the default, reads 3.3).
+- Venue profiles: `anonymizedByClass` names a class that prints "Anonymous" itself
+  in review mode (NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, AISTATS, ACL/ARR, EMNLP, acmart).
+- Corpus cases for no-line-to-end, hyperref-error, command-already-defined,
+  unknown-package-option, bibliography-stale, float-too-large and font-feature-missing.
 
 ### Changed
 
@@ -39,6 +45,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 - `overfull doctor` marks an invalid config, or a missing `--config` file, with ✕ and exits 1; `--json` adds `configValid`.
 - `overfull pages --dpi` is at most 600, `--pdf` must be inside the project, and the default PDF is read from `build.outDir`.
 - MCP: without `--allow-build`, the instructions, the `check` description and skip reasons say that a person must build first; tool errors no longer ask the client to run CLI commands.
+- Venue: `arxiv-missing-bbl` no longer says arXiv does not run Biber; it warns only when
+  neither the `.bib` files nor `<main>.bbl` are in the project. `arxiv-unsupported-engine`
+  says arXiv compiles with pdfLaTeX or XeLaTeX.
+- Reports: every format lists problems in one order, and Markdown renders `code` in
+  messages like HTML (only matched backtick pairs).
 
 ### Fixed
 
@@ -68,6 +79,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 - An invalid `overfull.yml` showed a YAML error cut off after "column 5:"; the whole message, with the line it points at, is shown.
 - `overfull check --watch` also watches a build folder whose name starts with a dot, no longer adds an abort listener on every tick, and names `--html` in its refusal.
 - Documented `status: "skipped"` (nothing checked, exit 1) in the JSON report schema and exit codes.
+- Venue: `anonymity-author-named` no longer fails a submission whose venue class hides the
+  authors in review mode, and it expands `\author{\PaperAuthors}` macros from the sources.
+- Log: a missing `.bbl` in a natbib or BibTeX project says BibTeX (not Biber) and uses the
+  real job name.
+- Log: undefined references are folded into "rerun LaTeX" only when labels changed, not for
+  rerunfilecheck or longtable reruns.
+- Log: parsing a log with many unmatched `(` is linear again (a 1 MB log took 26 s).
+- Log: `.bbl` error attribution is linear, and only moves errors at or after the
+  bibliography.
+- Log: overfull boxes "at lines 13--1" are dropped when an error sits in their paragraph;
+  "overfull boxs" is "overfull boxes".
+- Log: an error raised inside a TeX Live package while it loads points at the project file
+  that loaded it, not at the package's line.
 
 ### Security
 

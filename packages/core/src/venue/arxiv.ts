@@ -1,5 +1,6 @@
 import type { Problem } from '../types.js';
-import { findCommands, grepTex } from './tex.js';
+import { ARXIV_TEXLIVE, bblFormatVersion } from './arxiv-texlive.js';
+import { type CommandUse, findCommands, grepTex } from './tex.js';
 import type { VenueContext } from './types.js';
 
 const PATH_COMMANDS = [
@@ -35,6 +36,66 @@ function dirname(p: string): string {
   return i < 0 ? '' : p.slice(0, i + 1);
 }
 
+/** `dir` + `rel` with `./` and `../` resolved, forward slashes. */
+function joinPath(dir: string, rel: string): string {
+  const out: string[] = [];
+  for (const part of `${dir}${rel}`.replace(/\\/g, '/').split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') out.pop();
+    else out.push(part);
+  }
+  return out.join('/');
+}
+
+/** Project-relative .bib files the sources name (`\bibliography{a,b}`, `\addbibresource{a.bib}`). */
+function bibFiles(uses: CommandUse[], main: string): string[] {
+  const out: string[] = [];
+  for (const use of uses) {
+    if (use.name === 'addbibresource') {
+      const arg = use.arg.trim();
+      if (/location\s*=\s*remote/.test(use.optional ?? '') || /^[a-z]+:\/\//i.test(arg)) continue;
+      if (arg && !isAbsolute(arg)) out.push(joinPath(dirname(main), arg));
+    } else if (use.name === 'bibliography') {
+      for (const raw of use.arg.split(',')) {
+        const name = raw.trim();
+        if (!name || isAbsolute(name)) continue;
+        out.push(joinPath(dirname(main), /\.bib$/i.test(name) ? name : `${name}.bib`));
+      }
+    }
+  }
+  return [...new Set(out)];
+}
+
+/** arxiv-bbl-version: a shipped biblatex .bbl must be in a format arXiv's TeX Live reads. */
+function bblVersionProblems(bbl: { path: string; text: string }): Problem[] {
+  const format = bblFormatVersion(bbl.text);
+  if (!format) return [];
+  const { versions, defaultYear } = ARXIV_TEXLIVE;
+  const current = versions.find((v) => v.year === defaultYear);
+  if (!current || current.bblFormats.includes(format)) return [];
+  const older = versions.find((v) => v.bblFormats.includes(format));
+  const supported = `TeX Live ${current.year}, the default, reads format ${current.bblFormats.join(' or ')}`;
+  return [
+    {
+      rule: 'arxiv-bbl-version',
+      check: 'venue',
+      severity: 'warning',
+      message: older
+        ? `${bbl.path} has biblatex .bbl format ${format}; on arXiv only TeX Live ${older.year} reads it (${supported})`
+        : `${bbl.path} has biblatex .bbl format ${format}, which arXiv cannot read (${supported})`,
+      location: { file: bbl.path },
+      fix: `Upload the .bib files without the .bbl, so arXiv runs Biber or BibTeX itself, or build the .bbl with TeX Live ${current.year} (biblatex ${current.biblatex}, Biber ${current.biber})${older ? `, or choose TeX Live ${older.year} when you submit` : ''}`,
+      data: {
+        format,
+        arxivFormats: current.bblFormats,
+        texLive: current.year,
+        source: ARXIV_TEXLIVE.source[0],
+        checkedOn: ARXIV_TEXLIVE.checkedOn,
+      },
+    },
+  ];
+}
+
 export function arxivProblems(ctx: VenueContext): Problem[] {
   const problems: Problem[] = [];
   const files = ctx.texFiles ?? [];
@@ -68,8 +129,9 @@ export function arxivProblems(ctx: VenueContext): Problem[] {
       rule: 'arxiv-unsupported-engine',
       check: 'venue',
       severity: 'error',
-      message: 'This build used LuaLaTeX, but arXiv compiles with pdfLaTeX',
-      fix: 'arXiv compiles with pdfLaTeX; build with `make arxiv` / `latexmk -pdf` and check that log with --log',
+      message:
+        'This build used LuaLaTeX, which arXiv does not offer (it compiles with pdfLaTeX or XeLaTeX)',
+      fix: 'Build with pdfLaTeX (`latexmk -pdf`) or XeLaTeX (`latexmk -xelatex`) and check that log with `--log`',
       data: { engine },
     });
   }
@@ -108,28 +170,39 @@ export function arxivProblems(ctx: VenueContext): Problem[] {
         fix: 'Rename the file without spaces (use - or _)',
       });
     }
-    const usesBib = uses.some((u) => u.name === 'addbibresource' || u.name === 'bibliography');
-    // arXiv compiles the main file, so it reads `<main basename>.bbl`; a `<jobname>.bbl`
-    // from a build with another jobname is only usable when the names agree.
+    // arXiv uses an uploaded `<main>.bbl`; without one it runs BibTeX, or the backend
+    // biblatex selects (Biber), on the uploaded .bib files, and blocks the submission when
+    // a .bib file is missing.
+    const has = (f: string) => ctx.files?.some((x) => x.toLowerCase() === f.toLowerCase());
     const stem = ctx.main.replace(/\.tex$/i, '');
     const expected = `${stem}.bbl`;
-    const hasBbl = ctx.files.some((f) => f.toLowerCase() === expected.toLowerCase());
-    if (usesBib && !hasBbl) {
+    const bibs = bibFiles(uses, ctx.main);
+    const usesBib = uses.some((u) => u.name === 'addbibresource' || u.name === 'bibliography');
+    const missingBibs = bibs.filter((b) => !has(b));
+    if (usesBib && !has(expected) && (missingBibs.length > 0 || bibs.length === 0)) {
       const other = ctx.files.find(
         (f) => f.toLowerCase().endsWith('.bbl') && dirname(f) === dirname(ctx.main ?? ''),
       );
+      const bibText = missingBibs.length ? missingBibs.join(', ') : 'the .bib file';
       problems.push({
         rule: 'arxiv-missing-bbl',
         check: 'venue',
-        severity: 'info',
+        severity: 'warning',
         message: other
-          ? `Found ${other}, but arXiv compiles ${ctx.main} and reads ${expected}; rename or copy it to ${expected}`
-          : `No ${expected} next to ${ctx.main}; arXiv does not run biber`,
+          ? `Found ${other}, but arXiv reads ${expected} (named like ${ctx.main}), and ${bibText} is not in the project`
+          : `Neither ${expected} nor ${bibText} is in the project; arXiv needs one of them to build the bibliography`,
         fix: other
-          ? `Copy the .bbl to ${expected} (arXiv runs on the main file, not on your jobname)`
-          : 'Build once, then upload the generated .bbl (named like your main file) with your sources',
-        data: { expected, ...(other ? { found: other } : {}) },
+          ? `Copy ${other} to ${expected}, or add ${bibText} to the upload so arXiv builds the bibliography itself`
+          : `Add ${bibText} to the project (arXiv runs BibTeX or Biber on it), or upload the ${expected} your build made`,
+        data: {
+          expected,
+          ...(missingBibs.length ? { missingBibs } : {}),
+          ...(other ? { found: other } : {}),
+        },
       });
+    }
+    if (ctx.bbl && ctx.bbl.path.toLowerCase() === expected.toLowerCase()) {
+      problems.push(...bblVersionProblems(ctx.bbl));
     }
   }
   const seen = new Set<string>();

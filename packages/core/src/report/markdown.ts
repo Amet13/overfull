@@ -1,6 +1,7 @@
 import type { Problem, Report } from '../types.js';
 import {
   checkLine,
+  codeSpans,
   formatLocation,
   neutralizeWorkflowCommands,
   nothingCheckedLine,
@@ -21,21 +22,20 @@ export function escapeMarkdown(s: string): string {
   return escapeHtml(oneLine(s)).replace(/([\\`*_{}[\]|~#])/g, '\\$1');
 }
 
-/** Renders text whose `backtick` spans are code: code becomes <code>, the rest is escaped. */
+/** Renders text whose `backtick` pairs are code: code becomes <code>, the rest is escaped. */
 function inline(s: string): string {
-  return oneLine(s)
-    .split('`')
-    .map((part, i) =>
-      i % 2 === 1
-        ? `<code>${escapeHtml(part).replace(/\|/g, '&#124;')}</code>`
-        : escapeMarkdown(part),
+  return codeSpans(oneLine(s))
+    .map((span) =>
+      span.code
+        ? `<code>${escapeHtml(span.text).replace(/\|/g, '&#124;')}</code>`
+        : escapeMarkdown(span.text),
     )
     .join('');
 }
 
 function problemItem(p: Problem): string {
   const loc = formatLocation(p.location);
-  const head = `- **${p.severity}**${loc ? ` <code>${escapeHtml(oneLine(loc))}</code>` : ''} ${escapeMarkdown(p.message)} <sub>${escapeHtml(oneLine(p.rule))}</sub>`;
+  const head = `- **${p.severity}**${loc ? ` <code>${escapeHtml(oneLine(loc))}</code>` : ''} ${inline(p.message)} <sub>${escapeHtml(oneLine(p.rule))}</sub>`;
   const sub: string[] = [];
   if (p.detail) sub.push(`  - Why: ${inline(p.detail)}`);
   if (p.fix) sub.push(`  - Fix: ${inline(p.fix)}`);

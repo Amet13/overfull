@@ -1,0 +1,7 @@
+{
+  "title": "\\newcommand on a name LaTeX already defines",
+  "engine": "pdflatex",
+  "check": "build",
+  "expect": ["command-already-defined"],
+  "run": "once"
+}

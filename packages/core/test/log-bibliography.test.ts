@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { attributeBibliography } from '../src/log/index.js';
 import type { Problem } from '../src/types.js';
+import { LINEAR_BUDGET_MS } from './linear-time.js';
 
 const BIBTEX_BBL = `\\begin{thebibliography}{2}
 
@@ -38,6 +39,13 @@ const BIBS = [
   {
     file: 'refs/b.bib',
     text: '\n\n@misc{smith2020speed, title = {Speedups in R\\&D pipelines}, year = {2020}}\n@book{knuth1984, title = {The TeXbook}}\n',
+  },
+];
+
+const TEX = [
+  {
+    path: 'main.tex',
+    content: `${'\n'.repeat(39)}\\printbibliography\n\\end{document}\n`,
   },
 ];
 
@@ -82,10 +90,41 @@ describe('attributeBibliography', () => {
           evidence: '! Misplaced alignment tab character &.\n<argument> Speedups in R&\n',
         }),
       ],
-      { bbl: { path: 'main.bbl', text: BIBLATEX_BBL }, bibs: BIBS },
+      { bbl: { path: 'main.bbl', text: BIBLATEX_BBL }, bibs: BIBS, texFiles: TEX },
     );
     expect(p?.data?.bibKey).toBe('smith2020speed');
     expect(p?.location).toEqual({ file: 'refs/b.bib', line: 3 });
+  });
+
+  it('biblatex: an error before \\printbibliography keeps its place even if its text is in the .bbl', () => {
+    const body = problem({
+      location: { file: 'main.tex', line: 12 },
+      evidence: '! Misplaced alignment tab character &.\n<argument> Speedups in R&\n',
+    });
+    const src = { bbl: { path: 'main.bbl', text: BIBLATEX_BBL }, bibs: BIBS };
+    expect(attributeBibliography([body], { ...src, texFiles: TEX })).toEqual([body]);
+    // Without the sources the place of the bibliography is unknown: nothing is moved.
+    const atPrint = { ...body, location: { file: 'main.tex', line: 40 } };
+    expect(attributeBibliography([atPrint], src)).toEqual([atPrint]);
+    // Another file than the one that prints the bibliography.
+    const other = { ...body, location: { file: 'intro.tex', line: 90 } };
+    expect(attributeBibliography([other], { ...src, texFiles: TEX })).toEqual([other]);
+  });
+
+  it('finds entries in a large .bbl in linear time', () => {
+    const n = 20_000;
+    const bbl = Array.from(
+      { length: n },
+      (_, i) => `\\bibitem{k${i}}\nA.~Author.\n\\newblock Title ${i}.\n`,
+    ).join('\n');
+    const problems = Array.from({ length: 2000 }, (_, i) =>
+      problem({ location: { file: 'main.bbl', line: 4 * (i * 10) + 2 } }),
+    );
+    const start = performance.now();
+    const out = attributeBibliography(problems, { bbl: { path: 'main.bbl', text: bbl }, bibs: [] });
+    expect(performance.now() - start).toBeLessThan(LINEAR_BUDGET_MS);
+    expect(out[1]?.data?.bibKey).toBe('k10');
+    expect(out[1999]?.data?.bibKey).toBe('k19990');
   });
 
   it('leaves a problem alone when nothing ties it to an entry', () => {

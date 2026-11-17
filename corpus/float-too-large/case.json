@@ -1,0 +1,6 @@
+{
+  "title": "Figure taller than the page",
+  "engine": "pdflatex",
+  "check": "output",
+  "expect": ["float-too-large"]
+}

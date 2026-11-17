@@ -256,6 +256,7 @@ export function mergeOutput(output: CheckResult, pdfProblems: Problem[]): CheckR
 export function bibliographyAttribution(
   config: Config,
   bib: string[] = config.bib,
+  texFiles?: TexFile[],
 ): (problems: Problem[]) => Problem[] {
   const root = config.root;
   const bblRel = join(config.build.auxDir, `${config.jobname}.bbl`).split('\\').join('/');
@@ -278,7 +279,9 @@ export function bibliographyAttribution(
     }
   }
   const bbl = { path: bblRel.replace(/^\.\//, ''), text: bblText };
-  return (problems) => attributeBibliography(problems, { bbl, bibs });
+  // The .tex sources tell where the bibliography is printed (biblatex reports that line).
+  const tex = texFiles ?? readTexFiles(root, listFiles(root));
+  return (problems) => attributeBibliography(problems, { bbl, bibs, texFiles: tex });
 }
 
 function buildAndOutput(inp: Inputs, wanted: Set<CheckId>): CheckResult[] {
@@ -302,7 +305,7 @@ function buildAndOutput(inp: Inputs, wanted: Set<CheckId>): CheckResult[] {
     return out;
   }
   const analyzed = analyzeLog(inp.log, { root: inp.root });
-  const attribute = bibliographyAttribution(inp.config);
+  const attribute = bibliographyAttribution(inp.config, inp.config.bib, sourcesOf(inp).texFiles);
   const build = { ...analyzed.build, problems: attribute(analyzed.build.problems) };
   const output = { ...analyzed.output, problems: attribute(analyzed.output.problems) };
   if (wanted.has('build')) out.push(build);
@@ -551,6 +554,20 @@ async function accessibility(
   });
 }
 
+/** `<main>.bbl` for the arXiv checks (its biblatex format line), when the project has it. */
+function arxivBbl(config: Config, files: string[]): { bbl?: { path: string; text: string } } {
+  if (!config.profile.arxiv) return {};
+  const path = config.main.replace(/\.tex$/i, '.bbl');
+  if (!files.includes(path)) return {};
+  const abs = insideRootOrUndefined(config.root, path);
+  try {
+    const text = abs ? readIfExists(abs) : undefined;
+    return text === undefined ? {} : { bbl: { path, text } };
+  } catch {
+    return {};
+  }
+}
+
 function venue(inp: Inputs): CheckResult {
   const { config } = inp;
   // Without the PDF and without the main file there is no document to judge: .tex files
@@ -565,6 +582,7 @@ function venue(inp: Inputs): CheckResult {
     texFiles,
     files,
     main: config.main,
+    ...arxivBbl(config, files),
   });
   if (result.status === 'skipped' && !inp.facts) return skipped('venue', missingPdfReason(inp));
   if (skippedFiles.length) {
