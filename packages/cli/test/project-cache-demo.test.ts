@@ -44,7 +44,7 @@ function plantedProject(): string {
 /** The real world: doi.org has never heard of the DOI, and no index has the title. */
 const nothingFound = (async (input: string | URL | Request) => {
   const url = String(input instanceof Request ? input.url : input);
-  if (url.includes('api.crossref.org'))
+  if (new URL(url).hostname === 'api.crossref.org')
     return new Response(JSON.stringify({ status: 'ok', message: { items: [] } }), {
       status: 200,
       headers: { 'content-type': 'application/json' },

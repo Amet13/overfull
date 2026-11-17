@@ -92,10 +92,10 @@ describe('when doi.org cannot answer', () => {
     );
     const [r] = await verifyEntries(entry(DOI), { fetch: f.fetch, ...fast });
     expect(r).toMatchObject({ status: 'verified', source: 'openalex' });
-    const asked = f.calls.find((c) => c.includes('api.openalex.org')) as string;
+    const asked = f.calls.find((c) => new URL(c).hostname === 'api.openalex.org') as string;
     expect(new URL(asked).pathname).toBe(`/works/doi:${DOI}`);
     // The title search was not needed.
-    expect(f.calls.some((c) => c.includes('api.crossref.org'))).toBe(false);
+    expect(f.calls.some((c) => new URL(c).hostname === 'api.crossref.org')).toBe(false);
   });
 
   it('reports a DOI whose OpenAlex record is another work', async () => {

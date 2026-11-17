@@ -4,10 +4,10 @@
  * `docker.exe` or `pdffonts.exe` would run. spawn is replaced to record what starts.
  */
 import { EventEmitter } from 'node:events';
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { tempDir } from './helpers.js';
 
 const spawned: { file: string; args: string[]; shell: boolean }[] = [];
@@ -100,15 +100,25 @@ describe('tools run by absolute path', () => {
 
   it('resolveCommand keeps paths, resolves names, and ignores relative PATH entries', () => {
     expect(resolveCommand('/opt/x/tool')).toBe('/opt/x/tool');
-    expect(resolveCommand('docker', { PATH: bin })).toBe(join(bin, 'docker'));
+    // Windows finds only names with an executable extension (PATHEXT).
+    const exe = process.platform === 'win32' ? 'docker.EXE' : 'docker';
+    if (process.platform === 'win32') writeFileSync(join(bin, exe), '');
+    expect(resolveCommand('docker', { PATH: bin })).toBe(join(bin, exe));
     expect(which('docker', { PATH: `.${process.platform === 'win32' ? ';' : ':'}bin` })).toBe(
       undefined,
     );
   });
 
   it('which() never returns a relative PATH entry, on POSIX or win32', () => {
+    // A truly relative entry: a folder under the current directory. (path.relative
+    // from the checkout to the temp folder is absolute on Windows when the two are on
+    // different drives, as on GitHub's runners.)
+    const local = mkdtempSync(join(process.cwd(), '.tool-paths-'));
+    onTestFinished(() => rmSync(local, { recursive: true, force: true }));
+    writeFileSync(join(local, 'pdffonts.EXE'), '');
     writeFileSync(join(bin, 'pdffonts.EXE'), '');
-    const rel = relative(process.cwd(), bin);
+    const rel = relative(process.cwd(), local);
+    expect(isAbsolute(rel)).toBe(false);
     expect(which('pdffonts', { PATH: rel })).toBeUndefined();
     expect(
       which('pdffonts', { PATH: rel, PATHEXT: '.EXE' }, { platform: 'win32' }),
