@@ -88,8 +88,9 @@ as a mapping.
 `main`, `jobname` and `outDir` may contain only letters, digits, `.`, `_`, `-`
 (and `/` except in `jobname`), and no `..`: latexmk passes them to a shell.
 Paths (`bib`, `--pdf`, `--log`, `--aux`) must stay inside the project folder.
-Files Overfull writes (`cite --bib`, `diff --out`, `pages --out`) must stay inside
-it after resolving symlinks; otherwise the command exits with 2. A `.bib` named by `\bibliography{../shared/refs}`
+Files Overfull writes (`cite --bib`, `diff --out`, `pages --out`, a relative
+`check --write` file) must stay inside it after resolving symlinks, and a report
+file must not be a symlink itself; otherwise the command exits with 2. A `.bib` named by `\bibliography{../shared/refs}`
 outside the project is not read: the check warns (`bib-outside-project`).
 
 ## Cache

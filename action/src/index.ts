@@ -1,6 +1,6 @@
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import {
   CHECK_IDS,
   exitCodeFor,
@@ -11,9 +11,11 @@ import {
   githubAnnotations,
   neutralizeWorkflowCommands,
   oneLine,
+  reportTarget,
   runCheck,
   sarifFallbackFile,
   stopCommands,
+  writeReport,
 } from 'overfull';
 import { readInputs } from './inputs.js';
 import { escapeData, outputRecord } from './output.js';
@@ -55,16 +57,17 @@ async function main(): Promise<number> {
   if (inputs.sarif) {
     const cwd = resolve(inputs.check.cwd ?? workspace);
     const fallbackFile = sarifFallbackFile(cwd, env);
-    const sarifPath = resolve(workspace, inputs.sarif);
-    mkdirSync(dirname(sarifPath), { recursive: true });
-    writeFileSync(
-      sarifPath,
+    // Inside the workspace the file must not be, or go through, a symlink: the
+    // repository could point `overfull.sarif` at a file outside it.
+    const target = reportTarget(workspace, inputs.sarif, 'Input "sarif"');
+    writeReport(
+      target,
       formatSarif(report, {
         root: relative(workspace, cwd) || '.',
         ...(fallbackFile ? { fallbackFile } : {}),
       }),
     );
-    setOutput('sarif', sarifPath);
+    setOutput('sarif', target.path);
   }
   setOutput('status', report.status);
   setOutput('report', reportPath);

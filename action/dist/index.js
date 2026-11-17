@@ -4870,69 +4870,43 @@ function isAuthorProvided(entry) {
     `${entry.fields.note ?? ""} ${entry.fields.annote ?? ""}`
   );
 }
-var DANGEROUS_MACROS, PROVENANCE_FIELD;
+var MATH_MACROS, CONTROL_SYMBOLS, PROVENANCE_FIELD;
 var init_entry = __esm({
   "../packages/core/src/refs/entry.ts"() {
     "use strict";
     init_normalize();
     init_sha256();
-    DANGEROUS_MACROS = new Set(
-      [
-        "input",
-        "include",
-        "includeonly",
-        "inputiffileexists",
-        "iffileexists",
-        "endinput",
-        "write",
-        "immediate",
-        "openout",
-        "openin",
-        "read",
-        "readline",
-        "closeout",
-        "closein",
-        "catcode",
-        "def",
-        "edef",
-        "gdef",
-        "xdef",
-        "let",
-        "futurelet",
-        "newcommand",
-        "renewcommand",
-        "providecommand",
-        "declarerobustcommand",
-        "csname",
-        "endcsname",
-        "expandafter",
-        "scantokens",
-        "everyeof",
-        "everypar",
-        "everyjob",
-        "output",
-        "shipout",
-        "special",
-        "directlua",
-        "latelua",
-        "luaexec",
-        "luadirect",
-        "usepackage",
-        "requirepackage",
-        "documentclass",
-        "shellescape",
-        "pdfshellescape",
-        "outer",
-        "uppercase",
-        "lowercase",
-        "detokenize",
-        "unexpanded",
-        "begingroup",
-        "aftergroup",
-        "afterassignment",
-        "globaldefs"
-      ].map((m) => m.toLowerCase())
-    );
+    MATH_MACROS = /* @__PURE__ */ new Set([
+      ..."alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu nu xi pi varpi rho varrho sigma varsigma tau upsilon phi varphi chi psi omega".split(
+        " "
+      ),
+      ..."Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi Omega".split(" "),
+      ..."upalpha upbeta upgamma updelta upepsilon upmu uppi upsigma uptau upphi upomega".split(" "),
+      ..."times cdot pm mp div ast star circ bullet leq geq le ge neq ne approx sim simeq cong equiv propto ll gg".split(
+        " "
+      ),
+      ..."infty partial nabla sum prod int oint sqrt frac dfrac tfrac binom log ln exp sin cos tan lim sup inf max min det".split(
+        " "
+      ),
+      ..."to rightarrow leftarrow Rightarrow Leftarrow leftrightarrow Leftrightarrow mapsto uparrow downarrow".split(
+        " "
+      ),
+      ..."in notin ni subset subseteq supset supseteq cup cap setminus emptyset varnothing forall exists neg lnot land lor wedge vee".split(
+        " "
+      ),
+      ..."ell hbar imath jmath prime cdots vdots ddots langle rangle lbrace rbrace lfloor rfloor lceil rceil mid vert Vert parallel perp".split(
+        " "
+      ),
+      ..."hat tilde bar vec dot ddot breve check acute grave overline underline widehat widetilde overrightarrow".split(
+        " "
+      ),
+      ..."left right big Big bigl bigr Bigl Bigr text mathnormal operatorname boldsymbol quad qquad".split(
+        " "
+      ),
+      // CrossRef's spelling of punctuation in math (`$\mathsemicolon$`, `$\less$`).
+      ..."less greater mathsemicolon mathcolon mathplus mathhyphen mathslash".split(" ")
+    ]);
+    CONTROL_SYMBOLS = /* @__PURE__ */ new Set([..."\"'`^~=.&%#_{},;:!-/ |\\$".split(""), "\n", "	"]);
     PROVENANCE_FIELD = "x-overfull";
   }
 });
@@ -7097,8 +7071,8 @@ var init_check = __esm({
         check: "references",
         severity: "info",
         title: "Project reference cache ignored",
-        summary: "With `references.cache: project`, lookups are cached in `.overfull/cache/refs.json` inside the project. That file is repository content: in CI (any provider, with or without a .git directory) it is never read, and anywhere a cache reached through a symlink is not used, because it could mark references as verified that were never looked up. Every reference is looked up again.",
-        fix: "Keep `.overfull/` out of git (add it to .gitignore) and make sure it is a real directory, not a symlink; or drop `references.cache: project` to use the user cache directory."
+        summary: "With `--project-cache` (or `OVERFULL_REFS_CACHE=project`), lookups are cached in `.overfull/cache/refs.json` inside the project. That file is repository content: in CI (any provider, with or without a .git directory) it is never read, and anywhere a cache reached through a symlink is not used, because it could mark references as verified that were never looked up. `references.cache: project` in the project's own overfull.yml is ignored for the same reason. Every reference is looked up again.",
+        fix: "Keep `.overfull/` out of git (add it to .gitignore) and make sure it is a real directory, not a symlink. To keep the cache in the project, pass `--project-cache` or set `OVERFULL_REFS_CACHE=project` in your own environment, not in overfull.yml."
       },
       {
         id: "reference-not-found",
@@ -9266,6 +9240,10 @@ function userCacheDir(env, platform = process.platform) {
   if (platform === "win32")
     return join(env.LOCALAPPDATA || join(home, "AppData", "Local"), "overfull");
   return join(env.XDG_CACHE_HOME || join(home, ".cache"), "overfull");
+}
+function refsCacheMode(flag, env) {
+  if (flag) return "project";
+  return env.OVERFULL_REFS_CACHE?.trim().toLowerCase() === "project" ? "project" : "user";
 }
 function refsCachePath(root, mode, env) {
   if (mode === "project") return join(root, ".overfull", "cache", "refs.json");
@@ -16702,7 +16680,16 @@ var init_io = __esm({
 
 // ../packages/cli/src/safety.ts
 import { randomBytes } from "node:crypto";
-import { existsSync, lstatSync as lstatSync2, realpathSync as realpathSync2 } from "node:fs";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  lstatSync as lstatSync2,
+  mkdirSync as mkdirSync2,
+  openSync,
+  realpathSync as realpathSync2,
+  writeFileSync as writeFileSync2
+} from "node:fs";
 import { dirname as dirname3, isAbsolute as isAbsolute2, relative as relative2, resolve, sep as sep2 } from "node:path";
 function checkName(value, what, allowSlash) {
   const segments = value.split("/");
@@ -16755,6 +16742,81 @@ function insideRootOrUndefined(root, path) {
     return void 0;
   }
 }
+function insideRootForWrite(root, path, what) {
+  const abs = insideRoot(root, path, what);
+  const refuse = (why2) => new UsageError(
+    `${what} "${path}" ${why2}. Overfull only writes files inside the project directory (${root}).`
+  );
+  let probe = abs;
+  for (; ; ) {
+    let st;
+    try {
+      st = lstatSync2(probe);
+    } catch {
+      st = void 0;
+    }
+    if (st) {
+      if (st.isSymbolicLink() && !existsSync(probe))
+        throw refuse("goes through a dangling symlink");
+      break;
+    }
+    const parent = dirname3(probe);
+    if (parent === probe) break;
+    probe = parent;
+  }
+  let realRoot;
+  let realProbe;
+  try {
+    realRoot = realpathSync2(root);
+    realProbe = realpathSync2(probe);
+  } catch {
+    throw refuse("cannot be resolved");
+  }
+  if (!isInside(realRoot, realProbe)) throw refuse("leads outside the project through a symlink");
+  return abs;
+}
+function reportTarget(root, path, what) {
+  const abs = resolve(root, path);
+  let realRoot = root;
+  try {
+    realRoot = realpathSync2(root);
+  } catch {
+  }
+  if (isAbsolute2(path) && !isInside(root, abs) && !isInside(realRoot, abs))
+    return { path: abs, inProject: false };
+  let link = false;
+  try {
+    link = lstatSync2(abs).isSymbolicLink();
+  } catch {
+  }
+  if (link) {
+    throw new UsageError(
+      `${what} "${path}" is a symlink. Overfull does not write reports through symlinks inside the project; remove it or choose another file.`
+    );
+  }
+  return { path: insideRootForWrite(root, path, what), inProject: true };
+}
+function writeReport(target, text2) {
+  mkdirSync2(dirname3(target.path), { recursive: true });
+  if (!target.inProject) {
+    writeFileSync2(target.path, text2);
+    return;
+  }
+  const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0);
+  let fd;
+  try {
+    fd = openSync(target.path, flags, 438);
+  } catch (err) {
+    if (err.code === "ELOOP")
+      throw new UsageError(`Report file "${target.path}" is a symlink; not written.`);
+    throw err;
+  }
+  try {
+    writeFileSync2(fd, text2);
+  } finally {
+    closeSync(fd);
+  }
+}
 function isCI(env) {
   return CI_VARS.some((k) => {
     const v = env[k];
@@ -16791,12 +16853,12 @@ var init_safety = __esm({
 
 // ../packages/cli/src/project.ts
 import {
-  closeSync,
-  constants,
+  closeSync as closeSync2,
+  constants as constants2,
   existsSync as existsSync2,
   fstatSync,
   lstatSync as lstatSync3,
-  openSync,
+  openSync as openSync2,
   readdirSync,
   readFileSync as readFileSync2,
   realpathSync as realpathSync3,
@@ -16851,7 +16913,7 @@ function readTexFiles(root, files, skipped3 = []) {
     const abs = join2(root, path);
     let fd;
     try {
-      fd = openSync(abs, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+      fd = openSync2(abs, constants2.O_RDONLY | (constants2.O_NONBLOCK ?? 0));
     } catch {
       continue;
     }
@@ -16869,7 +16931,7 @@ function readTexFiles(root, files, skipped3 = []) {
     } catch (err) {
       skipped3.push({ path, reason: err instanceof Error ? err.message : String(err) });
     } finally {
-      closeSync(fd);
+      closeSync2(fd);
     }
   }
   return out;
@@ -16922,14 +16984,14 @@ function detectMain(root, outputDirs = ["."]) {
     const abs = join2(root, name);
     let fd;
     try {
-      fd = openSync(abs, "r");
+      fd = openSync2(abs, "r");
       const st = fstatSync(fd);
       if (!st.isFile() || st.size > MAX_TEX_BYTES) continue;
       const text2 = readFileSync2(fd, "utf8").replace(/(^|[^\\])%.*$/gm, "$1");
       if (/\\documentclass\b/.test(text2)) candidates.push(name);
     } catch {
     } finally {
-      if (fd !== void 0) closeSync(fd);
+      if (fd !== void 0) closeSync2(fd);
     }
   }
   if (candidates.length === 1)
@@ -17280,7 +17342,7 @@ var init_config = __esm({
 
 // ../packages/cli/src/tools.ts
 import { spawn } from "node:child_process";
-import { accessSync, constants as constants2 } from "node:fs";
+import { accessSync, constants as constants3 } from "node:fs";
 import { delimiter, join as join4 } from "node:path";
 function which(cmd, env = process.env, opts = {}) {
   const win = (opts.platform ?? process.platform) === "win32";
@@ -17291,7 +17353,7 @@ function which(cmd, env = process.env, opts = {}) {
     for (const ext of exts) {
       const p = join4(dir, cmd + ext);
       try {
-        accessSync(p, win ? constants2.F_OK : constants2.X_OK);
+        accessSync(p, win ? constants3.F_OK : constants3.X_OK);
         return p;
       } catch {
       }
@@ -118616,8 +118678,18 @@ async function references(inp, opts) {
   const env = opts.env ?? process.env;
   let cache2;
   if (opts.cache !== false) {
-    const path = refsCachePath(root, config.references.cache, env);
-    const project = config.references.cache === "project";
+    const mode = refsCacheMode(opts.projectCache, env);
+    const path = refsCachePath(root, mode, env);
+    const project = mode === "project";
+    if (config.references.cache === "project" && !project) {
+      extra.push({
+        rule: "refs-cache-ignored",
+        check: "references",
+        severity: "info",
+        message: "Ignored `references.cache: project` in overfull.yml: a project cannot choose to trust its own cache",
+        fix: "Use `--project-cache` or set OVERFULL_REFS_CACHE=project in your environment if you want the cache in .overfull/."
+      });
+    }
     const link = project ? symlinkOnPath(root, path) : void 0;
     if (project && isCI(env)) {
       cache2 = new MemoryCache();
@@ -118637,7 +118709,7 @@ async function references(inp, opts) {
         check: "references",
         severity: "info",
         message: `Ignored ${rel(root, path)}: ${rel(root, link)} is a symlink, so the cache may be a file from the repository`,
-        fix: "Replace the symlink with a real directory, or drop `references.cache: project`."
+        fix: "Replace the symlink with a real directory, or drop `--project-cache` / OVERFULL_REFS_CACHE=project."
       });
     } else cache2 = new FileCache(path);
   }
@@ -118820,9 +118892,9 @@ var init_check3 = __esm({
 });
 
 // src/index.ts
-import { appendFileSync, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
+import { appendFileSync, writeFileSync as writeFileSync3 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname as dirname5, join as join6, relative as relative7, resolve as resolve4 } from "node:path";
+import { join as join6, relative as relative7, resolve as resolve4 } from "node:path";
 
 // ../packages/cli/src/index.ts
 init_src();
@@ -118951,20 +119023,19 @@ async function main2() {
 `);
   }
   const reportPath = join6(env.RUNNER_TEMP ?? tmpdir(), "overfull-report.json");
-  writeFileSync2(reportPath, formatJson(report));
+  writeFileSync3(reportPath, formatJson(report));
   if (inputs.sarif) {
     const cwd = resolve4(inputs.check.cwd ?? workspace);
     const fallbackFile = sarifFallbackFile(cwd, env);
-    const sarifPath = resolve4(workspace, inputs.sarif);
-    mkdirSync2(dirname5(sarifPath), { recursive: true });
-    writeFileSync2(
-      sarifPath,
+    const target = reportTarget(workspace, inputs.sarif, 'Input "sarif"');
+    writeReport(
+      target,
       formatSarif(report, {
         root: relative7(workspace, cwd) || ".",
         ...fallbackFile ? { fallbackFile } : {}
       })
     );
-    setOutput("sarif", sarifPath);
+    setOutput("sarif", target.path);
   }
   setOutput("status", report.status);
   setOutput("report", reportPath);

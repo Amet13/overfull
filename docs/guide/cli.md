@@ -146,7 +146,7 @@ those files. Any other extension is a usage error (exit 2).
 | `--annotations` | Print GitHub workflow annotations. |
 | `--sarif` | Print a SARIF 2.1.0 log, for GitHub code scanning (see [the Action](./action.md#code-scanning-sarif)). Problems without a source file point at the main file, line 1. |
 | `--html` | Print the report as one self-contained HTML page (light and dark, printable, no scripts): to keep, attach to a CI run or send to a co-author. |
-| `--write format=file` | Also write the report to a file, in `json`, `markdown`, `annotations`, `sarif` or `html`. Repeat it for several formats from one run: `--write json=report.json --write html=report.html`. |
+| `--write format=file` | Also write the report to a file, in `json`, `markdown`, `annotations`, `sarif` or `html`. Repeat it for several formats from one run: `--write json=report.json --write html=report.html`. A relative path (or an absolute one inside the project) must stay inside the project and must not be a symlink; an absolute path outside the project, such as `$GITHUB_STEP_SUMMARY`, is fine. |
 | `--verbose`, `-v` | Show why each problem happened and how to fix it. |
 | `--pdf file` | PDF to check (default `<jobname>.pdf`). |
 | `--log file` | Build log (default `<jobname>.log`). |
