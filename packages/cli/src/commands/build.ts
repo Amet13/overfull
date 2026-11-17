@@ -229,6 +229,133 @@ const INSTALL_ROUNDS = 3;
  * mid-sync fails a single call, so try again (a new mirror) before giving up. */
 const TLMGR_TRIES = 3;
 
+type RunResult = Awaited<ReturnType<typeof run>>;
+
+/** True when tlmgr refuses to work until it has updated itself (a critical texlive.infra update). */
+export function needsSelfUpdate(tlmgrOutput: string): boolean {
+  return /tlmgr itself needs to be updated/i.test(tlmgrOutput);
+}
+
+/**
+ * The local TeX Live year when tlmgr refuses a newer remote release
+ * ("Local TeX Live (2026) is older than remote repository (2027)"): after the yearly
+ * rollover, CTAN only serves the new release.
+ */
+export function rolloverYear(tlmgrOutput: string): string | undefined {
+  return /Local TeX Live \((\d{4})\) is older than remote repository/i.exec(tlmgrOutput)?.[1];
+}
+
+/** The frozen final repositories of a past TeX Live release. */
+export function historicRepositories(year: string): string[] {
+  return [
+    `https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/${year}/tlnet-final`,
+    `https://ftp.tu-chemnitz.de/pub/tug/historic/systems/texlive/${year}/tlnet-final`,
+  ];
+}
+
+/**
+ * A tlmgr that copes with a remote repository: it retries a failed call (another
+ * mirror), runs `tlmgr update --self` once when tlmgr asks for it, and after a TeX Live
+ * rollover switches to the frozen repository of the installed release.
+ */
+export function remoteTlmgr(
+  exec: (args: string[]) => Promise<RunResult>,
+  note: (message: string) => void,
+): (args: string[]) => Promise<RunResult> {
+  let repository: string | undefined;
+  let historic: string[] | undefined;
+  let selfUpdated = false;
+  const call = (args: string[]) => exec(repository ? ['--repository', repository, ...args] : args);
+  return async (args) => {
+    let out = await call(args);
+    let failures = 0;
+    while (out.code !== 0) {
+      const text = `${out.stdout}\n${out.stderr}`;
+      const year = rolloverYear(text);
+      if (year && historic === undefined) historic = historicRepositories(year);
+      if (needsSelfUpdate(text)) {
+        if (selfUpdated) break;
+        selfUpdated = true;
+        note('tlmgr needs to update itself first: running `tlmgr update --self`…\n');
+        const updated = await call(['update', '--self']);
+        if (updated.code !== 0) return updated;
+      } else if (year || (repository && historic?.length)) {
+        // After the rollover (or when a frozen repository is down): the next one.
+        const next = historic?.shift();
+        if (!next) break;
+        repository = next;
+        note(
+          `This TeX Live release is no longer current; using its frozen repository ${repository}…\n`,
+        );
+      } else if (++failures >= TLMGR_TRIES) {
+        break;
+      }
+      out = await call(args);
+    }
+    return out;
+  };
+}
+
+/**
+ * Install-on-demand: while the build fails on distribution files that are missing,
+ * look up the packages that provide them, install them and build again.
+ */
+export async function installMissing(opts: {
+  result: RunResult;
+  readLog: () => string | undefined;
+  root: string;
+  tlmgr: (args: string[]) => Promise<RunResult>;
+  rebuild: () => Promise<RunResult>;
+  stderr: (text: string) => void;
+}): Promise<RunResult> {
+  let result = opts.result;
+  const tried = new Set<string>();
+  for (let round = 0; round < INSTALL_ROUNDS && result.code !== 0; round++) {
+    const log = opts.readLog();
+    if (log === undefined) break;
+    const files = missingTexFiles(analyzeLog(log, { root: opts.root }).build.problems).filter(
+      (f) => !tried.has(f),
+    );
+    if (!files.length) break;
+    const packages: string[] = [];
+    for (const file of files) {
+      tried.add(file);
+      const found = await opts.tlmgr(['search', '--global', '--file', `/${file}`]);
+      packages.push(...packagesProviding(found.stdout, file).filter((x) => !packages.includes(x)));
+    }
+    if (!packages.length) break;
+    opts.stderr(`Installing ${packages.join(', ')} from CTAN (not in this image)…\n`);
+    const installed = await opts.tlmgr(['install', ...packages]);
+    if (installed.code !== 0) {
+      const text = `${installed.stdout}\n${installed.stderr}`;
+      opts.stderr(
+        `${(installed.stderr || installed.stdout).trim().split('\n').slice(-5).join('\n')}\n`,
+      );
+      if (/not writable|permission denied|cannot write/i.test(text))
+        opts.stderr(
+          'The TeX Live tree is not writable for this user, so the package cannot be installed. Run as root, use a current slim image (its tree is writable for every user), or install the package yourself.\n',
+        );
+      break;
+    }
+    result = await opts.rebuild();
+  }
+  return result;
+}
+
+/** True when the image installs missing packages on demand (it sets OVERFULL_TEX_INSTALL=1, like the slim image). */
+export async function imageInstallsOnDemand(image: string): Promise<boolean> {
+  const r = await run('docker', ['image', 'inspect', '--format', '{{json .Config.Env}}', image], {
+    timeoutMs: 20000,
+  });
+  if (r.code !== 0) return false;
+  try {
+    const env = JSON.parse(r.stdout) as unknown;
+    return Array.isArray(env) && env.includes('OVERFULL_TEX_INSTALL=1');
+  } catch {
+    return false;
+  }
+}
+
 export async function buildCommand(args: string[], io: Io): Promise<number> {
   const { values, positionals } = parse(
     args,
@@ -269,7 +396,7 @@ export async function buildCommand(args: string[], io: Io): Promise<number> {
   const image = imageArg ? safeImage(imageArg, '--image') : config.build.image;
   const verbose = values.verbose === true;
   const force = values.force === true;
-  let result: Awaited<ReturnType<typeof run>>;
+  let result: RunResult;
   if (!force && upToDate(config, main)) {
     // Nothing changed since the last good build: report on it without starting
     // LaTeX (in Docker, latexmk would rerun LuaLaTeX because the container's
@@ -285,46 +412,59 @@ export async function buildCommand(args: string[], io: Io): Promise<number> {
     // The slim image ships only the TeX packages most papers use and sets
     // OVERFULL_TEX_INSTALL=1: a package the document needs beyond that is installed from
     // CTAN and the build runs again, like MiKTeX's install-on-demand.
-    if (engine === 'local' && io.env.OVERFULL_TEX_INSTALL === '1' && which('tlmgr', io.env)) {
-      const tlmgr = async (args: string[]) => {
-        let out = await run('tlmgr', args);
-        for (let i = 1; i < TLMGR_TRIES && out.code !== 0; i++) out = await run('tlmgr', args);
-        return out;
-      };
-      const tried = new Set<string>();
-      for (let round = 0; round < INSTALL_ROUNDS && result.code !== 0; round++) {
-        const log = readIfExists(join(config.root, config.build.auxDir, `${config.jobname}.log`));
-        if (log === undefined) break;
-        const files = missingTexFiles(analyzeLog(log, { root: config.root }).build.problems).filter(
-          (f) => !tried.has(f),
-        );
-        if (!files.length) break;
-        const packages: string[] = [];
-        for (const file of files) {
-          tried.add(file);
-          const found = await tlmgr(['search', '--global', '--file', `/${file}`]);
-          packages.push(
-            ...packagesProviding(found.stdout, file).filter((x) => !packages.includes(x)),
-          );
-        }
-        if (!packages.length) break;
-        io.stderr(`Installing ${packages.join(', ')} from CTAN (not in this image)…\n`);
-        const installed = await tlmgr(['install', ...packages]);
-        if (installed.code !== 0) {
-          io.stderr(
-            `${(installed.stderr || installed.stdout).trim().split('\n').slice(-5).join('\n')}\n`,
-          );
-          break;
-        }
-        result = await runLatexmk(engine, ['-g', ...latexmkArgs(config, main)]);
-      }
+    if (result.code !== 0) result = await installOnDemand(engine, result);
+  }
+  async function installOnDemand(engine: 'local' | 'docker', first: RunResult): Promise<RunResult> {
+    const readLog = () =>
+      readIfExists(join(config.root, config.build.auxDir, `${config.jobname}.log`));
+    const rebuildArgs = ['-g', ...latexmkArgs(config, main)];
+    const common = { result: first, readLog, root: config.root, stderr: io.stderr };
+    if (engine === 'local') {
+      if (io.env.OVERFULL_TEX_INSTALL !== '1' || !which('tlmgr', io.env)) return first;
+      return installMissing({
+        ...common,
+        tlmgr: remoteTlmgr((args) => run('tlmgr', args), io.stderr),
+        rebuild: () => runLatexmk(engine, rebuildArgs),
+      });
+    }
+    // Docker: each `docker run --rm` starts from the image again, so an installed
+    // package would be gone by the next build. Install and rebuild in one container
+    // that lives for this build only.
+    const log = readLog();
+    if (
+      log === undefined ||
+      !missingTexFiles(analyzeLog(log, { root: config.root }).build.problems).length
+    )
+      return first;
+    if (io.env.OVERFULL_TEX_INSTALL !== '1' && !(await imageInstallsOnDemand(image))) return first;
+    const started = await run('docker', [
+      'run',
+      '-d',
+      ...dockerRunArgs(image, config.root, ['sleep', 'infinity']).slice(1),
+    ]);
+    const id = started.stdout.trim();
+    if (started.code !== 0 || !/^[0-9a-f]{12,64}$/.test(id)) {
+      io.stderr(`${started.stderr.trim()}\n`);
+      return first;
+    }
+    try {
+      return await installMissing({
+        ...common,
+        tlmgr: remoteTlmgr((args) => run('docker', ['exec', id, 'tlmgr', ...args]), io.stderr),
+        rebuild: () => {
+          io.stderr(`Building ${main} again with latexmk in ${image}…\n`);
+          return run('docker', ['exec', id, 'latexmk', ...rebuildArgs], {
+            cwd: config.root,
+            onLine: progress(io, verbose),
+          });
+        },
+      });
+    } finally {
+      await run('docker', ['rm', '-f', id], { timeoutMs: 30000 });
     }
   }
-  async function runLatexmk(
-    engine: 'local' | 'docker',
-    lmk: string[],
-  ): Promise<Awaited<ReturnType<typeof run>>> {
-    let result: Awaited<ReturnType<typeof run>>;
+  async function runLatexmk(engine: 'local' | 'docker', lmk: string[]): Promise<RunResult> {
+    let result: RunResult;
     if (engine === 'local') {
       io.stderr(`Building ${main} with latexmk…\n`);
       result = await run('latexmk', lmk, { cwd: config.root, onLine: progress(io, verbose) });
