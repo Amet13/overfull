@@ -14,7 +14,7 @@ import {
 } from '@overfull/core';
 import { parse, str } from '../args.js';
 import { loadConfig } from '../config.js';
-import { type Io, UsageError } from '../io.js';
+import { type Io, testRefsTiming, UsageError } from '../io.js';
 import { insideRootForWrite } from '../safety.js';
 
 const citeHelp = `Usage: overfull cite <doi | arXiv:id | ACL id | PMID | PMCID | "title"> [options]
@@ -266,6 +266,7 @@ export async function citeCommand(
       ...(semanticScholarKey ? { semanticScholarKey } : {}),
       ...(hint ? { hint } : {}),
       onSearch: (o) => tracker.report(o),
+      ...testRefsTiming(io.env),
     });
   } catch (error) {
     if (!(error instanceof AmbiguousLookupError)) {

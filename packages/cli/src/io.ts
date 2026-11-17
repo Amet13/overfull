@@ -33,6 +33,23 @@ export class UsageError extends Error {
   }
 }
 
+/**
+ * Request spacing for the reference indexes in the CLI's own tests: with
+ * OVERFULL_TEST_NO_SPACING=1 the arXiv and CrossRef intervals and the retry
+ * delay are 0. Honoured only inside a test runner (VITEST or NODE_ENV=test in
+ * the real process environment), so a stray variable never makes the CLI
+ * impolite to the indexes.
+ */
+export function testRefsTiming(env: Record<string, string | undefined>): {
+  arxivIntervalMs?: number;
+  crossrefIntervalMs?: number;
+  retryDelayMs?: number;
+} {
+  const testRun = Boolean(process.env.VITEST) || process.env.NODE_ENV === 'test';
+  if (!testRun || env.OVERFULL_TEST_NO_SPACING !== '1') return {};
+  return { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
+}
+
 export function useColor(io: Io): boolean {
   if (io.env.NO_COLOR !== undefined && io.env.NO_COLOR !== '') return false;
   if (io.env.FORCE_COLOR && io.env.FORCE_COLOR !== '0') return true;

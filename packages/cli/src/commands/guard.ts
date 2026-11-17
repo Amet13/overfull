@@ -2,7 +2,7 @@ import { oneLine, type RefsOptions } from '@overfull/core';
 import { parse } from '../args.js';
 import { HOOK_HARNESSES, type HookHarness, MAX_PAYLOAD_BYTES, runHook } from '../guard/hook.js';
 import { guardStaged } from '../guard/staged.js';
-import { type Io, UsageError } from '../io.js';
+import { type Io, testRefsTiming, UsageError } from '../io.js';
 
 const guardHelp = `Usage: overfull guard --staged [--offline] [--json]
        overfull guard --hook [claude|gemini|codex]
@@ -94,7 +94,10 @@ export async function guardCommand(
     return 0;
   }
 
-  const refs: RefsOptions = io.fetch ? { fetch: io.fetch } : {};
+  const refs: RefsOptions = {
+    ...(io.fetch ? { fetch: io.fetch } : {}),
+    ...testRefsTiming(io.env),
+  };
   let report: Awaited<ReturnType<typeof guardStaged>>;
   try {
     report = await guardStaged({ cwd: io.cwd, offline: values.offline === true, refs });

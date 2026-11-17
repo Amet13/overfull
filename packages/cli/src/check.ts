@@ -32,7 +32,7 @@ import {
 } from '@overfull/core';
 import { FileCache, MemoryCache, refsCacheMode, refsCachePath, symlinkOnPath } from './cache.js';
 import { type Config, DEFAULT_IMAGE, loadConfig, requireMain } from './config.js';
-import { UsageError } from './io.js';
+import { testRefsTiming, UsageError } from './io.js';
 import { readPdfFacts } from './pdf.js';
 import { listFiles, readAux, readIfExists, readTexFiles, requireRegularFile } from './project.js';
 import { insideRoot, insideRootOrUndefined, isCI, safeImage } from './safety.js';
@@ -439,6 +439,7 @@ async function references(inp: Inputs, opts: CheckOptions): Promise<CheckResult>
     ...(config.references.requireCite ? { requireProvenance: true } : {}),
     // The CLI asks CrossRef about retractions; the core library leaves it off by default.
     checkRetractions: true,
+    ...testRefsTiming(env),
   };
   const results = await verifyEntries(toVerify, refsOptions);
   cache?.save();
