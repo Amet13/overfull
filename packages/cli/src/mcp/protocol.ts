@@ -57,6 +57,8 @@ interface ErrorBody {
 export interface McpServerOptions {
   version: string;
   tools: ToolDef[];
+  /** Text for `instructions` (default: `mcpInstructions()`, the server without a build tool). */
+  instructions?: string;
   /** Diagnostics go here (stderr), never to stdout. */
   log?: (message: string) => void;
 }
@@ -64,13 +66,23 @@ export interface McpServerOptions {
 const isObject = (v: unknown): v is Json =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
-const INSTRUCTIONS =
-  'Overfull checks a LaTeX project before it is submitted. Run `check` after every build and fix ' +
-  'what it reports; add references only with `cite` (never write BibTeX by hand), look at pages ' +
-  'with `pages`, and use `explain` for what a rule id means. Tools work on the project folder the server was started in.';
+/** What the server tells the client about itself; it differs with `--allow-build`. */
+export function mcpInstructions(allowBuild = false): string {
+  const build = allowBuild
+    ? 'Call `build` after changing the sources, then `check` and fix what it reports'
+    : 'This server cannot build the document: a person must build it first (for example with ' +
+      'overfull build or their editor), or start the server with --allow-build. Then run `check` ' +
+      'and fix what it reports; if check says the log or PDF is missing, ask the person to build';
+  return (
+    `Overfull checks a LaTeX project before it is submitted. ${build}. Add references only with ` +
+    '`cite` (never write BibTeX by hand), look at pages with `pages`, and use `explain` for what a ' +
+    'rule id means. Tools work on the project folder the server was started in.'
+  );
+}
 
 export function createMcpServer(options: McpServerOptions) {
   const log = options.log ?? (() => {});
+  const instructions = options.instructions ?? mcpInstructions();
   const serverInfo = { name: 'overfull', title: 'Overfull', version: options.version };
   let legacyReady = false;
   // Tool calls run one at a time: `cite` writes a file and `check` reads it.
@@ -178,7 +190,7 @@ export function createMcpServer(options: McpServerOptions) {
           protocolVersion: version,
           capabilities: { tools: {} },
           serverInfo,
-          instructions: INSTRUCTIONS,
+          instructions,
         });
       }
       if (requested !== undefined || method === 'server/discover') {
@@ -202,7 +214,7 @@ export function createMcpServer(options: McpServerOptions) {
             resultType: 'complete',
             supportedVersions: [...MODERN_VERSIONS],
             capabilities: { tools: {} },
-            instructions: INSTRUCTIONS,
+            instructions,
             _meta: { [META_SERVER_INFO]: serverInfo },
           });
         }

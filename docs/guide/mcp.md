@@ -48,6 +48,9 @@ their own folder (most desktop apps) need the project folder:
 }
 ```
 
+The server can also be started in a subfolder of the project: it then works on
+the nearest folder above that has `overfull.yml`.
+
 `overfull` must be on the client's `PATH` (see [Install](./install.md)); otherwise
 give the full path to the executable as `command`.
 
@@ -60,18 +63,46 @@ give the full path to the executable as `command`.
 | `explain` | What a rule id means and how to fix it; without `rule`, every rule id. | `rule` |
 | `pages` | Renders PDF pages to PNG under `.overfull/pages` and returns the paths, with the images for up to five small pages. | `range` (required) |
 | `doctor` | Which tools are available on this machine. | none |
+| `build` | Only with `--allow-build`: the report of `overfull build --json` (compiles with `latexmk`). | `main`, `force` |
+
+## Building
+
+The server cannot build the document unless it is started with `--allow-build`.
+Without it, a person must build first (`overfull build`, `make build` or the
+editor's build). Until then `check` has no log or PDF to read: the server's
+instructions, the `check` description and each skipped check's reason say that
+a person must build the document first.
+
+```json
+{
+  "mcpServers": {
+    "overfull": {
+      "command": "overfull",
+      "args": ["mcp", "--allow-build"]
+    }
+  }
+}
+```
+
+With `--allow-build` the server adds a `build` tool, and the client builds after
+each change, then calls `check`. Use it only for projects you trust: `latexmk`
+runs the project's `.latexmkrc`, which is Perl code, and `build.image` in
+`overfull.yml` chooses the Docker image the build runs in.
+
+## Results
 
 Results are JSON in a text block, and also in `structuredContent` for clients
 that read it. A problem with the call itself (an unknown rule, a missing PDF, a
 reference that cannot be verified) comes back as a normal tool result with
-`isError: true` and the message the command line would print. `check` returns
+`isError: true` and the message the command line would print, worded for a
+client without a shell (it never asks the client to run a command). `check` returns
 its report even when the report has failures; read the `status` of each check in it.
 
 `check` and `doctor` may contact reference indexes; pass `offline: true` to
 `check` to stay local. `check` and `explain` change nothing in the project.
 `cite` appends one entry to the bibliography and `pages` writes PNG files, both
-inside the project. Clients that show tool annotations will see
-`readOnlyHint: false` on those two.
+inside the project; `build` writes the build output. Clients that show tool
+annotations will see `readOnlyHint: false` on those.
 
 ## What the server will not do
 
