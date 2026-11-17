@@ -2,8 +2,9 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { applyPlan, detectProject, planAdopt } from '../adopt.js';
 import { parse, str } from '../args.js';
+import { editDistance } from '../config.js';
 import { type GitHookResult, installGitHook } from '../guard/settings.js';
-import { type Io, UsageError } from '../io.js';
+import { canAsk, type Io, UsageError } from '../io.js';
 import { insideRootForWrite, isDanglingSymlink } from '../safety.js';
 import {
   copyTemplate,
@@ -67,14 +68,15 @@ export function withMailto(config: string, email: string): string | undefined {
 
 /**
  * Offers to set `references.mailto` in the overfull.yml just written, from
- * `git config user.email`. Asks on a terminal and writes only after an explicit yes;
- * anywhere else nothing is written and a one-line hint is returned. Undefined when the
+ * `git config user.email`. Asks when stdin and stdout are terminals and writes only
+ * after an explicit yes; anywhere else (or with --yes) nothing is written and a
+ * one-line hint is returned. Undefined when the
  * file has no commented-out mailto line (no references check, or already set).
  */
 export async function offerMailto(
   configPath: string,
   io: Io,
-  ask: (question: string) => Promise<boolean> = askYesNo,
+  ask: (question: string) => Promise<boolean> = io.ask ?? askYesNo,
 ): Promise<string | undefined> {
   let config: string;
   try {
@@ -83,7 +85,7 @@ export async function offerMailto(
     return undefined;
   }
   if (!MAILTO_LINE.test(config)) return undefined;
-  if (!io.isTTY) return MAILTO_HINT;
+  if (!canAsk(io)) return MAILTO_HINT;
   const email = await gitEmail(dirname(configPath), io.env);
   if (!email) return MAILTO_HINT;
   const yes = await ask(
@@ -118,6 +120,7 @@ Arguments:
 
 Options:
   --force         Copy into a non-empty directory (existing files are overwritten)
+  --yes, -y       Ask nothing and take the defaults (also when not on a terminal)
   --json          Print {template, dir, git} as JSON (with --here: {detected, written, skipped})
   --no-git        Do not run \`git init\` (by default a new project outside a git
                   repository gets \`git init -b main\` and, when user.name and
@@ -141,7 +144,9 @@ Options for --here (existing project, current folder):
   --all           --agents --ci --make --hooks
   --force         Overwrite files that exist and differ (never a Makefile)
   --dry-run       Write nothing; print what would be written
-On a terminal, with none of --agents/--ci/--make/--hooks/--all, agents, ci and make are asked about.
+On a terminal (stdin and stdout), with none of --agents/--ci/--make/--hooks/--all
+and no --yes, agents, ci and make are asked about (default no); anywhere else
+only overfull.yml is written, and the output says what was done.
 Existing files are never overwritten without --force. Safe to run again.
 `;
 
@@ -151,7 +156,7 @@ Add Overfull to the LaTeX project in the current folder. Same as
 \`overfull init --here\`; see \`overfull init --help\` for the options.
 `;
 
-export async function initCommand(args: string[], io: Io): Promise<number> {
+export async function initCommand(args: string[], ioIn: Io): Promise<number> {
   const { values, positionals } = parse(
     args,
     {
@@ -166,9 +171,12 @@ export async function initCommand(args: string[], io: Io): Promise<number> {
       hooks: { type: 'boolean' },
       all: { type: 'boolean' },
       'dry-run': { type: 'boolean' },
+      yes: { type: 'boolean', short: 'y' },
     },
     'init',
   );
+  // --yes, or no person to answer: no questions, the default answers.
+  const io: Io = values.yes === true ? { ...ioIn, stdinIsTTY: false } : ioIn;
   if (values.help) {
     io.stdout(initHelp);
     return 0;
@@ -179,15 +187,28 @@ export async function initCommand(args: string[], io: Io): Promise<number> {
       throw new UsageError(
         `--${flag} works only with --here (adding Overfull to the current folder).`,
       );
+  if (positionals.length > 2)
+    throw new UsageError(
+      `Too many arguments: ${positionals.join(' ')}. Use \`overfull init [thesis|paper|slides] [dir]\`.`,
+    );
   let [name, dir] = positionals;
   if (name && !(TEMPLATE_NAMES as readonly string[]).includes(name) && dir === undefined) {
+    // A near miss of a template name (`papr`) is a typo, not a folder name.
+    const near = closeTemplate(name);
+    if (near)
+      throw new UsageError(
+        `Unknown template "${name}". Did you mean \`${near}\`? To create a thesis in a folder named ${name}, run \`overfull init thesis ${name}\`.`,
+      );
     // `overfull init my-thesis` → thesis template into my-thesis
     dir = name;
     name = undefined;
   }
   const template = (name ?? 'thesis') as TemplateName;
   if (!(TEMPLATE_NAMES as readonly string[]).includes(template)) {
-    throw new UsageError(`Unknown template "${template}". Choose ${TEMPLATE_NAMES.join(', ')}.`);
+    const near = closeTemplate(template);
+    throw new UsageError(
+      `Unknown template "${template}".${near ? ` Did you mean \`${near}\`?` : ''} Choose ${TEMPLATE_NAMES.join(', ')}.`,
+    );
   }
   const embedded = hasEmbeddedTemplate(template);
   const root = embedded ? undefined : templatesDir();
@@ -233,14 +254,49 @@ export async function initCommand(args: string[], io: Io): Promise<number> {
   return 0;
 }
 
-/** Asks a yes/no question on the terminal; the default is no. */
-async function askYesNo(question: string): Promise<boolean> {
+/**
+ * The template name within edit distance 2 of `word` (a typo such as `papr`), if any.
+ * A folder name like `my-thesis` is further away and stays a folder name.
+ */
+function closeTemplate(word: string): string | undefined {
+  const scored = TEMPLATE_NAMES.map((t) => ({ t, d: editDistance(word.toLowerCase(), t) }));
+  const best = scored.sort((a, b) => a.d - b.d)[0];
+  return best && best.d <= 2 ? best.t : undefined;
+}
+
+/** Set once stdin has ended: later questions are answered "no" at once. */
+let stdinEnded = false;
+
+/**
+ * Asks a yes/no question; the default is no. When the input ends before an answer
+ * (Ctrl-D, or stdin closed), the answer is no and the command goes on.
+ */
+export async function askYesNo(
+  question: string,
+  input: NodeJS.ReadableStream = process.stdin,
+  output: NodeJS.WritableStream = process.stdout,
+): Promise<boolean> {
+  if (stdinEnded && input === process.stdin) return false;
   const { createInterface } = await import('node:readline/promises');
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const rl = createInterface({ input, output });
+  let answered = false;
+  const ended = new Promise<undefined>((done) =>
+    rl.once('close', () => {
+      if (!answered && input === process.stdin) stdinEnded = true;
+      done(undefined);
+    }),
+  );
   try {
-    const answer = await rl.question(`${question} [y/N] `);
+    const answer = await Promise.race([rl.question(`${question} [y/N] `), ended]);
+    answered = true;
+    if (answer === undefined) {
+      // End of input: "no", on a line of its own.
+      output.write('no\n');
+      return false;
+    }
     return /^y(es)?$/i.test(answer.trim());
   } finally {
+    answered = true;
     rl.close();
   }
 }
@@ -271,13 +327,15 @@ async function adoptHere(
     make: all || values.make === true,
     hooks: all || values.hooks === true,
   };
-  if (!flagged && io.isTTY && values.json !== true) {
+  const asking = !flagged && canAsk(io) && values.json !== true;
+  if (asking) {
+    const ask = io.ask ?? askYesNo;
     io.stdout(
       `Found ${detected.main} (${detected.engine}, ${detected.backend === 'none' ? 'no bibliography' : detected.backend}). overfull.yml will be written.\n`,
     );
-    parts.agents = await askYesNo('Add AGENTS.md and skills for AI agents?');
-    parts.ci = await askYesNo('Add a GitHub Actions workflow (.github/workflows/overfull.yml)?');
-    parts.make = await askYesNo('Add a Makefile with build and check targets?');
+    parts.agents = await ask('Add AGENTS.md and skills for AI agents?');
+    parts.ci = await ask('Add a GitHub Actions workflow (.github/workflows/overfull.yml)?');
+    parts.make = await ask('Add a Makefile with build and check targets?');
   }
   const dryRun = values['dry-run'] === true;
   const plan = planAdopt(detected, parts, root);
@@ -349,6 +407,11 @@ async function adoptHere(
     const mailtoNote = await offerMailto(join(root, 'overfull.yml'), io);
     if (mailtoNote) lines.push('', mailtoNote);
   }
+  if (!flagged && !asking)
+    lines.push(
+      '',
+      `Asked nothing (${values.yes === true ? '--yes' : 'not an interactive terminal'}): AGENTS.md, the CI workflow and the Makefile were not added. Add them with --agents, --ci, --make or --all.`,
+    );
   lines.push('', '.tex and .bib files were not touched.');
   if (!dryRun && result.written.length > 0)
     lines.push('Next: `overfull build` (or `latexmk`), then `overfull check`.');
