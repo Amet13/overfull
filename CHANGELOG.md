@@ -28,9 +28,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   answer.
 - The default Docker image is `ghcr.io/amet13/overfull:3-slim` (the full image is `:3`); `build.image` still overrides it
 - veraPDF in the images is the command line only (no GUI), and the check image reuses its heavy layer across releases
+- Images: `edge` and `sha-*` are published only once CI passed on that commit
+- Images: the full, slim and check images each have their own title and description, the authors label is no longer the TeX Live base image's, and release images carry their version
+- CI: the watchdog also checks the runs the automation starts itself (hourly) and restarts runs stuck in the queue; automation pull requests behind `main` are brought up to date before they merge
 
 ### Fixed
 
+- Releases: the images are tagged before the GitHub release and `v3` are created, so a release can no longer come out without its images
 - References: titles in Cyrillic, Chinese, Arabic and other non-Latin scripts
   were always reported as not found; a title without letters or digits is now
   "could not be checked", never "not found".

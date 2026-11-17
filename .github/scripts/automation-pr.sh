@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Commits the working-tree changes to an automation branch and opens (or updates) a pull
-# request labelled `automerge`. CI is started explicitly, because pull requests and pushes
-# made with GITHUB_TOKEN start no workflows; automerge.yml merges the PR when CI passes.
+# request labelled `automerge`. CI and CodeQL are started explicitly, because pull requests
+# and pushes made with GITHUB_TOKEN start no workflows; the ci run merges the PR when every
+# check passed (ci.yml, `automation` job).
 #
 #   .github/scripts/automation-pr.sh <branch> <title> <body file>
 #
@@ -33,5 +34,6 @@ if [ -n "$number" ]; then
 else
   gh pr create --base main --head "$branch" --title "$title" --body-file "$body_file" --label automerge
 fi
+gh workflow run codeql.yml --ref "$branch"
 gh workflow run ci.yml --ref "$branch"
-echo "Pull request for $branch is open; CI started."
+echo "Pull request for $branch is open; CI and CodeQL started."

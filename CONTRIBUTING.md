@@ -104,12 +104,14 @@ release by hand, for example a minor or major version:
    - refuses to run unless CI passed on that commit and `vX.Y.Z` is not
      released yet;
    - builds the executables, `overfull.cjs`, template PDFs, `SHA256SUMS` and
-     the signed provenance, then creates the `vX.Y.Z` tag and GitHub release;
-   - moves the Action's major tag (`vX`);
-   - publishes `ghcr.io/amet13/overfull:X.Y.Z`, `X.Y` and `X`.
+     the signed provenance, and makes sure the commit's images exist;
+   - after the `release` environment's approval, publishes
+     `ghcr.io/amet13/overfull:X.Y.Z`, `X.Y` and `X`, then creates the `vX.Y.Z`
+     tag and GitHub release;
+   - moves the Action's major tag (`vX`).
 
-   Pushing a `vX.Y.Z` tag yourself does the same (the image is then built by
-   `image.yml` on the tag push).
+   Pushing a `vX.Y.Z` tag yourself does the same once CI passed on that commit
+   (the image is then built by `image.yml` on the tag push).
 
 ## Code of conduct
 
