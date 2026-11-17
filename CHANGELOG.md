@@ -18,6 +18,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 - Slim image: latexdiff (`overfull diff`), XeLaTeX, the venue classes (IEEEtran, acmart, llncs, elsarticle, REVTeX), common packages (enumitem, multirow, titlesec, algorithm2e, tcolorbox, newtx, glossaries and more) and the Fira, Inconsolata and Libertine fonts
 - `overfull build --engine docker` installs missing packages on demand with the slim image too
 - CI: time a non-root LaTeX start, check the slim image offline, and run `overfull diff` in it
+- Commands run from a subfolder use the nearest `overfull.yml` above (up to the Git root) and say `Using ../overfull.yml.`
+- `overfull mcp --allow-build` adds a `build` tool (only for projects you trust: `latexmk` runs the project's `.latexmkrc`).
+- `overfull init --yes` asks nothing and takes the defaults.
 
 ### Changed
 
@@ -28,6 +31,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   answer.
 - The default Docker image is `ghcr.io/amet13/overfull:3-slim` (the full image is `:3`); `build.image` still overrides it
 - veraPDF in the images is the command line only (no GUI), and the check image reuses its heavy layer across releases
+- `overfull init` and `adopt` ask only when stdin and stdout are both terminals; the end of input counts as no, and a run that asks nothing says what it wrote.
+- `overfull diff` exits 1 for an incomplete diff PDF with or without `--json`; in a repository with one commit it compares uncommitted changes with `HEAD`.
+- `overfull doctor` marks an invalid config, or a missing `--config` file, with ✕ and exits 1; `--json` adds `configValid`.
+- `overfull pages --dpi` is at most 600, `--pdf` must be inside the project, and the default PDF is read from `build.outDir`.
+- MCP: without `--allow-build`, the instructions, the `check` description and skip reasons say that a person must build first; tool errors no longer ask the client to run CLI commands.
 
 ### Fixed
 
@@ -48,6 +56,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 - Docker images: LaTeX starts as fast for a non-root user as for root (it took about a minute in the full image)
 - Slim image: on-demand installs work for any user, survive a critical tlmgr update, and fall back to the frozen repository after the yearly TeX Live release
 - `overfull check --watch` keeps each reference's last answer when only the log, PDF or `.aux` changed; before, re-runs went offline and verified entries became "not checked" errors.
+- `overfull init --here` exited 0 with nothing written when stdout was a terminal but stdin was not.
+- `overfull init papr` created a thesis in `papr/`; a near miss of a template name now says "Did you mean `paper`?", and extra arguments are refused.
+- `overfull pages` reported success for a broken render (a 1×1 PNG); each image is now checked against the page size.
+- `overfull build` suggested a made-up `thesis.tex` when the main file was missing; it now names the real cause.
+- `overfull diff --engine` accepted any value.
+- An invalid `overfull.yml` showed a YAML error cut off after "column 5:"; the whole message, with the line it points at, is shown.
+- `overfull check --watch` also watches a build folder whose name starts with a dot, no longer adds an abort listener on every tick, and names `--html` in its refusal.
+- Documented `status: "skipped"` (nothing checked, exit 1) in the JSON report schema and exit codes.
 
 ### Security
 
