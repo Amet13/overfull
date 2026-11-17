@@ -11,8 +11,8 @@ import {
 } from '@overfull/core';
 import { list, type Parsed, parse, str } from '../args.js';
 import { exitCodeFor, runCheck, sarifFallbackFile } from '../check.js';
-import { parseChecks } from '../config.js';
-import { type Io, progressLine, UsageError, useColor } from '../io.js';
+import { loadConfig, locateProject, parseChecks } from '../config.js';
+import { type Io, noteProject, progressLine, UsageError, useColor } from '../io.js';
 import { isCI, type ReportTarget, reportTarget, writeReport } from '../safety.js';
 
 const checkHelp = `Usage: overfull check [file...] [options]
@@ -80,18 +80,23 @@ interface FileArgs {
 }
 
 /** Sorts positional files by extension and merges them with the --main/--pdf/--log/--aux/--bib flags. */
-function classifyFiles(positionals: string[], values: Parsed['values']): FileArgs {
+function classifyFiles(
+  positionals: string[],
+  values: Parsed['values'],
+  rebase: (p: string) => string = (p) => p,
+): FileArgs {
   const out: FileArgs = {
-    bib: list(values.bib) ?? [],
+    bib: (list(values.bib) ?? []).map(rebase),
     onlyBib: false,
   };
   for (const k of ['main', 'pdf', 'log', 'aux'] as const) {
     const v = str(values[k]);
-    if (v) out[k] = v;
+    if (v) out[k] = rebase(v);
   }
   const positionalBib: string[] = [];
   let others = 0;
-  for (const p of positionals) {
+  for (const typed of positionals) {
+    const p = rebase(typed);
     const ext = /\.([A-Za-z0-9]+)$/.exec(p)?.[1]?.toLowerCase();
     if (ext === 'bib') {
       positionalBib.push(p);
@@ -101,7 +106,7 @@ function classifyFiles(positionals: string[], values: Parsed['values']): FileArg
       ext === 'tex' ? 'main' : ext === 'pdf' || ext === 'log' || ext === 'aux' ? ext : undefined;
     if (!key)
       throw new UsageError(
-        `Cannot check "${p}": expected a .tex, .bib, .log, .pdf or .aux file.\nRun \`overfull check --help\` for usage.`,
+        `Cannot check "${typed}": expected a .tex, .bib, .log, .pdf or .aux file.\nRun \`overfull check --help\` for usage.`,
       );
     if (out[key])
       throw new UsageError(
@@ -131,6 +136,7 @@ type WriteFormat = (typeof WRITE_FORMATS)[number];
 function writeTargets(
   value: unknown,
   cwd: string,
+  rebase: (p: string) => string = (p) => p,
 ): { format: WriteFormat; target: ReportTarget }[] {
   const items = Array.isArray(value) ? value : [];
   return items.map((item) => {
@@ -142,7 +148,7 @@ function writeTargets(
         `--write takes format=file with format one of ${WRITE_FORMATS.join(', ')}; got "${item}"`,
       );
     }
-    return { format, target: reportTarget(cwd, file, '--write file') };
+    return { format, target: reportTarget(cwd, rebase(file), '--write file') };
   });
 }
 
@@ -193,13 +199,17 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
   const engine = str(values.engine) ?? 'auto';
   if (!['auto', 'local', 'docker'].includes(engine))
     throw new UsageError(`--engine must be auto, local or docker, got "${engine}"`);
-  const files = classifyFiles(positionals, values);
+  // Run from a subfolder, the project is the folder of the nearest overfull.yml above.
+  const location = locateProject(io.cwd, str(values.config));
+  const cwd = location.root;
+  const files = classifyFiles(positionals, values, location.rebase);
   const checksArg = list(values.checks) ?? (files.onlyBib ? ['references'] : undefined);
   const machine = formats.length > 0;
-  const writes = writeTargets(values.write, io.cwd);
+  const writes = writeTargets(values.write, cwd, location.rebase);
+  noteProject(io, location);
   if (values.watch && machine)
     throw new UsageError(
-      '--watch prints the human report; leave out --json, --markdown, --annotations and --sarif',
+      '--watch prints the human report; leave out --json, --markdown, --annotations, --sarif and --html',
     );
   const progress = machine || isCI(io.env) ? undefined : progressLine(io, 'references');
   // check --watch keeps each entry's last answer, so an offline re-run does not forget them.
@@ -207,7 +217,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
   const runOnce = async (offline: boolean) => {
     const report = await runCheck({
       ...(refsMemo ? { refsMemo } : {}),
-      cwd: io.cwd,
+      cwd,
       env: io.env,
       ...(io.fetch ? { fetch: io.fetch } : {}),
       ...(str(values.config) ? { config: str(values.config) } : {}),
@@ -242,7 +252,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
       if (format === 'markdown') return formatMarkdown(report);
       if (format === 'html') return formatHtml(report);
       if (format === 'sarif') {
-        const fallbackFile = sarifFallbackFile(io.cwd, io.env, str(values.config), files.main);
+        const fallbackFile = sarifFallbackFile(cwd, io.env, str(values.config), files.main);
         return formatSarif(report, fallbackFile ? { fallbackFile } : {});
       }
       const lines = githubAnnotations(report);
@@ -256,11 +266,22 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
   };
   const offline = values.offline === true;
   if (!values.watch) return runOnce(offline);
-  return watch(io, runOnce, offline);
+  let dirs: string[] = [];
+  try {
+    const config = loadConfig(cwd, str(values.config), io.env);
+    dirs = [config.build.outDir, config.build.auxDir];
+  } catch {
+    /* runOnce reports a bad config */
+  }
+  return watch(io, cwd, dirs, runOnce, offline);
 }
 
-/** Files whose change starts a new check, as path → "mtime:size". */
-export function watchedState(root: string): Map<string, string> {
+/**
+ * Files whose change starts a new check, as path → "mtime:size". Folders whose name
+ * starts with a dot are skipped, except the build folders in `dirs` (relative to
+ * `root`, such as a `.build` outDir).
+ */
+export function watchedState(root: string, dirs: string[] = []): Map<string, string> {
   const out = new Map<string, string>();
   const walk = (dir: string, depth: number) => {
     let entries: Dirent[];
@@ -285,6 +306,9 @@ export function watchedState(root: string): Map<string, string> {
     }
   };
   walk(root, 0);
+  for (const d of new Set(dirs)) {
+    if (d !== '.' && d.split('/').some((part) => part.startsWith('.'))) walk(join(root, d), 0);
+  }
   return out;
 }
 
@@ -307,6 +331,8 @@ export function changes(
 
 async function watch(
   io: Io,
+  root: string,
+  dirs: string[],
   runOnce: (offline: boolean) => Promise<number>,
   offline: boolean,
 ): Promise<number> {
@@ -319,18 +345,22 @@ async function watch(
     signal = stop.signal;
   }
   let code = await runOnce(offline);
-  let state = watchedState(io.cwd);
+  let state = watchedState(root, dirs);
   io.stderr('Watching the log, PDF, .aux and .bib files. Press Ctrl-C to stop.\n');
   while (!signal.aborted) {
     await new Promise<void>((done) => {
-      const t = setTimeout(done, intervalMs);
-      signal.addEventListener('abort', () => {
+      const onAbort = () => {
         clearTimeout(t);
         done();
-      });
+      };
+      const t = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort);
+        done();
+      }, intervalMs);
+      signal.addEventListener('abort', onAbort, { once: true });
     });
     if (signal.aborted) break;
-    const next = watchedState(io.cwd);
+    const next = watchedState(root, dirs);
     const c = changes(state, next);
     state = next;
     if (!c.any) continue;

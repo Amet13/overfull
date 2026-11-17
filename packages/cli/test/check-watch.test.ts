@@ -1,3 +1,4 @@
+import { getEventListeners } from 'node:events';
 import { mkdirSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -104,8 +105,50 @@ describe('check --watch', () => {
     expect(calls).toBe(callsAfterFirst);
   });
 
-  it('refuses machine formats', async () => {
+  it('refuses machine formats, and names --html too', async () => {
     const io = memIo(tempDir());
     expect(await main(['check', '--watch', '--json'], io)).toBe(2);
+    expect(io.stdoutText()).toContain('--sarif and --html');
+    expect(await main(['check', '--watch', '--html'], memIo(tempDir()))).toBe(2);
+  });
+
+  it('watches a build folder whose name starts with a dot (build.outDir)', () => {
+    const dir = tempDir();
+    mkdirSync(join(dir, '.build'));
+    mkdirSync(join(dir, '.git'));
+    writeFileSync(join(dir, '.build', 'main.log'), 'x');
+    writeFileSync(join(dir, '.git', 'x.log'), 'x');
+    const names = (m: Map<string, string>) =>
+      [...m.keys()].map((k) =>
+        k
+          .slice(dir.length + 1)
+          .split('\\')
+          .join('/'),
+      );
+    expect(names(watchedState(dir))).toEqual([]);
+    expect(names(watchedState(dir, ['.build', '.build', '.']))).toEqual(['.build/main.log']);
+  });
+
+  it('check --watch picks up a rebuilt log in a dot outDir and adds no abort listener per tick', async () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, 'overfull.yml'), 'main: main.tex\nbuild:\n  outDir: .build\n');
+    writeFileSync(join(dir, 'main.tex'), '\\documentclass{article}\n');
+    mkdirSync(join(dir, '.build'));
+    writeFileSync(join(dir, '.build', 'main.log'), 'This is LuaHBTeX\n');
+    const io = memIo(dir, { OVERFULL_WATCH_INTERVAL_MS: '5' });
+    const stop = new AbortController();
+    io.signal = stop.signal;
+    const run = main(['check', '--checks', 'build', '--watch'], io);
+    const runs = () => io.stdoutText().split('overfull ').length - 1;
+    for (let i = 0; i < 300 && runs() < 1; i++) await new Promise((r) => setTimeout(r, 10));
+    // Many ticks pass; each removes its listener again.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(getEventListeners(stop.signal, 'abort').length).toBeLessThanOrEqual(1);
+    const later = new Date(Date.now() + 5000);
+    utimesSync(join(dir, '.build', 'main.log'), later, later);
+    for (let i = 0; i < 300 && runs() < 2; i++) await new Promise((r) => setTimeout(r, 10));
+    stop.abort();
+    await run;
+    expect(runs()).toBeGreaterThanOrEqual(2);
   });
 });
