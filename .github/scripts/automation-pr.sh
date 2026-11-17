@@ -24,7 +24,10 @@ git commit -q -m "$title" -m "Opened by the $GITHUB_WORKFLOW workflow (run $GITH
 git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$branch"
 
 gh label create automerge --color 0e8a16 --description "Merged automatically when CI passes" 2>/dev/null || true
-number="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')"
+# `--head` matches any repository's branch of that name: a fork PR from `automation/...`
+# would be retitled and labelled instead of ours. Only a PR from this repository counts.
+number="$(gh pr list --head "$branch" --state open --json number,isCrossRepository |
+  jq -r 'map(select(.isCrossRepository == false)) | .[0].number // empty')"
 if [ -n "$number" ]; then
   gh pr edit "$number" --title "$title" --body-file "$body_file" --add-label automerge
 else
