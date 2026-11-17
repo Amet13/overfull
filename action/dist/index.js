@@ -4320,6 +4320,178 @@ var init_output = __esm({
   }
 });
 
+// ../packages/core/src/refs/normalize.ts
+function stripTags(s) {
+  let out = s;
+  for (let prev = ""; prev !== out; ) {
+    prev = out;
+    out = out.replace(/<[^<>]*>/g, "");
+  }
+  return out;
+}
+function codePointText(n) {
+  if (!Number.isInteger(n) || n < 0 || n > 1114111 || n >= 55296 && n <= 57343) {
+    return "\uFFFD";
+  }
+  return String.fromCodePoint(n);
+}
+function stripCdata(s) {
+  const open = "<![CDATA[";
+  let out = "";
+  let i = 0;
+  for (; ; ) {
+    const start = s.indexOf(open, i);
+    if (start < 0) break;
+    const end = s.indexOf("]]>", start + open.length);
+    if (end < 0) break;
+    out += s.slice(i, start) + s.slice(start + open.length, end);
+    i = end + 3;
+  }
+  return out + s.slice(i);
+}
+function decodeNumericEntities(s) {
+  return s.replace(/&#x([0-9a-f]+);/gi, (_m, h) => codePointText(Number.parseInt(h, 16))).replace(/&#(\d+);/g, (_m, d) => codePointText(Number(d)));
+}
+function stripMarkup(s) {
+  const decoded = decodeNumericEntities(s).replace(
+    /&([a-z]+);/gi,
+    (m, name) => ENTITIES[name.toLowerCase()] ?? m
+  );
+  return stripTags(decoded).replace(/\s+/g, " ").trim();
+}
+function foldText(plain2) {
+  return plain2.toLowerCase().normalize("NFKD").replace(new RegExp("\\p{M}", "gu"), "").replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `).replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c);
+}
+function titleWords(title, isTex = true) {
+  const plain2 = isTex ? texToPlain(title) : stripMarkup(title);
+  return foldText(plain2).replace(NO_SPACE_SCRIPTS, " $1 ").replace(/[^\p{L}\p{N}]+/gu, " ").trim().split(" ").filter(Boolean);
+}
+function asciiNormalizeTitle(title) {
+  return texToPlain(title).toLowerCase().replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `).replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+}
+function normalizeTitle(title, isTex = true) {
+  return titleWords(title, isTex).join(" ");
+}
+function dice(a, b) {
+  if (!a.length || !b.length) return 0;
+  const counts = /* @__PURE__ */ new Map();
+  for (const w of a) counts.set(w, (counts.get(w) ?? 0) + 1);
+  let shared = 0;
+  for (const w of b) {
+    const n = counts.get(w) ?? 0;
+    if (n > 0) {
+      shared++;
+      counts.set(w, n - 1);
+    }
+  }
+  return 2 * shared / (a.length + b.length);
+}
+function mainTitle(plain2) {
+  const m = /^(.+?)(?:\s*[:?!.]\s+|\s+[-–—]+\s+|\s*—\s*)\S/.exec(plain2);
+  return m ? m[1] : plain2;
+}
+function titleSimilarity(bibTitle, recordTitle) {
+  const a = titleWords(bibTitle, true);
+  const b = titleWords(recordTitle, false);
+  if (!a.length || !b.length) return 0;
+  if (a.join(" ") === b.join(" ")) return 1;
+  let score = dice(a, b);
+  const aMain = titleWords(mainTitle(texToPlain(bibTitle)), false);
+  const bMain = titleWords(mainTitle(stripMarkup(recordTitle)), false);
+  const subtitleMatch = aMain.length >= 2 && aMain.join(" ") === b.join(" ") && aMain.length < a.length || bMain.length >= 2 && bMain.join(" ") === a.join(" ") && bMain.length < b.length;
+  if (subtitleMatch) score = Math.max(score, 0.92);
+  return score;
+}
+function foldName(name) {
+  return foldText(stripMarkup(name)).replace(/[^\p{L}\s-]+/gu, "").replace(/[\s-]+/g, " ").trim();
+}
+function significant(name) {
+  return name.split(" ").filter((w) => w.length > 1 && !PARTICLES.has(w));
+}
+function namesMatch(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const sa = significant(a);
+  const sb = significant(b);
+  if (!sa.length || !sb.length) return false;
+  const [small, large] = sa.length <= sb.length ? [sa, sb] : [sb, sa];
+  return small.every((w) => large.includes(w));
+}
+var GREEK_NAMES, FOLD, ENTITIES, NO_SPACE_SCRIPTS, PARTICLES;
+var init_normalize = __esm({
+  "../packages/core/src/refs/normalize.ts"() {
+    "use strict";
+    init_tex();
+    GREEK_NAMES = {
+      \u03B1: "alpha",
+      \u03B2: "beta",
+      \u03B3: "gamma",
+      \u03B4: "delta",
+      \u03B5: "epsilon",
+      \u03B6: "zeta",
+      \u03B7: "eta",
+      \u03B8: "theta",
+      \u03D1: "theta",
+      \u03B9: "iota",
+      \u03BA: "kappa",
+      \u03BB: "lambda",
+      \u03BC: "mu",
+      \u03BD: "nu",
+      \u03BE: "xi",
+      \u03C0: "pi",
+      \u03C1: "rho",
+      \u03C3: "sigma",
+      \u03C2: "sigma",
+      \u03C4: "tau",
+      \u03C5: "upsilon",
+      \u03C6: "phi",
+      \u03D5: "phi",
+      \u03C7: "chi",
+      \u03C8: "psi",
+      \u03C9: "omega"
+    };
+    FOLD = {
+      \u00DF: "ss",
+      \u00F8: "o",
+      \u00E6: "ae",
+      \u0153: "oe",
+      \u0142: "l",
+      \u00F0: "d",
+      \u00FE: "th",
+      \u0131: "i",
+      \u014B: "ng"
+    };
+    ENTITIES = {
+      amp: "&",
+      lt: "<",
+      gt: ">",
+      quot: '"',
+      apos: "'",
+      nbsp: " "
+    };
+    NO_SPACE_SCRIPTS = /([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu;
+    PARTICLES = /* @__PURE__ */ new Set([
+      "van",
+      "von",
+      "der",
+      "den",
+      "de",
+      "del",
+      "della",
+      "di",
+      "da",
+      "du",
+      "dos",
+      "la",
+      "le",
+      "ten",
+      "ter",
+      "jr",
+      "sr"
+    ]);
+  }
+});
+
 // ../packages/core/src/pdf/verapdf.ts
 function isObj(v) {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -4336,7 +4508,7 @@ function asArray(v) {
   return v === void 0 || v === null ? [] : [v];
 }
 function decodeXml(s) {
-  return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d))).replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(Number.parseInt(h, 16))).replace(/&amp;/g, "&").trim();
+  return stripCdata(s).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, d) => codePointText(Number(d))).replace(/&#x([0-9a-f]+);/gi, (_, h) => codePointText(Number.parseInt(h, 16))).replace(/&amp;/g, "&").trim();
 }
 function attrs(tag2) {
   const out = {};
@@ -4509,6 +4681,7 @@ var MAX_CONTEXTS;
 var init_verapdf = __esm({
   "../packages/core/src/pdf/verapdf.ts"() {
     "use strict";
+    init_normalize();
     MAX_CONTEXTS = 3;
   }
 });
@@ -4523,164 +4696,6 @@ var init_pdf = __esm({
     init_output();
     init_rules2();
     init_verapdf();
-  }
-});
-
-// ../packages/core/src/refs/normalize.ts
-function stripTags(s) {
-  let out = s;
-  for (let prev = ""; prev !== out; ) {
-    prev = out;
-    out = out.replace(/<[^<>]*>/g, "");
-  }
-  return out;
-}
-function codePointText(n) {
-  if (!Number.isInteger(n) || n < 0 || n > 1114111 || n >= 55296 && n <= 57343) {
-    return "\uFFFD";
-  }
-  return String.fromCodePoint(n);
-}
-function decodeNumericEntities(s) {
-  return s.replace(/&#x([0-9a-f]+);/gi, (_m, h) => codePointText(Number.parseInt(h, 16))).replace(/&#(\d+);/g, (_m, d) => codePointText(Number(d)));
-}
-function stripMarkup(s) {
-  const decoded = decodeNumericEntities(s).replace(
-    /&([a-z]+);/gi,
-    (m, name) => ENTITIES[name.toLowerCase()] ?? m
-  );
-  return stripTags(decoded).replace(/\s+/g, " ").trim();
-}
-function foldText(plain2) {
-  return plain2.toLowerCase().normalize("NFKD").replace(new RegExp("\\p{M}", "gu"), "").replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `).replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c);
-}
-function titleWords(title, isTex = true) {
-  const plain2 = isTex ? texToPlain(title) : stripMarkup(title);
-  return foldText(plain2).replace(NO_SPACE_SCRIPTS, " $1 ").replace(/[^\p{L}\p{N}]+/gu, " ").trim().split(" ").filter(Boolean);
-}
-function asciiNormalizeTitle(title) {
-  return texToPlain(title).toLowerCase().replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `).replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
-}
-function normalizeTitle(title, isTex = true) {
-  return titleWords(title, isTex).join(" ");
-}
-function dice(a, b) {
-  if (!a.length || !b.length) return 0;
-  const counts = /* @__PURE__ */ new Map();
-  for (const w of a) counts.set(w, (counts.get(w) ?? 0) + 1);
-  let shared = 0;
-  for (const w of b) {
-    const n = counts.get(w) ?? 0;
-    if (n > 0) {
-      shared++;
-      counts.set(w, n - 1);
-    }
-  }
-  return 2 * shared / (a.length + b.length);
-}
-function mainTitle(plain2) {
-  const m = /^(.+?)(?:\s*[:?!.]\s+|\s+[-–—]+\s+|\s*—\s*)\S/.exec(plain2);
-  return m ? m[1] : plain2;
-}
-function titleSimilarity(bibTitle, recordTitle) {
-  const a = titleWords(bibTitle, true);
-  const b = titleWords(recordTitle, false);
-  if (!a.length || !b.length) return 0;
-  if (a.join(" ") === b.join(" ")) return 1;
-  let score = dice(a, b);
-  const aMain = titleWords(mainTitle(texToPlain(bibTitle)), false);
-  const bMain = titleWords(mainTitle(stripMarkup(recordTitle)), false);
-  const subtitleMatch = aMain.length >= 2 && aMain.join(" ") === b.join(" ") && aMain.length < a.length || bMain.length >= 2 && bMain.join(" ") === a.join(" ") && bMain.length < b.length;
-  if (subtitleMatch) score = Math.max(score, 0.92);
-  return score;
-}
-function foldName(name) {
-  return foldText(stripMarkup(name)).replace(/[^\p{L}\s-]+/gu, "").replace(/[\s-]+/g, " ").trim();
-}
-function significant(name) {
-  return name.split(" ").filter((w) => w.length > 1 && !PARTICLES.has(w));
-}
-function namesMatch(a, b) {
-  if (!a || !b) return false;
-  if (a === b) return true;
-  const sa = significant(a);
-  const sb = significant(b);
-  if (!sa.length || !sb.length) return false;
-  const [small, large] = sa.length <= sb.length ? [sa, sb] : [sb, sa];
-  return small.every((w) => large.includes(w));
-}
-var GREEK_NAMES, FOLD, ENTITIES, NO_SPACE_SCRIPTS, PARTICLES;
-var init_normalize = __esm({
-  "../packages/core/src/refs/normalize.ts"() {
-    "use strict";
-    init_tex();
-    GREEK_NAMES = {
-      \u03B1: "alpha",
-      \u03B2: "beta",
-      \u03B3: "gamma",
-      \u03B4: "delta",
-      \u03B5: "epsilon",
-      \u03B6: "zeta",
-      \u03B7: "eta",
-      \u03B8: "theta",
-      \u03D1: "theta",
-      \u03B9: "iota",
-      \u03BA: "kappa",
-      \u03BB: "lambda",
-      \u03BC: "mu",
-      \u03BD: "nu",
-      \u03BE: "xi",
-      \u03C0: "pi",
-      \u03C1: "rho",
-      \u03C3: "sigma",
-      \u03C2: "sigma",
-      \u03C4: "tau",
-      \u03C5: "upsilon",
-      \u03C6: "phi",
-      \u03D5: "phi",
-      \u03C7: "chi",
-      \u03C8: "psi",
-      \u03C9: "omega"
-    };
-    FOLD = {
-      \u00DF: "ss",
-      \u00F8: "o",
-      \u00E6: "ae",
-      \u0153: "oe",
-      \u0142: "l",
-      \u00F0: "d",
-      \u00FE: "th",
-      \u0131: "i",
-      \u014B: "ng"
-    };
-    ENTITIES = {
-      amp: "&",
-      lt: "<",
-      gt: ">",
-      quot: '"',
-      apos: "'",
-      nbsp: " "
-    };
-    NO_SPACE_SCRIPTS = /([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu;
-    PARTICLES = /* @__PURE__ */ new Set([
-      "van",
-      "von",
-      "der",
-      "den",
-      "de",
-      "del",
-      "della",
-      "di",
-      "da",
-      "du",
-      "dos",
-      "la",
-      "le",
-      "ten",
-      "ter",
-      "jr",
-      "sr"
-    ]);
   }
 });
 
@@ -5272,7 +5287,7 @@ function parseArxivId(input2) {
   return m ? m[1] : null;
 }
 function xmlText(s) {
-  return decodeNumericEntities(s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")).replace(/&(amp|lt|gt|quot|apos);/g, (_m, e) => XML_ENTITIES[e]).replace(/\s+/g, " ").trim();
+  return decodeNumericEntities(stripCdata(s)).replace(/&(amp|lt|gt|quot|apos);/g, (_m, e) => XML_ENTITIES[e]).replace(/\s+/g, " ").trim();
 }
 function tag(xml, name) {
   const m = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`).exec(xml);

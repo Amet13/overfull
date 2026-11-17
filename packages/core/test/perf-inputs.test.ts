@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { hasOthers, parseBib, parseNames } from '../src/bib/index.js';
 import { analyzeLog, parseLog } from '../src/log/index.js';
+import { stripCdata } from '../src/refs/normalize.js';
 import { findCommands, grepTex } from '../src/venue/tex.js';
 import { LINEAR_BUDGET_MS as LIMIT_MS, timed } from './linear-time.js';
 
@@ -85,5 +86,19 @@ describe('1 MB crafted bib and tex sources stay linear', () => {
       { file: 'm.tex', line: 2, name: 'includegraphics', optional: 'width=1cm', arg: 'a{b}c' },
       { file: 'm.tex', line: 3, name: 'includegraphics', arg: 'd' },
     ]);
+  });
+});
+
+describe('XML text from outside services stays linear', () => {
+  it('many unclosed CDATA sections', () => {
+    const text = fill('<![CDATA[a');
+    expect(timed(() => stripCdata(text))).toBeLessThan(LIMIT_MS);
+    expect(stripCdata(text)).toBe(text);
+  });
+
+  it('stripCdata keeps the content of closed sections and leaves the rest', () => {
+    expect(stripCdata('a <![CDATA[<b>x</b>]]> c <![CDATA[y]]>')).toBe('a <b>x</b> c y');
+    expect(stripCdata('a <![CDATA[open')).toBe('a <![CDATA[open');
+    expect(stripCdata('<![CDATA[]]><![CDATA[z]]>')).toBe('z');
   });
 });

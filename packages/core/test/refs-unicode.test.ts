@@ -135,7 +135,7 @@ describe('verifying entries with non-Latin titles', () => {
   it('asks arXiv for the title itself, never for an empty phrase', async () => {
     const f = sources([]);
     await verifyEntries(parseBib(bibOf('k', CYRILLIC)), { fetch: f.fetch, ...fast });
-    const arxiv = f.calls.find((c) => c.includes('export.arxiv.org'));
+    const arxiv = f.calls.find((c) => new URL(c).hostname === 'export.arxiv.org');
     expect(new URL(arxiv as string).searchParams.get('search_query')).toBe(
       `ti:"${normalizeTitle(CYRILLIC.title)}"`,
     );

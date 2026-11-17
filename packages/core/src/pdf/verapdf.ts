@@ -1,4 +1,4 @@
-import { codePointText } from '../refs/normalize.js';
+import { codePointText, stripCdata } from '../refs/normalize.js';
 import type { VeraPdfFailure, VeraPdfResult } from './types.js';
 
 const MAX_CONTEXTS = 3;
@@ -24,8 +24,7 @@ function asArray(v: unknown): unknown[] {
 }
 
 function decodeXml(s: string): string {
-  return s
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+  return stripCdata(s)
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')

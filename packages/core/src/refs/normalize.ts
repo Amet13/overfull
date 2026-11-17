@@ -75,6 +75,26 @@ export function codePointText(n: number): string {
   return String.fromCodePoint(n);
 }
 
+/**
+ * Replaces each `<![CDATA[…]]>` section with its content, in one linear pass. (A lazy
+ * regular expression rescans to the end of the text for every unclosed `<![CDATA[`,
+ * which is quadratic on a crafted answer.) An unclosed section is left as it is.
+ */
+export function stripCdata(s: string): string {
+  const open = '<![CDATA[';
+  let out = '';
+  let i = 0;
+  for (;;) {
+    const start = s.indexOf(open, i);
+    if (start < 0) break;
+    const end = s.indexOf(']]>', start + open.length);
+    if (end < 0) break;
+    out += s.slice(i, start) + s.slice(start + open.length, end);
+    i = end + 3;
+  }
+  return out + s.slice(i);
+}
+
 /** Decodes `&#x…;` and `&#…;` without throwing on numbers that are not code points. */
 export function decodeNumericEntities(s: string): string {
   return s

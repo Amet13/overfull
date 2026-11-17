@@ -167,7 +167,7 @@ describe('arXiv ids through OpenAlex', () => {
       sources: ['crossref', 'doi.org', 'openalex'],
     });
     expect(r).toMatchObject({ status: 'verified', source: 'openalex' });
-    expect(f.calls.some((c) => c.includes('export.arxiv.org'))).toBe(false);
+    expect(f.calls.some((c) => new URL(c).hostname === 'export.arxiv.org')).toBe(false);
   });
 
   it('asks OpenAlex when arXiv is down', async () => {
