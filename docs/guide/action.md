@@ -108,7 +108,7 @@ Actions.
 | `mailto` | `references.mailto`, else `$OVERFULL_MAILTO` | Contact address for CrossRef's polite pool. |
 | `annotations` | `true` | Write problems as file annotations. |
 | `summary` | `true` | Write a Markdown report to the job summary. |
-| `sarif` | empty (off) | Path to write a SARIF 2.1.0 file, relative to the workspace. See [Code scanning](#code-scanning-sarif). |
+| `sarif` | empty (off) | Path to write a SARIF 2.1.0 file, relative to the workspace. It must stay inside the workspace and must not be a symlink (the step fails otherwise). See [Code scanning](#code-scanning-sarif). |
 
 Inputs you leave out come from `overfull.yml` in `working-directory`, where
 present. Checks whose default inputs are missing are reported as `skipped`;

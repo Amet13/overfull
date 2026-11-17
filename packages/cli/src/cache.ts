@@ -15,10 +15,21 @@ export function userCacheDir(env: Env, platform: NodeJS.Platform = process.platf
 }
 
 /**
+ * Where the person running Overfull wants the reference cache: `project` only
+ * when they asked for it (`--project-cache`, or `OVERFULL_REFS_CACHE=project`).
+ * The project's own overfull.yml cannot choose it: a repository that turns on
+ * its own cache could ship a cache that marks made-up references as verified.
+ */
+export function refsCacheMode(flag: boolean | undefined, env: Env): 'user' | 'project' {
+  if (flag) return 'project';
+  return env.OVERFULL_REFS_CACHE?.trim().toLowerCase() === 'project' ? 'project' : 'user';
+}
+
+/**
  * Where reference lookups for a project are cached. By default outside the
  * project (keyed by a hash of its root), so a cache committed to a repository
- * cannot mark references as verified. `references.cache: project` keeps the
- * old `.overfull/cache/refs.json`.
+ * cannot mark references as verified. Mode `project` (see `refsCacheMode`)
+ * keeps the old `.overfull/cache/refs.json`.
  */
 export function refsCachePath(root: string, mode: 'user' | 'project', env: Env): string {
   if (mode === 'project') return join(root, '.overfull', 'cache', 'refs.json');

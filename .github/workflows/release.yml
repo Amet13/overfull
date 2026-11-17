@@ -162,6 +162,9 @@ jobs:
   github-release:
     if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
     needs: [version, pdfs, cli]
+    # Creates the tag and release and moves v3. Add a required reviewer under
+    # Settings → Environments → release to approve each publish (MAINTAINING.md).
+    environment: release
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:

@@ -1,5 +1,14 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import {
+  closeSync,
+  constants,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { neutralizeWorkflowCommands, RUNNER_WHITESPACE } from '@overfull/core/text';
 import { UsageError } from './io.js';
@@ -130,6 +139,72 @@ export function insideRootForWrite(root: string, path: string, what: string): st
   }
   if (!isInside(realRoot, realProbe)) throw refuse('leads outside the project through a symlink');
   return abs;
+}
+
+/** Where a report file goes, and whether that place is inside the project. */
+export interface ReportTarget {
+  path: string;
+  inProject: boolean;
+}
+
+/**
+ * Resolves a report file to write (`check --write`, the Action's `sarif` input).
+ * A relative path, or an absolute one under `root`, must stay inside the project
+ * after symlinks (`insideRootForWrite`) and must not be a symlink itself: a
+ * repository could ship `report.sarif -> ~/.bashrc`, and a CI job writing the
+ * report would overwrite that file. An absolute path outside the project
+ * (`$GITHUB_STEP_SUMMARY`, `/tmp/report.json`) is the caller's own choice and is kept.
+ */
+export function reportTarget(root: string, path: string, what: string): ReportTarget {
+  const abs = resolve(root, path);
+  let realRoot = root;
+  try {
+    realRoot = realpathSync(root);
+  } catch {
+    /* keep root */
+  }
+  if (isAbsolute(path) && !isInside(root, abs) && !isInside(realRoot, abs))
+    return { path: abs, inProject: false };
+  let link = false;
+  try {
+    link = lstatSync(abs).isSymbolicLink();
+  } catch {
+    /* does not exist yet */
+  }
+  if (link) {
+    throw new UsageError(
+      `${what} "${path}" is a symlink. Overfull does not write reports through symlinks inside the project; remove it or choose another file.`,
+    );
+  }
+  return { path: insideRootForWrite(root, path, what), inProject: true };
+}
+
+/**
+ * Writes a report file, creating its folder. Inside the project the file is
+ * opened without following a symlink (O_NOFOLLOW where the OS has it), so a
+ * link created after `reportTarget` checked the path is not followed either.
+ */
+export function writeReport(target: ReportTarget, text: string): void {
+  mkdirSync(dirname(target.path), { recursive: true });
+  if (!target.inProject) {
+    writeFileSync(target.path, text);
+    return;
+  }
+  const flags =
+    constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0);
+  let fd: number;
+  try {
+    fd = openSync(target.path, flags, 0o666);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ELOOP')
+      throw new UsageError(`Report file "${target.path}" is a symlink; not written.`);
+    throw err;
+  }
+  try {
+    writeFileSync(fd, text);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** True when `path` is a symlink whose target does not exist. */

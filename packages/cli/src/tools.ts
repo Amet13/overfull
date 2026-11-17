@@ -1,11 +1,13 @@
 import { spawn } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
-import { delimiter, join } from 'node:path';
+import { delimiter, isAbsolute, join, win32 } from 'node:path';
 
 /**
  * Absolute path of an executable on PATH, or undefined. On Windows only files
  * `spawn` can start without a shell (.exe, .com) count, unless `allowBatch`:
  * a `.bat`/`.cmd` wrapper needs cmd.exe, which re-parses its arguments.
+ * Relative PATH entries (`.`, `bin`) are skipped: they name the current
+ * directory, which is often a project that may not be trusted.
  */
 export function which(
   cmd: string,
@@ -20,7 +22,7 @@ export function which(
     : [''];
   const sepChar = win ? ';' : delimiter;
   for (const dir of (env.PATH ?? env.Path ?? '').split(sepChar)) {
-    if (!dir) continue;
+    if (!dir || !(win ? win32.isAbsolute(dir) : isAbsolute(dir))) continue;
     for (const ext of exts) {
       const p = join(dir, cmd + ext);
       try {
@@ -66,13 +68,52 @@ export interface RunOptions {
   shell?: boolean;
 }
 
-/** Runs a command without a shell, capturing output. Never throws. */
+/**
+ * The program `run` starts for `cmd`: a path stays as given; a bare name becomes
+ * its absolute path on PATH (`which`), or undefined when it is not there. Never
+ * a bare name: on Windows, starting one searches the current directory first, so
+ * a file in the project named `docker.exe`, `pdffonts.exe` or `latexmk.exe`
+ * would run instead of the installed tool.
+ */
+export function resolveCommand(
+  cmd: string,
+  env: Record<string, string | undefined> = process.env,
+  opts: { platform?: NodeJS.Platform; allowBatch?: boolean } = {},
+): string | undefined {
+  if (/[\\/]/.test(cmd)) return cmd;
+  return which(cmd, env, opts);
+}
+
+/**
+ * Runs a command without a shell, capturing output. Never throws. A bare `cmd`
+ * runs from its absolute path on PATH (see `resolveCommand`); when it is not on
+ * PATH nothing starts and the result has code 127. With `shell` (Windows batch
+ * wrappers only) the program path is quoted for cmd.exe.
+ */
 export function run(cmd: string, args: string[], opts: RunOptions = {}): Promise<RunResult> {
+  const lookupEnv = opts.env && (opts.env.PATH ?? opts.env.Path) ? opts.env : process.env;
+  const program = resolveCommand(cmd, lookupEnv, { allowBatch: opts.shell === true });
+  if (!program) {
+    return Promise.resolve({
+      code: 127,
+      stdout: '',
+      stderr: '',
+      error: `${cmd} was not found on PATH`,
+    });
+  }
+  let file = program;
+  if (opts.shell && process.platform === 'win32') {
+    try {
+      file = quoteWindowsArg(program);
+    } catch (err) {
+      return Promise.resolve({ code: 127, stdout: '', stderr: '', error: String(err) });
+    }
+  }
   return new Promise((resolvePromise) => {
     let stdout = '';
     let stderr = '';
     let pending = '';
-    const child = spawn(cmd, args, {
+    const child = spawn(file, args, {
       cwd: opts.cwd,
       env: opts.env as NodeJS.ProcessEnv | undefined,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -110,8 +151,9 @@ export function run(cmd: string, args: string[], opts: RunOptions = {}): Promise
 
 /** True when the Docker daemon answers. */
 export async function dockerAvailable(env?: Record<string, string | undefined>): Promise<boolean> {
-  if (!which('docker', env)) return false;
-  const r = await run('docker', ['info', '--format', '{{.ServerVersion}}'], { timeoutMs: 8000 });
+  const docker = which('docker', env);
+  if (!docker) return false;
+  const r = await run(docker, ['info', '--format', '{{.ServerVersion}}'], { timeoutMs: 8000 });
   return r.code === 0;
 }
 

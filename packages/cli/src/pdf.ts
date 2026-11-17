@@ -44,13 +44,17 @@ export async function readPdfFacts(
 ): Promise<PdfFacts> {
   const data = new Uint8Array(readFileSync(path));
   const facts = await extractPdfFacts(data, await loadPdfjs());
-  if (which('pdffonts')) {
-    const r = await run('pdffonts', [path], { timeoutMs: 30000 });
+  // The absolute path from `which`, never the bare name (Windows would look in
+  // the current directory, the project, first).
+  const pdffonts = which('pdffonts');
+  const docker = pdffonts ? undefined : opts.docker && which('docker');
+  if (pdffonts) {
+    const r = await run(pdffonts, [path], { timeoutMs: 30000 });
     if (r.code === 0) facts.fonts = parsePdffonts(r.stdout);
-  } else if (opts.docker) {
+  } else if (opts.docker && docker) {
     const rel = `./${relative(opts.docker.root, path).split('\\').join('/')}`;
     const r = await run(
-      'docker',
+      docker,
       dockerToolArgs(opts.docker.image, opts.docker.root, 'pdffonts', [rel]),
       {
         timeoutMs: 60000,

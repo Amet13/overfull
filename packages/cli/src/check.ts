@@ -30,7 +30,7 @@ import {
   venueCheck,
   verifyEntries,
 } from '@overfull/core';
-import { FileCache, MemoryCache, refsCachePath, symlinkOnPath } from './cache.js';
+import { FileCache, MemoryCache, refsCacheMode, refsCachePath, symlinkOnPath } from './cache.js';
 import { type Config, DEFAULT_IMAGE, loadConfig, requireMain } from './config.js';
 import { UsageError } from './io.js';
 import { readPdfFacts } from './pdf.js';
@@ -57,8 +57,14 @@ export interface CheckOptions {
   mailto?: string;
   /** Run veraPDF when installed (default true). */
   verapdf?: boolean;
-  /** Cache reference lookups (default true): in the user cache dir, or `.overfull/cache` with `references.cache: project`. */
+  /** Cache reference lookups (default true): in the user cache dir, or `.overfull/cache` with `projectCache`. */
   cache?: boolean;
+  /**
+   * Keep the reference cache in `.overfull/cache/refs.json` (`--project-cache`).
+   * Also on with `OVERFULL_REFS_CACHE=project`. `references.cache: project` in the
+   * project's own overfull.yml is ignored: a project must not vouch for itself.
+   */
+  projectCache?: boolean;
   /** Skip cached reference answers and ask the indexes again; fresh answers are still stored (`--refresh`). */
   refresh?: boolean;
   /** Called after each entry is looked up. The CLI passes it only on an interactive stderr. */
@@ -379,8 +385,19 @@ async function references(inp: Inputs, opts: CheckOptions): Promise<CheckResult>
   const env = opts.env ?? process.env;
   let cache: FileCache | MemoryCache | undefined;
   if (opts.cache !== false) {
-    const path = refsCachePath(root, config.references.cache, env);
-    const project = config.references.cache === 'project';
+    const mode = refsCacheMode(opts.projectCache, env);
+    const path = refsCachePath(root, mode, env);
+    const project = mode === 'project';
+    if (config.references.cache === 'project' && !project) {
+      extra.push({
+        rule: 'refs-cache-ignored',
+        check: 'references',
+        severity: 'info',
+        message:
+          'Ignored `references.cache: project` in overfull.yml: a project cannot choose to trust its own cache',
+        fix: 'Use `--project-cache` or set OVERFULL_REFS_CACHE=project in your environment if you want the cache in .overfull/.',
+      });
+    }
     const link = project ? symlinkOnPath(root, path) : undefined;
     if (project && isCI(env)) {
       // A project-located cache is repository content: in CI (a pull request, an
@@ -402,7 +419,7 @@ async function references(inp: Inputs, opts: CheckOptions): Promise<CheckResult>
         check: 'references',
         severity: 'info',
         message: `Ignored ${rel(root, path)}: ${rel(root, link)} is a symlink, so the cache may be a file from the repository`,
-        fix: 'Replace the symlink with a real directory, or drop `references.cache: project`.',
+        fix: 'Replace the symlink with a real directory, or drop `--project-cache` / OVERFULL_REFS_CACHE=project.',
       });
     } else cache = new FileCache(path);
   }

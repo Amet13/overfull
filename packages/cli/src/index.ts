@@ -16,5 +16,12 @@ export { type Config, DEFAULT_IMAGE, loadConfig } from './config.js';
 export { type Io, processIo, UsageError } from './io.js';
 export { main } from './main.js';
 export { loadPdfjs, readPdfFacts } from './pdf.js';
-export { isCI, neutralizeWorkflowCommands, stopCommands } from './safety.js';
+export {
+  isCI,
+  neutralizeWorkflowCommands,
+  type ReportTarget,
+  reportTarget,
+  stopCommands,
+  writeReport,
+} from './safety.js';
 export { VERSION } from './version.js';

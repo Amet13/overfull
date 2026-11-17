@@ -138,6 +138,7 @@ those files. Any other extension is a usage error (exit 2).
 | `--profile p` | Use this venue profile instead of the one in `overfull.yml`: `generic`, `thesis`, `paper`, `arxiv`, `double-blind`. |
 | `--offline` | Do not look references up online. The references check is skipped. Missing keys and `.bib` syntax errors are still reported. |
 | `--refresh` | Ignore cached reference answers and look every reference up again. The new answers are still written to the cache. |
+| `--project-cache` | Keep the reference cache in `.overfull/cache/refs.json` instead of your user cache folder (same as `OVERFULL_REFS_CACHE=project`). Never used in CI. `references.cache` in `overfull.yml` cannot turn it on. See [Cache](./config.md#cache). |
 | `--watch` | Keep running and check again whenever the log, PDF, `.aux` or a `.bib` file changes. References are looked up again only when a `.bib` file changed. Stop with Ctrl-C. Human output only. |
 | `--fail-on level` | `error` (default), `warning` or `never`. |
 | `--json` | Print the report as JSON (schema below). |
@@ -145,7 +146,7 @@ those files. Any other extension is a usage error (exit 2).
 | `--annotations` | Print GitHub workflow annotations. |
 | `--sarif` | Print a SARIF 2.1.0 log, for GitHub code scanning (see [the Action](./action.md#code-scanning-sarif)). Problems without a source file point at the main file, line 1. |
 | `--html` | Print the report as one self-contained HTML page (light and dark, printable, no scripts): to keep, attach to a CI run or send to a co-author. |
-| `--write format=file` | Also write the report to a file, in `json`, `markdown`, `annotations`, `sarif` or `html`. Repeat it for several formats from one run: `--write json=report.json --write html=report.html`. |
+| `--write format=file` | Also write the report to a file, in `json`, `markdown`, `annotations`, `sarif` or `html`. Repeat it for several formats from one run: `--write json=report.json --write html=report.html`. A relative path (or an absolute one inside the project) must stay inside the project and must not be a symlink; an absolute path outside the project, such as `$GITHUB_STEP_SUMMARY`, is fine. |
 | `--verbose`, `-v` | Show why each problem happened and how to fix it. |
 | `--pdf file` | PDF to check (default `<jobname>.pdf`). |
 | `--log file` | Build log (default `<jobname>.log`). |

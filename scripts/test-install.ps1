@@ -1,6 +1,8 @@
 # Tests install.ps1 against a local fake release served over HTTP (no Pester).
 # Cases: a good download installs the file; a tampered one fails and installs nothing;
-# a release with a .gz copy installs from it; a tampered .gz installs nothing.
+# a release with a .gz copy installs from it; a tampered .gz installs nothing; with gh
+# logged in, a passing attestation installs and a failing one installs nothing.
+# A fake gh comes first on PATH, so a real, logged-in gh never runs here.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $work = Join-Path ([System.IO.Path]::GetTempPath()) ("overfull-test-" + [System.Guid]::NewGuid().ToString('N'))
@@ -22,6 +24,27 @@ function Start-Server([string]$Dir, [int]$Port) {
 }
 
 try {
+  # Fake gh: FAKE_GH=out (not logged in, the default), ok (attestation passes) or fail.
+  $fakeBin = Join-Path $work 'fakebin'
+  New-Item -ItemType Directory -Path $fakeBin | Out-Null
+  Set-Content -Encoding ascii -LiteralPath (Join-Path $fakeBin 'gh.cmd') -Value @(
+    '@echo off',
+    'echo %*>>"%FAKE_GH_LOG%"',
+    'if "%1"=="auth" goto auth',
+    'if "%1"=="attestation" goto att',
+    'exit /b 1',
+    ':auth',
+    'if "%FAKE_GH%"=="out" exit /b 1',
+    'exit /b 0',
+    ':att',
+    'if "%~3"=="--help" exit /b 0',
+    'if "%FAKE_GH%"=="ok" exit /b 0',
+    'exit /b 1'
+  )
+  $env:FAKE_GH_LOG = Join-Path $work 'gh.log'
+  $env:FAKE_GH = 'out'
+  $env:PATH = "$fakeBin;$env:PATH"
+
   # Any real executable works as the fake release file.
   $real = Join-Path $env:SystemRoot 'System32\hostname.exe'
   $good = Join-Path $work 'good'
@@ -82,6 +105,28 @@ try {
   try { & (Join-Path $root 'install.ps1') } catch { $failed = $true; Write-Host "expected failure: $($_.Exception.Message)" }
   if (-not $failed) { throw 'FAIL: install.ps1 succeeded on a tampered .gz' }
   if (Test-Path -LiteralPath (Join-Path $env:OVERFULL_INSTALL_DIR 'overfull.exe')) { throw 'FAIL: a file was installed' }
+
+  Stop-Process -Id $server.Id -Force; $server = $null
+
+  Write-Host 'case 5: gh logged in and the attestation verifies: installs'
+  $server = Start-Server $good $port
+  $env:FAKE_GH = 'ok'
+  $env:OVERFULL_INSTALL_DIR = Join-Path $work 'out5\bin'
+  & (Join-Path $root 'install.ps1')
+  if (-not (Test-Path -LiteralPath (Join-Path $env:OVERFULL_INSTALL_DIR 'overfull.exe'))) { throw 'FAIL: overfull.exe was not installed' }
+  $calls = Get-Content -LiteralPath $env:FAKE_GH_LOG
+  if (-not ($calls | Where-Object { $_ -like "attestation verify *$asset --repo amet13/overfull*" })) { throw 'FAIL: gh attestation verify was not run on the download' }
+  Stop-Process -Id $server.Id -Force; $server = $null
+
+  Write-Host 'case 6: gh logged in and the attestation fails: installs nothing'
+  $server = Start-Server $good $port
+  $env:FAKE_GH = 'fail'
+  $env:OVERFULL_INSTALL_DIR = Join-Path $work 'out6\bin'
+  $failed = $false
+  try { & (Join-Path $root 'install.ps1') } catch { $failed = $true; Write-Host "expected failure: $($_.Exception.Message)" }
+  if (-not $failed) { throw 'FAIL: install.ps1 succeeded although the attestation failed' }
+  if (Test-Path -LiteralPath (Join-Path $env:OVERFULL_INSTALL_DIR 'overfull.exe')) { throw 'FAIL: a file was installed' }
+  $env:FAKE_GH = 'out'
 
   Write-Host 'test-install: ok'
 } finally {

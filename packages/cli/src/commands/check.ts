@@ -1,5 +1,5 @@
-import { type Dirent, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { type Dirent, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   formatHtml,
   formatHuman,
@@ -12,7 +12,7 @@ import { list, type Parsed, parse, str } from '../args.js';
 import { exitCodeFor, runCheck, sarifFallbackFile } from '../check.js';
 import { parseChecks } from '../config.js';
 import { type Io, progressLine, UsageError, useColor } from '../io.js';
-import { isCI } from '../safety.js';
+import { isCI, type ReportTarget, reportTarget, writeReport } from '../safety.js';
 
 const checkHelp = `Usage: overfull check [file...] [options]
 
@@ -34,6 +34,9 @@ Options:
   --offline           Do not look references up online
   --refresh           Ignore cached reference answers and look everything up again
                       (the new answers are still cached)
+  --project-cache     Cache reference answers in .overfull/cache/refs.json instead of
+                      your user cache folder (also OVERFULL_REFS_CACHE=project). Never
+                      used in CI. references.cache in overfull.yml cannot turn it on.
   --fail-on level     error (default), warning or never
   --json              Print the report as JSON (stable, for agents and scripts)
   --markdown          Print a Markdown summary (GitHub job summary / PR comment)
@@ -43,6 +46,7 @@ Options:
   --write fmt=file    Also write the report to a file: json, markdown, annotations, sarif
                       or html. Repeat it to get several formats from one run, e.g.
                       --write json=report.json --write markdown=summary.md
+                      A relative file must stay inside the project and not be a symlink.
   --verbose, -v       Show why and how to fix each problem
   --watch             Check again whenever the log, PDF, .aux or a .bib file changes
                       (references are looked up again only when a .bib changed);
@@ -118,8 +122,14 @@ function classifyFiles(positionals: string[], values: Parsed['values']): FileArg
 const WRITE_FORMATS = ['json', 'markdown', 'annotations', 'sarif', 'html'] as const;
 type WriteFormat = (typeof WRITE_FORMATS)[number];
 
-/** `--write format=file` (repeatable): the extra report files one run writes. */
-function writeTargets(value: unknown, cwd: string): { format: WriteFormat; path: string }[] {
+/**
+ * `--write format=file` (repeatable): the extra report files one run writes. A
+ * file inside the project must not be, or go through, a symlink (`reportTarget`).
+ */
+function writeTargets(
+  value: unknown,
+  cwd: string,
+): { format: WriteFormat; target: ReportTarget }[] {
   const items = Array.isArray(value) ? value : [];
   return items.map((item) => {
     const at = item.indexOf('=');
@@ -130,7 +140,7 @@ function writeTargets(value: unknown, cwd: string): { format: WriteFormat; path:
         `--write takes format=file with format one of ${WRITE_FORMATS.join(', ')}; got "${item}"`,
       );
     }
-    return { format, path: resolve(cwd, file) };
+    return { format, target: reportTarget(cwd, file, '--write file') };
   });
 }
 
@@ -142,6 +152,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
       profile: { type: 'string' },
       offline: { type: 'boolean' },
       refresh: { type: 'boolean' },
+      'project-cache': { type: 'boolean' },
       'fail-on': { type: 'string' },
       json: { type: 'boolean' },
       markdown: { type: 'boolean' },
@@ -205,6 +216,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
       ...(str(values.mailto) ? { mailto: str(values.mailto) } : {}),
       offline,
       ...(values.refresh ? { refresh: true } : {}),
+      ...(values['project-cache'] ? { projectCache: true } : {}),
       ...(progress ? { progress } : {}),
       verapdf: values['no-verapdf'] !== true,
       engine: engine as 'auto' | 'local' | 'docker',
@@ -231,10 +243,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
       const lines = githubAnnotations(report);
       return lines.length ? `${lines.join('\n')}\n` : '';
     };
-    for (const w of writes) {
-      mkdirSync(dirname(w.path), { recursive: true });
-      writeFileSync(w.path, render(w.format));
-    }
+    for (const w of writes) writeReport(w.target, render(w.format));
     const stdoutFormat = formats[0] as WriteFormat | undefined;
     if (stdoutFormat) io.stdout(render(stdoutFormat));
     else io.stdout(formatHuman(report, { color: useColor(io), verbose: values.verbose === true }));

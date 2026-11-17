@@ -58,6 +58,12 @@ release's `SHA256SUMS`, and puts it in `~/.local/bin` (Windows:
 `%LOCALAPPDATA%\overfull\bin`). No `sudo`, no Node.js. If the checksum does not
 match, nothing is installed.
 
+When the [GitHub CLI](https://cli.github.com/) is installed and logged in
+(`gh auth login`), the installer also runs
+`gh attestation verify <file> --repo amet13/overfull`, which checks that the file
+was built by this repository's release workflow. If that check fails, nothing is
+installed. Without `gh` the step is skipped and the checksum is the only check.
+
 Linux (x64, arm64) and macOS (Apple silicon):
 
 ```sh
@@ -79,7 +85,8 @@ use `overfull.cjs` with Node.js 26, or Docker.
 To do it by hand, download your file from
 [GitHub Releases](https://github.com/amet13/overfull/releases)
 (`overfull-linux-x64`, `overfull-linux-arm64`, `overfull-darwin-arm64`, `overfull-darwin-x64`,
-`overfull-win-x64.exe`), check it with `sha256sum -c --ignore-missing SHA256SUMS`,
+`overfull-win-x64.exe`), check it with `sha256sum -c --ignore-missing SHA256SUMS`
+(and, with the GitHub CLI, `gh attestation verify overfull-linux-x64 --repo amet13/overfull`),
 rename it to `overfull`, and make it executable.
 
 Each executable is about 150 MB, almost all of it the Node.js runtime it carries.

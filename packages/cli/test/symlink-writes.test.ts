@@ -1,12 +1,12 @@
 /** Write paths stay inside the project, also through symlinks. */
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Report } from '@overfull/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { citeCommand } from '../src/commands/cite.js';
 import { main } from '../src/main.js';
-import { insideRootForWrite } from '../src/safety.js';
+import { insideRootForWrite, reportTarget, writeReport } from '../src/safety.js';
 import { memIo, tempCopy, tempDir } from './helpers.js';
 
 /** Shell-script fakes on PATH and FIFOs do not exist on Windows; these tests run on Linux and macOS. */
@@ -112,4 +112,74 @@ describe('R5: write paths through symlinks', () => {
     const { dir } = project();
     expect(() => insideRootForWrite(dir, 'link/diff.pdf', 'Output PDF')).toThrow(/symlink/);
   });
+});
+
+describe('check --write and the Action sarif input do not follow symlinks out of the project', () => {
+  /** A project with a planted `report.sarif -> <outside>/victim` and `out -> <outside>`. */
+  function planted() {
+    const outside = tempDir();
+    const victim = join(outside, 'victim');
+    writeFileSync(victim, 'keep me\n');
+    const dir = tempCopy('project');
+    symlinkSync(victim, join(dir, 'report.sarif'));
+    symlinkSync(outside, join(dir, 'out'));
+    symlinkSync(join(dir, 'main.tex'), join(dir, 'inner.json'));
+    return { outside, victim, dir };
+  }
+
+  it.skipIf(POSIX_ONLY)(
+    '--write refuses a symlinked file or folder and writes nothing',
+    async () => {
+      const { outside, victim, dir } = planted();
+      for (const target of ['sarif=report.sarif', 'json=out/report.json', 'json=inner.json']) {
+        const io = memIo(dir);
+        expect(await main(['check', '--offline', '--write', target], io), target).toBe(2);
+        expect(io.stderrText(), target).toMatch(/symlink/);
+      }
+      // An absolute path into the project gets the same checks.
+      const abs = memIo(dir);
+      expect(
+        await main(['check', '--offline', '--write', `sarif=${join(dir, 'report.sarif')}`], abs),
+      ).toBe(2);
+      expect(readFileSync(victim, 'utf8')).toBe('keep me\n');
+      expect(existsSync(join(outside, 'report.json'))).toBe(false);
+      expect(readFileSync(join(dir, 'main.tex'), 'utf8')).not.toContain('"status"');
+    },
+  );
+
+  it('--write refuses a relative path that leaves the project', async () => {
+    const dir = tempCopy('project');
+    const io = memIo(dir);
+    expect(await main(['check', '--offline', '--write', 'json=../report.json'], io)).toBe(2);
+    expect(io.stderrText()).toMatch(/outside the project/);
+  });
+
+  it('--write still takes an absolute path outside the project ($GITHUB_STEP_SUMMARY)', async () => {
+    const dir = tempCopy('project');
+    const elsewhere = join(tempDir(), 'summary.md');
+    expect(await main(['check', '--offline', '--write', `markdown=${elsewhere}`], memIo(dir))).toBe(
+      1,
+    );
+    expect(readFileSync(elsewhere, 'utf8')).toContain('Overfull preflight');
+  });
+
+  it.skipIf(POSIX_ONLY)(
+    'Action sarif: reportTarget refuses the planted link; writeReport never follows one',
+    () => {
+      const { victim, dir } = planted();
+      expect(() => reportTarget(dir, 'report.sarif', 'Input "sarif"')).toThrow(/symlink/);
+      expect(() => reportTarget(dir, 'out/x.sarif', 'Input "sarif"')).toThrow(/symlink/);
+      expect(reportTarget(dir, 'sub/x.sarif', 'Input "sarif"')).toEqual({
+        path: join(dir, 'sub', 'x.sarif'),
+        inProject: true,
+      });
+      // A link that appears after the check is not followed either.
+      expect(() =>
+        writeReport({ path: join(dir, 'report.sarif'), inProject: true }, 'pwned'),
+      ).toThrow(/symlink/);
+      expect(readFileSync(victim, 'utf8')).toBe('keep me\n');
+      writeReport({ path: join(dir, 'sub', 'x.sarif'), inProject: true }, '{}');
+      expect(readFileSync(join(dir, 'sub', 'x.sarif'), 'utf8')).toBe('{}');
+    },
+  );
 });

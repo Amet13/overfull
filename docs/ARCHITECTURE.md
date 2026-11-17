@@ -114,8 +114,9 @@ in a relevance-ranked list. Websites, software, datasets and standards are never
 looked up by title.
 
 Answers are cached in the user cache directory (30 days for a record, 1 day for
-"no match"; failures never). `references.cache: project` keeps them in
-`.overfull/cache/refs.json`, which CI ignores.
+"no match"; failures never). `--project-cache` or `OVERFULL_REFS_CACHE=project`
+keeps them in `.overfull/cache/refs.json`, which CI ignores (`references.cache`
+in the project's own overfull.yml cannot turn this on).
 
 `overfull cite` uses the same lookup and writes the publisher's BibTeX when there
 is a DOI. When an arXiv record names the DOI of its published version, it writes
@@ -161,7 +162,6 @@ references:
   ignore: [rfc9110]
   requireCite: true        # unverified entries need an overfull cite marker or an author note
   reportUncited: false
-  cache: user              # or project
 venue:                     # overrides on top of the profile
   pageLimit: { max: 9, endLabel: overfull:main-end }
   anonymous: true
