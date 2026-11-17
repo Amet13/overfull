@@ -18,20 +18,30 @@ them run the same checks.
 
 ## Docker only
 
-The image `ghcr.io/amet13/overfull:3` contains TeX Live 2026, fonts, poppler,
-qpdf, veraPDF, latexdiff, Node.js and the `overfull` CLI. You do not need to
-install TeX or Node.
-`ghcr.io/amet13/overfull:3-slim` is about a fifth of the size: TeX Live's basic
-scheme plus LuaLaTeX, the recommended LaTeX packages and fonts, and what the
-templates use. When a document needs a package it lacks, `overfull build` installs
-it from CTAN and builds again. The templates' workflows use it. (`:3-medium`, the
-image it replaced, now points to it.) `:3-check` has no TeX Live and only checks. See [the Docker README](https://github.com/amet13/overfull/blob/main/docker/README.md).
+Start with `ghcr.io/amet13/overfull:3-slim`. It has TeX Live's basic scheme plus
+LuaLaTeX and XeLaTeX, the recommended LaTeX packages and fonts, biblatex and Biber,
+latexdiff, the classes of the built-in venue profiles (IEEEtran, acmart, llncs,
+elsarticle, REVTeX), common packages and the Fira and Inconsolata fonts, along with
+poppler, qpdf, veraPDF, Node.js and the `overfull` CLI. You do not need to install
+TeX or Node. When a document needs a package the image lacks, `overfull build`
+installs it from CTAN and builds again, for any user. `overfull build --engine docker`
+uses this image by default, and the templates' workflows use it too.
+
+The other images:
+
+- `ghcr.io/amet13/overfull:3` has all of TeX Live 2026: about 3 GB compressed and
+  9–10 GB on disk. Use it when a document must build without network access or uses
+  many packages outside the slim set.
+- `ghcr.io/amet13/overfull:3-check` has no TeX Live and only checks.
+
+`-slim` tags exist from 3.1.2 on. `:3-medium`, the image slim replaced, is another
+name for it for the rest of 3.x. See
+[the Docker README](https://github.com/amet13/overfull/blob/main/docker/README.md).
 
 > **New to Docker?** Install [Docker Desktop](https://docs.docker.com/desktop/)
 > (macOS, Windows) or [Docker Engine](https://docs.docker.com/engine/install/)
-> (Linux) and start it. The first build downloads the Overfull image: about
-> 3 GB compressed, 9–10 GB on disk, so allow a few minutes and the disk space.
-> After that, builds take seconds.
+> (Linux) and start it. The first build downloads the image (about 0.7 GB for
+> slim), so allow a few minutes. After that, builds take seconds.
 
 In a project made from an Overfull template, the Makefile uses the image for
 you:
@@ -42,11 +52,17 @@ make check     # run all checks
 make help      # list every target
 ```
 
-To run the CLI directly in the image, mount your project:
+To run the CLI directly in the image, mount your project and run as yourself, so
+the files it writes belong to you:
 
 ```sh
-docker run --rm -v "$PWD":/work -w /work ghcr.io/amet13/overfull:3 overfull check
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  -v "$PWD":/work -w /work ghcr.io/amet13/overfull:3-slim overfull check
 ```
+
+`HOME=/tmp` gives that user a writable home. The images also work with a read-only
+root filesystem (`--read-only --tmpfs /tmp`); LuaLaTeX then rebuilds its font list
+once per container (a few seconds in slim, about a minute in the full image).
 
 The image tag matches the Overfull major version. The template pins it in
 `overfull.yml` under `build.image`.

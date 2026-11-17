@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ## [Unreleased]
 
+### Added
+
+- Slim image: latexdiff (`overfull diff`), XeLaTeX, the venue classes (IEEEtran, acmart, llncs, elsarticle, REVTeX), common packages (enumitem, multirow, titlesec, algorithm2e, tcolorbox, newtx, glossaries and more) and the Fira, Inconsolata and Libertine fonts
+- `overfull build --engine docker` installs missing packages on demand with the slim image too
+- CI: time a non-root LaTeX start, check the slim image offline, and run `overfull diff` in it
+
+### Changed
+
+- The default Docker image is `ghcr.io/amet13/overfull:3-slim` (the full image is `:3`); `build.image` still overrides it
+- veraPDF in the images is the command line only (no GUI), and the check image reuses its heavy layer across releases
+
+### Fixed
+
+- Docker images: LaTeX starts as fast for a non-root user as for root (it took about a minute in the full image)
+- Slim image: on-demand installs work for any user, survive a critical tlmgr update, and fall back to the frozen repository after the yearly TeX Live release
+
 ## [v3.1.2] - 2026-11-16
 
 Changes merged since v3.1.1, each after the full test suite and the template
