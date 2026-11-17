@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { parse, str } from '../args.js';
-import { loadConfig, requireMain } from '../config.js';
-import { type Io, UsageError } from '../io.js';
+import { loadConfig, locateProject, requireMain } from '../config.js';
+import { type Io, noteProject, UsageError } from '../io.js';
 import { insideRoot, insideRootForWrite, safeRelPath } from '../safety.js';
 import {
   dockerAvailable,
@@ -21,13 +21,14 @@ supervisor or co-author can review changes. Prints the path of the PDF.
 
 Options:
   --base ref      Revision to compare with (default: merge-base with origin/main;
-                  HEAD~1 when that is HEAD itself or there is no origin/main)
+                  HEAD~1 when that is HEAD itself or there is no origin/main; HEAD
+                  when there is only one commit and uncommitted changes)
   --main file     Main .tex file (default from overfull.yml, else detected)
   --out file      Output PDF (default overfull-diff.pdf)
   --engine e      auto (default), local or docker
   --json          Print {pdf, base, sha, complete} (or {error}) as JSON. complete is
                   false when the diff document had LaTeX errors (the PDF may be
-                  incomplete); --json then exits 1
+                  incomplete); diff then exits 1, with or without --json
   --config file   Config file (default overfull.yml)
   -h, --help      Show this help
 `;
@@ -42,7 +43,8 @@ async function git(args: string[], cwd: string): Promise<string | undefined> {
 
 /**
  * The revision to compare with: the merge-base with origin/main, unless that is
- * HEAD itself (on main, or nothing new on the branch), then HEAD~1.
+ * HEAD itself (on main, or nothing new on the branch), then HEAD~1. In a fresh
+ * repository (one commit) with uncommitted changes: HEAD.
  */
 export async function defaultBase(
   cwd: string,
@@ -51,7 +53,15 @@ export async function defaultBase(
   const head = await git(['rev-parse', 'HEAD'], cwd);
   if (mb && mb !== head) return { ref: mb };
   const prev = await git(['rev-parse', '--verify', '--quiet', 'HEAD~1'], cwd);
-  if (!prev) return undefined;
+  if (!prev) {
+    // One commit: the uncommitted changes are the only thing to compare.
+    const dirty = head ? await git(['status', '--porcelain', '--untracked-files=no'], cwd) : '';
+    if (!head || !dirty) return undefined;
+    return {
+      ref: head,
+      note: 'This repository has one commit; comparing your uncommitted changes with HEAD.',
+    };
+  }
   return {
     ref: prev,
     ...(mb ? { note: 'HEAD is already on origin/main; comparing with HEAD~1 instead.' } : {}),
@@ -78,9 +88,16 @@ export async function diffCommand(args: string[], io: Io): Promise<number> {
     io.stdout(diffHelp);
     return 0;
   }
-  const config = loadConfig(io.cwd, str(values.config), io.env);
-  if (!str(values.main)) requireMain(config);
-  const main = safeRelPath(str(values.main) ?? config.main);
+  const engineArg = str(values.engine);
+  if (engineArg !== undefined && !['auto', 'local', 'docker'].includes(engineArg))
+    throw new UsageError(`--engine must be auto, local or docker, got "${engineArg}"`);
+  // Run from a subfolder, the project is the folder of the nearest overfull.yml above.
+  const location = locateProject(io.cwd, str(values.config));
+  noteProject(io, location);
+  const config = loadConfig(location.root, str(values.config), io.env);
+  const mainArg = str(values.main);
+  if (!mainArg) requireMain(config);
+  const main = safeRelPath(mainArg ? location.rebase(mainArg) : config.main);
   insideRoot(config.root, main, 'Main file');
   if (!existsSync(join(config.root, main))) throw new UsageError(`${main} not found. Pass --main.`);
   const top = await git(['rev-parse', '--show-toplevel'], config.root);
@@ -90,14 +107,22 @@ export async function diffCommand(args: string[], io: Io): Promise<number> {
   if (explicitBase?.startsWith('-')) throw new UsageError(`Invalid revision "${explicitBase}".`);
   const auto = explicitBase ? undefined : await defaultBase(config.root);
   const baseRef = explicitBase ?? auto?.ref;
-  if (!baseRef) throw new UsageError('No earlier revision to compare with. Pass --base <ref>.');
+  if (!baseRef) {
+    const head = await git(['rev-parse', '--verify', '--quiet', 'HEAD'], config.root);
+    throw new UsageError(
+      head
+        ? 'No earlier revision to compare with: this repository has one commit and no uncommitted changes. ' +
+            'Change the document and run `overfull diff --base HEAD` to see the changes, or pass `--base <ref>`.'
+        : 'No commit to compare with yet. Commit the document, change it, then run `overfull diff --base HEAD`.',
+    );
+  }
   if (auto?.note) io.stderr(`${auto.note}\n`);
   const sha = await git(['rev-parse', '--short', `${baseRef}^{commit}`], config.root);
   if (!sha)
     throw new UsageError(`Unknown revision "${baseRef}". Try \`git log --oneline\` to pick one.`);
 
   const engine = await resolveEngine(
-    (str(values.engine) as 'auto' | 'local' | 'docker' | undefined) ?? config.build.engine,
+    (engineArg as 'auto' | 'local' | 'docker' | undefined) ?? config.build.engine,
     io.env,
   );
   const localDiff = engine === 'local' && Boolean(which('latexdiff-vc', io.env));
@@ -126,7 +151,8 @@ export async function diffCommand(args: string[], io: Io): Promise<number> {
 
   const stem = basename(main).replace(/\.tex$/i, '');
   const diffTex = join(dirname(main), `${stem}-diff${sha}.tex`).split('\\').join('/');
-  const outPdf = str(values.out) ?? 'overfull-diff.pdf';
+  const outArg = str(values.out);
+  const outPdf = outArg ? location.rebase(outArg) : 'overfull-diff.pdf';
   const outAbs = insideRootForWrite(config.root, outPdf, 'Output PDF');
   const jobname = 'overfull-diff';
   const diffDir = DIFF_DIR.split('\\').join('/');
@@ -188,8 +214,8 @@ export async function diffCommand(args: string[], io: Io): Promise<number> {
             ? `${JSON.stringify({ pdf: shown, base: baseRef, sha, complete: lmk.code === 0 }, null, 2)}\n`
             : `${shown}\n`,
         );
-        // For scripts and agents, an incomplete PDF is not a success.
-        return values.json && lmk.code !== 0 ? 1 : 0;
+        // An incomplete PDF is not a success, with or without --json.
+        return lmk.code !== 0 ? 1 : 0;
       }
       lastError = `latexmk failed on ${diffTex} (see ${diffDir}/${jobname}.log)`;
       if (extra.length < 2)
