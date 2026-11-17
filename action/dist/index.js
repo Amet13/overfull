@@ -3130,7 +3130,7 @@ var init_tex2 = __esm({
 // ../packages/core/src/log/bibliography.ts
 function bblEntries(text2) {
   const out = [];
-  const re = /\\(?:bibitem\s*(?:\[[^\]]{0,2000}\]\s*)?\{([^}]{1,1000})\}|entry\s*\{([^}]{1,1000})\})/g;
+  const re = /\\(?:bibitem\s*(?:\[[^[\]]{0,2000}\]\s*)?\{([^{}\\]{1,1000})\}|entry\s*\{([^{}\\]{1,1000})\})/g;
   let pos = 0;
   let line = 1;
   for (let m = re.exec(text2); m; m = re.exec(text2)) {
