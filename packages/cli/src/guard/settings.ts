@@ -79,8 +79,11 @@ export function mergeHookSettings(
 
 const PRE_COMMIT_SCRIPT = `#!/bin/sh
 # Installed by \`overfull init --here --hooks\`: blocks hand-written .bib entries.
-# Does nothing when overfull is not installed.
-command -v overfull >/dev/null 2>&1 || exit 0
+# Without overfull on PATH it only prints a notice and lets the commit through.
+if ! command -v overfull >/dev/null 2>&1; then
+  echo "overfull guard: overfull is not on PATH, so .bib entries were not checked." >&2
+  exit 0
+fi
 exec overfull guard --staged
 `;
 

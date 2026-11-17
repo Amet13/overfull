@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v overfull >/dev/null 2>&1 && overfull guard --hook codex || exit 0",
+            "command": "if command -v overfull >/dev/null 2>&1; then overfull guard --hook codex; elif [ -f overfull.yml ] && grep -qi '\\.bib'; then echo '{\"systemMessage\":\"overfull is not on PATH, so the .bib guard did not run. Add references with `make cite ARGS=...` (Docker) or install overfull.\"}'; fi",
             "timeout": 5,
             "statusMessage": "Checking for hand-written .bib edits"
           }

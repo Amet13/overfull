@@ -182,7 +182,10 @@ describe('init --here --hooks and --agents', () => {
     expect(await adoptCommand(['--hooks'], memIo(dir))).toBe(0);
     const fd = openSync(join(dir, '.git/hooks/pre-commit'), 'r');
     try {
-      expect(readFileSync(fd, 'utf8')).toContain('overfull guard --staged');
+      const script = readFileSync(fd, 'utf8');
+      expect(script).toContain('overfull guard --staged');
+      // Without overfull on PATH it says so instead of passing silently.
+      expect(script).toContain('overfull is not on PATH');
       // Windows has no execute bits; git for Windows runs hooks regardless.
       if (process.platform !== 'win32') expect(fstatSync(fd).mode & 0o111).not.toBe(0);
     } finally {

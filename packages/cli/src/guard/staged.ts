@@ -19,6 +19,7 @@ import {
   type RefsOptions,
   verifyEntries,
 } from '@overfull/core';
+import { canonicalEntry } from './entries.js';
 
 export type GuardVia = 'provenance' | 'author-provided' | 'skip' | 'verified';
 
@@ -111,15 +112,6 @@ async function stagedBibChanges(cwd: string): Promise<Change[]> {
   return changes;
 }
 
-/** Entry text with whitespace and field order removed, so only real changes differ. */
-function canonical(e: BibEntry): string {
-  const ws = (s: string) => s.replace(/\s+/g, ' ').trim();
-  const fields = Object.entries(e.fields)
-    .map(([k, v]) => `${k}=${ws(v)}`)
-    .sort();
-  return `${e.type.toLowerCase()}\u0000${e.key}\u0000${fields.join('\u0001')}`;
-}
-
 function citeCommandFor(entry: BibEntry, result: RefResult): string {
   // The title is untrusted text that may be pasted into a shell: no `$`, backtick or backslash.
   const title = entry.fields.title?.replace(/[`$\\!]/g, ' ');
@@ -149,13 +141,13 @@ export async function guardStaged(opts: StagedOptions): Promise<StagedReport> {
   const known = new Set<string>();
   for (const c of changes) {
     if (!c.oldPath) continue;
-    for (const e of parseBib(await blob(root, `HEAD:${c.oldPath}`))) known.add(canonical(e));
+    for (const e of parseBib(await blob(root, `HEAD:${c.oldPath}`))) known.add(canonicalEntry(e));
   }
 
   const pending: { entry: BibEntry; file: string }[] = [];
   for (const c of changes) {
     for (const e of parseBib(await blob(root, `:${c.path}`))) {
-      if (known.has(canonical(e))) continue;
+      if (known.has(canonicalEntry(e))) continue;
       const entry = { ...e, file: c.path };
       const f = entry.fields;
       const note = `${f.note ?? ''} ${f.annote ?? ''}`;

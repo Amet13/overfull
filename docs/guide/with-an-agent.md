@@ -131,9 +131,15 @@ Rules in `AGENTS.md` are requests. The guard enforces the one that matters most:
 no hand-written bibliography entries. It works at two points.
 
 **In the agent.** `overfull guard --hook` answers an agent's pre-tool-use hook.
-When the agent's file tools try to write or edit a `.bib` file, the hook denies
-the call and tells the agent to use `overfull cite`. Reading a `.bib` file, and
-every other tool and file, is allowed. The template ships the hook settings for
+When the agent's file tools try to add or change an entry in a `.bib` file, the
+hook denies the call and tells the agent to use `overfull cite`. An edit that only
+removes whole entries is allowed (the agent may delete an entry you asked it to
+remove): the hook works out the new file from the file on disk and the edit, and
+every entry in it must be an unchanged entry of the old file. Reading a `.bib`
+file, and every other tool and file, is allowed. The hook acts only in an Overfull
+project: when no `overfull.yml` is found in the file's folder or a folder above it
+(up to the Git root), it allows the call, so the Claude Code plugin does not get in
+the way of other projects. The template ships the hook settings for
 three agents; the formats were read from their documentation on 2026-11-10.
 
 | Agent | Settings file | Event and tools | Documentation |
@@ -151,11 +157,14 @@ cannot block it, so there is no hook for Cursor yet. It still gets the rules in
 
 `overfull init --here --agents` writes these files. If one already exists, the
 Overfull hook is added and your other settings are kept; a file that is not
-valid JSON is left alone. The hook command does nothing when `overfull` is not
-on `PATH`, because the guard is a small command that is not run through Docker:
+valid JSON is left alone. The guard is a small command that is not run through
+Docker. When `overfull` is not on `PATH`, the hook command cannot check anything:
+for a `.bib` write in a folder with `overfull.yml` it shows a one-line notice
+(`systemMessage`, which all three agents display) and lets the call through:
 
 ```sh
-command -v overfull >/dev/null 2>&1 && overfull guard --hook claude || exit 0
+if command -v overfull >/dev/null 2>&1; then overfull guard --hook claude;
+elif [ -f overfull.yml ] && grep -qi '\.bib'; then echo '{"systemMessage":"overfull is not on PATH, ..."}'; fi
 ```
 
 It uses a POSIX shell, so on Windows it needs Git Bash or WSL. An unreadable or
@@ -183,9 +192,11 @@ Moved entries, removed entries and whitespace or order changes pass. Use
 `--offline` to skip the lookup. Install it in one of three ways:
 
 - `overfull init --here --hooks` writes `.git/hooks/pre-commit` if there is none.
-  If one exists it is not changed and the line to add is printed.
-- With the [pre-commit](https://pre-commit.com) framework, add to
-  `.pre-commit-config.yaml`:
+  If one exists it is not changed and the line to add is printed. Without
+  `overfull` on `PATH` that hook prints a notice and lets the commit through.
+- With the [pre-commit](https://pre-commit.com) framework: the templates ship a
+  `.pre-commit-config.yaml` with a local hook, so `pre-commit install` is enough.
+  In another project add to `.pre-commit-config.yaml`:
 
   ```yaml
   repos:
