@@ -19,8 +19,8 @@
  */
 
 import { cacheMaxAge, isFresh } from './cache.js';
-import { getJson, type HttpClient } from './http.js';
-import type { Ctx } from './search.js';
+import { getJson, type HttpClient, isObject, listIn, readAnswer, unexpectedData } from './http.js';
+import { type Ctx, failureReason } from './search.js';
 import type { RefResult, RetractionNotice } from './types.js';
 
 interface UpdateEntry {
@@ -78,17 +78,46 @@ interface Stored {
   cachedAt?: number;
 }
 
+export interface RetractionCheck {
+  /** Retracted or withdrawn works among the DOIs asked about, by lowercase DOI. */
+  found: Map<string, RetractionNotice>;
+  /** DOIs CrossRef could not be asked about (a request failed). */
+  unchecked: string[];
+  /** Why some DOIs were not checked: the last request error. */
+  incomplete?: string;
+}
+
+/** The notices in one CrossRef answer, by DOI. Throws "unexpected data" for another shape. */
+function noticesIn(data: unknown): Map<string, RetractionNotice> {
+  const host = 'api.crossref.org';
+  return readAnswer(host, () => {
+    // Without a work list nothing is known: no "clean" answer may be stored.
+    const message = isObject(data) ? data.message : undefined;
+    if (!isObject(message)) throw unexpectedData(host);
+    const byDoi = new Map<string, RetractionNotice>();
+    for (const item of listIn(host, message.items)) {
+      const notice = retractionOf(item as WorkUpdates);
+      if (notice) byDoi.set(notice.doi, notice);
+    }
+    return byDoi;
+  });
+}
+
 /**
  * Asks CrossRef which of these DOIs are retracted or withdrawn. Answers are cached for one
- * day (a retraction can appear any time, so a clean answer is not kept for 30 days).
+ * day (a retraction can appear any time, so a clean answer is not kept for 30 days). Each
+ * request of 40 DOIs stands alone: when one fails, the others still count, and the DOIs it
+ * covered are listed as unchecked.
  */
 export async function findRetractions(
   client: HttpClient,
   ctx: Pick<Ctx, 'opts'>,
   dois: string[],
-): Promise<Map<string, RetractionNotice>> {
+): Promise<RetractionCheck> {
   const { cache } = ctx.opts;
   const found = new Map<string, RetractionNotice>();
+  const unchecked: string[] = [];
+  let incomplete: string | undefined;
   const maxAge = { ...cacheMaxAge(ctx.opts.cacheMaxAgeDays) };
   maxAge.negative = Math.min(maxAge.negative, 1);
   maxAge.positive = Math.min(maxAge.positive, 1);
@@ -104,17 +133,15 @@ export async function findRetractions(
   }
   for (let i = 0; i < todo.length; i += BATCH) {
     const chunk = todo.slice(i, i + BATCH);
-    const { data } = await getJson<{ message?: { items?: WorkUpdates[] } }>(
-      client,
-      crossrefUpdatesUrl(chunk, ctx.opts.mailto),
-    );
-    const items = data?.message?.items;
-    // Without a work list nothing is known: no "clean" answer is stored.
-    if (!Array.isArray(items)) continue;
-    const byDoi = new Map<string, RetractionNotice>();
-    for (const item of items) {
-      const notice = retractionOf(item);
-      if (notice) byDoi.set(notice.doi, notice);
+    let byDoi: Map<string, RetractionNotice>;
+    try {
+      const { data } = await getJson<unknown>(client, crossrefUpdatesUrl(chunk, ctx.opts.mailto));
+      byDoi = noticesIn(data);
+    } catch (err) {
+      if (ctx.opts.signal?.aborted) throw err;
+      unchecked.push(...chunk);
+      incomplete = failureReason(err);
+      continue;
     }
     for (const doi of chunk) {
       const notice = byDoi.get(doi);
@@ -126,12 +153,13 @@ export async function findRetractions(
         });
     }
   }
-  return found;
+  return { found, unchecked, ...(incomplete ? { incomplete } : {}) };
 }
 
 /**
  * Adds `retraction` to results whose matched work CrossRef records as retracted or
- * withdrawn. Best effort: when CrossRef cannot answer, results stay as they are.
+ * withdrawn. Best effort: when CrossRef cannot answer for some works, what it did answer is
+ * kept, and the others get `retractionUnchecked` (reported once, as a note).
  */
 export async function attachRetractions(ctx: Ctx, results: RefResult[]): Promise<void> {
   if (!ctx.opts.checkRetractions) return;
@@ -143,18 +171,26 @@ export async function attachRetractions(ctx: Ctx, results: RefResult[]): Promise
       if (!doi.startsWith('10.48550/')) candidates.push({ r, doi });
   }
   if (!candidates.length) return;
+  let check: RetractionCheck;
   try {
-    const found = await findRetractions(
+    check = await findRetractions(
       ctx.client,
       ctx,
       candidates.map((c) => c.doi),
     );
-    for (const { r, doi } of candidates) {
-      const notice = found.get(doi);
-      if (notice) r.retraction = notice;
-    }
   } catch (err) {
     if (ctx.opts.signal?.aborted) throw err;
-    // A retraction check that cannot run says nothing about the references.
+    // Not a request failure (those are caught per request): say so, change nothing else.
+    check = {
+      found: new Map(),
+      unchecked: candidates.map((c) => c.doi),
+      incomplete: failureReason(err),
+    };
+  }
+  const unchecked = new Set(check.unchecked);
+  for (const { r, doi } of candidates) {
+    const notice = check.found.get(doi);
+    if (notice) r.retraction = notice;
+    else if (unchecked.has(doi)) r.retractionUnchecked = check.incomplete ?? 'request failed';
   }
 }

@@ -16,6 +16,7 @@ async function run(file: string): Promise<{ results: RefResult[]; misses: string
   const results = await verifyEntries(parseBib(readFixture(file)), {
     fetch: f.fetch,
     arxivIntervalMs: 0,
+    crossrefIntervalMs: 0,
     retryDelayMs: 0,
   });
   return { results, misses: f.misses };

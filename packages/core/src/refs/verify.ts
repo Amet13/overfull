@@ -1,6 +1,6 @@
 import type { BibEntry } from '../bib/parse.js';
 import { arxivCacheKey, doiCacheKey, titleCacheKey } from './cache.js';
-import { isAuthorProvided, provenanceOf } from './entry.js';
+import { isAuthorProvided, PROVENANCE_FIELD, provenanceCanonical, provenanceOf } from './entry.js';
 import { HttpClient } from './http.js';
 import {
   type EntryKind,
@@ -17,7 +17,7 @@ import {
   bibFacts,
   STRONG_TITLE,
 } from './match.js';
-import { stripTags } from './normalize.js';
+import { asciiNormalizeTitle, normalizeTitle, stripTags } from './normalize.js';
 import { attachRetractions } from './retraction.js';
 import {
   aclByIdCached,
@@ -25,12 +25,14 @@ import {
   type Ctx,
   europepmcByIdCached,
   failureReason,
+  openalexByDoiCached,
   prefetchArxiv,
   resolveDoiCached,
   type SourceFailure,
   sourceAllowed,
   titleSearch,
 } from './search.js';
+import { sha256Hex } from './sha256.js';
 import type { MatchedRecord, RefResult, RefSource, RefsOptions, WorkRecord } from './types.js';
 
 const SOURCE_NAMES: Record<RefSource, string> = {
@@ -84,6 +86,8 @@ interface Evidence {
   failures: SourceFailure[];
   doiMissing: boolean;
   arxivMissing: boolean;
+  /** doi.org could not answer for the entry's DOI, and no other index confirmed it. */
+  doiUnchecked: boolean;
   queries: string[];
 }
 
@@ -128,7 +132,36 @@ async function checkDoi(
     if (res.kind !== 'found') return null;
     return assessIdentified(facts, res.record, ev, 'doi', doi, 'resolves to');
   } catch (err) {
-    return sourceFailed(ctx, ev, 'doi.org', err);
+    sourceFailed(ctx, ev, 'doi.org', err);
+  }
+  // doi.org could not answer: OpenAlex knows most DOIs, and a lookup by DOI is a single
+  // record (no search budget). A DOI OpenAlex does not know proves nothing either way.
+  const viaOpenalex = await checkOpenalexDoi(ctx, doi, facts, ev, 'doi', doi);
+  if (!viaOpenalex) ev.doiUnchecked = true;
+  return viaOpenalex;
+}
+
+/**
+ * The OpenAlex record for a DOI (the entry's own, or arXiv's `10.48550/arXiv.<id>`), as
+ * a fallback when doi.org or arXiv cannot answer or may not be asked. Null when OpenAlex
+ * may not be asked, does not know the DOI, or fails.
+ */
+async function checkOpenalexDoi(
+  ctx: Ctx,
+  doi: string,
+  facts: BibFacts,
+  ev: Evidence,
+  field: 'doi' | 'eprint',
+  id: string,
+): Promise<Assessment | null> {
+  if (!sourceAllowed(ctx.opts, 'openalex')) return null;
+  try {
+    const record = await openalexByDoiCached(ctx, doi);
+    if (!record) return null;
+    ev.searched.add('openalex');
+    return assessIdentified(facts, record, ev, field, id, field === 'doi' ? 'resolves to' : 'is');
+  } catch (err) {
+    return sourceFailed(ctx, ev, 'openalex', err);
   }
 }
 
@@ -178,8 +211,14 @@ async function checkArxiv(
     }
     return assessIdentified(facts, record, ev, 'eprint', id, 'is');
   } catch (err) {
-    return sourceFailed(ctx, ev, 'arxiv', err);
+    sourceFailed(ctx, ev, 'arxiv', err);
+    return checkOpenalexDoi(ctx, arxivDoi(id), facts, ev, 'eprint', id);
   }
+}
+
+/** The DOI arXiv registers for a paper: `10.48550/arXiv.<id>`. */
+function arxivDoi(id: string): string {
+  return `10.48550/arxiv.${id.toLowerCase()}`;
 }
 
 /**
@@ -337,7 +376,9 @@ function noMatch(
   const skippedNote = skipped.length
     ? `(${sourcesText(skipped).replace(/ or /, ' and ')} ${skipped.length === 1 ? 'was' : 'were'} not searched)`
     : '';
-  const titleNote = entry.fields.title ? ' and no record has a similar title' : '';
+  const titleNote = ev.queries.some((q) => q.startsWith('title:'))
+    ? ' and no record has a similar title'
+    : '';
   if (ev.arxivMissing) {
     return {
       ...withSearched,
@@ -432,8 +473,12 @@ async function verifyEntry(entry: BibEntry, ctx: Ctx, ignore: Set<string>): Prom
   const kind = entryKind(entry, ids);
   if (kind === 'not-indexed') return { ...base, reason: notIndexedReason(entry) };
   const facts = bibFacts(entry);
-  if (!facts.title && !ids.doi && !ids.arxivId)
-    return { ...base, reason: 'no title, DOI or arXiv id to look up' };
+  if (!facts.title && !ids.doi && !ids.arxivId) {
+    const reason = facts.hasTitleField
+      ? 'the title has no letters or digits to look up, and there is no DOI or arXiv id'
+      : 'no title, DOI or arXiv id to look up';
+    return { ...base, reason };
+  }
 
   const ev: Evidence = {
     assessments: [],
@@ -441,6 +486,7 @@ async function verifyEntry(entry: BibEntry, ctx: Ctx, ignore: Set<string>): Prom
     failures: [],
     doiMissing: false,
     arxivMissing: false,
+    doiUnchecked: false,
     queries: [],
   };
   // The entry's own identifiers are authoritative: their verdict is final.
@@ -448,17 +494,95 @@ async function verifyEntry(entry: BibEntry, ctx: Ctx, ignore: Set<string>): Prom
     (ids.doi && sourceAllowed(ctx.opts, 'doi.org')
       ? await checkDoi(ctx, ids.doi, facts, ev)
       : null) ??
-    (ids.arxivId && sourceAllowed(ctx.opts, 'arxiv')
-      ? await checkArxiv(ctx, ids.arxivId, facts, ev)
+    (ids.arxivId
+      ? sourceAllowed(ctx.opts, 'arxiv')
+        ? await checkArxiv(ctx, ids.arxivId, facts, ev)
+        : // arXiv may not be asked (the browser check): OpenAlex knows arXiv's DOIs.
+          await checkOpenalexDoi(ctx, arxivDoi(ids.arxivId), facts, ev, 'eprint', ids.arxivId)
       : null) ??
     (await checkOtherIds(ctx, ids, facts, ev));
   const withQuery = (r: RefResult): RefResult => ({ ...r, query: ev.queries[0] ?? '' });
-  if (viaId) return withQuery(withBrokenIds(fromAssessment(base, viaId, ev), ids, ev));
+  const found = (a: Assessment) =>
+    withQuery(withBrokenIds(withUncheckedDoi(fromAssessment(base, a, ev), a, ids, ev), ids, ev));
+  if (viaId) return found(viaId);
 
   await searchByTitle(ctx, facts, kind, ev);
-  const best = bestAssessment(ev.assessments);
-  if (best) return withQuery(withBrokenIds(fromAssessment(base, best, ev), ids, ev));
+  const best = ev.doiUnchecked
+    ? bestForDoi(ev.assessments, ids.doi)
+    : bestAssessment(ev.assessments);
+  if (best) return found(best);
   return withQuery(noMatch(ctx, base, entry, kind, ids, ev));
+}
+
+/** Best assessment, preferring a record that carries the entry's own DOI. */
+function bestForDoi(list: Assessment[], doi: string | undefined): Assessment | undefined {
+  const sameDoi = list.filter((a) => doi && a.record.doi?.toLowerCase() === doi);
+  return bestAssessment(sameDoi) ?? bestAssessment(list);
+}
+
+/**
+ * doi.org could not answer, so the entry's DOI was not checked, and the work was found
+ * another way (arXiv id, title search). The record found settles the DOI only when it
+ * carries one: the same DOI confirms it, another DOI is a mismatch. A record without a
+ * DOI leaves it unchecked, so the entry cannot be `verified`: a made-up DOI on a real
+ * title would pass otherwise.
+ */
+function withUncheckedDoi(
+  result: RefResult,
+  a: Assessment,
+  ids: Identifiers,
+  ev: Evidence,
+): RefResult {
+  if (!ev.doiUnchecked || !ids.doi) return result;
+  const recordDoi = a.record.doi?.toLowerCase();
+  if (recordDoi === ids.doi) return result;
+  const failures = lastFailures(ev.failures);
+  if (recordDoi) {
+    const { reason: _reason, ...rest } = result;
+    return {
+      ...rest,
+      status: 'mismatch',
+      differences: [
+        { field: 'doi', bib: ids.doi, record: recordDoi },
+        ...(result.differences ?? []).filter((d) => d.field !== 'doi'),
+      ],
+      reason: `doi.org could not be reached, and the record found for this entry has DOI ${recordDoi}, not ${ids.doi}`,
+    };
+  }
+  if (result.status !== 'verified') return result;
+  const { reason: _reason, ...rest } = result;
+  return {
+    ...rest,
+    status: 'error',
+    failed: [...new Set(ev.failures.map((f) => f.source))],
+    failures,
+    reason: `a matching record exists, but the DOI ${ids.doi} could not be checked: ${failuresText(failures)}`,
+  };
+}
+
+/**
+ * `verifyEntry`, with any unexpected exception (a bug, odd data from an index) turned into
+ * an `error` result for that entry alone: one entry must never stop the whole run.
+ * Aborting the run still rejects.
+ */
+async function verifyEntrySafely(
+  entry: BibEntry,
+  ctx: Ctx,
+  ignore: Set<string>,
+): Promise<RefResult> {
+  try {
+    return await verifyEntry(entry, ctx, ignore);
+  } catch (err) {
+    if (ctx.opts.signal?.aborted) throw err;
+    const result: RefResult = {
+      key: entry.key,
+      status: 'error',
+      reason: `lookup incomplete: ${failureReason(err)}`,
+    };
+    if (entry.line)
+      result.location = { line: entry.line, ...(entry.file ? { file: entry.file } : {}) };
+    return result;
+  }
 }
 
 async function runPool<T, R>(
@@ -511,7 +635,7 @@ export async function verifyEntries(
   );
   let done = 0;
   const results = await runPool(entries, opts.concurrency ?? 4, async (e) => {
-    const result = await verifyEntry(e, ctx, ignore);
+    const result = await verifyEntrySafely(e, ctx, ignore);
     opts.onProgress?.(++done, entries.length);
     return opts.requireProvenance && isUnproven(e, result) ? { ...result, unproven: true } : result;
   });
@@ -538,5 +662,26 @@ export function isUnproven(entry: BibEntry, result: RefResult): boolean {
 export function hasValidProvenance(entry: BibEntry): boolean {
   const f = entry.fields;
   const ids = identifiersOf(entry);
-  return Boolean(provenanceOf(entry) && (ids.doi || ids.arxivId || f.doi || f.eprint || f.url));
+  const marked = provenanceOf(entry) !== undefined || hasLegacyProvenance(entry);
+  return Boolean(marked && (ids.doi || ids.arxivId || f.doi || f.eprint || f.url));
+}
+
+const SEP = '\u001f';
+
+/**
+ * A marker written before titles kept letters outside ASCII: its hash covers the title
+ * normalized to ASCII letters and digits only. Only titles where the two forms differ
+ * need this; for the others the current hash is the same.
+ */
+function hasLegacyProvenance(entry: BibEntry): boolean {
+  const title = entry.fields.title ?? '';
+  const legacy = asciiNormalizeTitle(title);
+  if (legacy === normalizeTitle(title, true)) return false;
+  const value = entry.fields[PROVENANCE_FIELD]?.replace(/\s+/g, ' ').trim();
+  const m = value ? /^cite\s+\S+\s+\d{4}-\d{2}-\d{2}\s+([0-9a-f]{12})$/i.exec(value) : null;
+  if (!m) return false;
+  const parts = provenanceCanonical(entry).split(SEP);
+  if (parts.length !== 7) return false;
+  parts[2] = legacy;
+  return sha256Hex(parts.join(SEP)).slice(0, 12) === (m[1] as string).toLowerCase();
 }

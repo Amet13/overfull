@@ -191,7 +191,7 @@ const results = await verifyEntries(
       : {}),
     concurrency: 1,
     timeoutMs: Number(values['timeout-ms']),
-    ...(values.replay ? { arxivIntervalMs: 0, retryDelayMs: 0 } : {}),
+    ...(values.replay ? { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 } : {}),
     onProgress: (done, total) => {
       const now = Date.now();
       seconds.push((now - last) / 1000);

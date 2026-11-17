@@ -43,6 +43,7 @@ describe('OpenReview links', () => {
     const [withLink, without] = await verifyEntries(entries, {
       fetch: f.fetch,
       arxivIntervalMs: 0,
+      crossrefIntervalMs: 0,
       retryDelayMs: 0,
     });
     expect(withLink?.status).toBe('unverifiable');

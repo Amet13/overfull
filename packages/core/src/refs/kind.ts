@@ -76,15 +76,40 @@ export function parseOpenReviewId(value: string): string | null {
   return id && /^[A-Za-z0-9_-]{5,40}$/.test(id) ? id : null;
 }
 
+/**
+ * An identifier field as BibTeX needs it written, read back: `\_`, `\%`, `\#` and `\&`
+ * become the plain character and braces go (`10.1007/978-3-030-58452-8\_13`,
+ * `{10.1000/ABC}`). BibTeX copies a `doi` field into the output as TeX, so such escapes
+ * are common, but they are not part of the DOI.
+ */
+export function unescapeTexId(value: string): string {
+  return value.replace(/\\([_%#&])/g, '$1').replace(/[{}]/g, '');
+}
+
 /** `\url{x}` → `x`; any other value as it is. Plain string tests, no pattern scan, bounded. */
 function unwrapUrl(value: string): string {
   const v = value.trim().slice(0, 600);
   return v.startsWith('\\url{') && v.endsWith('}') ? v.slice(5, -1).trim() : v;
 }
 
+/** The entry's fields, with TeX escapes taken out of the identifier fields. */
+function idFields(entry: BibEntry): BibEntry['fields'] {
+  const f = { ...entry.fields };
+  for (const name of ['doi', 'eprint', 'pmid', 'pmcid'] as const) {
+    const v = f[name];
+    if (v !== undefined) f[name] = unescapeTexId(v);
+  }
+  // A doi.org link in `url` or `howpublished` may carry the same escapes (`\url` keeps them).
+  for (const name of ['url', 'howpublished'] as const) {
+    const v = f[name];
+    if (v?.includes('\\')) f[name] = v.replace(/\\([_%#&])/g, '$1');
+  }
+  return f;
+}
+
 /** ACL, PubMed and PubMed Central ids named by an entry's fields. */
 function otherIdentifiers(entry: BibEntry, doi: string | null): Identifiers {
-  const f = entry.fields;
+  const f = idFields(entry);
   const ids: Identifiers = {};
   const archive = (f.eprinttype ?? f.archiveprefix ?? '').toLowerCase();
   const acl = [f.url, f.howpublished, doi ?? undefined]
@@ -108,7 +133,7 @@ function otherIdentifiers(entry: BibEntry, doi: string | null): Identifiers {
 
 /** DOI and arXiv id from doi/eprint/archiveprefix/journal/url/howpublished/note fields. */
 export function identifiersOf(entry: BibEntry): Identifiers {
-  const f = entry.fields;
+  const f = idFields(entry);
   const ids: Identifiers = {};
   // A DOI written as a doi.org link in `url` or `howpublished` is the entry's DOI too.
   const doi =

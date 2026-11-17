@@ -76,6 +76,11 @@ export interface RefResult {
    * withdrawn (rule `reference-retracted`). Set only for a work matched by DOI.
    */
   retraction?: RetractionNotice;
+  /**
+   * The retraction check could not ask CrossRef about this entry's work (the request
+   * failed): why. Reported once for the run, as `reference-retraction-unchecked` (info).
+   */
+  retractionUnchecked?: string;
   location?: Location;
 }
 
@@ -144,6 +149,12 @@ export interface RefsOptions {
   signal?: AbortSignal;
   /** Minimum spacing between arXiv API requests in ms (default 3000, as arXiv asks). */
   arxivIntervalMs?: number;
+  /**
+   * Minimum spacing between CrossRef API requests in ms. Default 1100 (one request at a
+   * time) without `mailto`, 350 (three at a time) with it, below CrossRef's public and
+   * polite-pool limits. Tests set 0.
+   */
+  crossrefIntervalMs?: number;
   /** Base delay before the single retry on 429/5xx when no Retry-After is given (default 1000). */
   retryDelayMs?: number;
   /** Disambiguates title lookups: an author surname and/or publication year. */

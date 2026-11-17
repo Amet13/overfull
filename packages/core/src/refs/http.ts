@@ -1,6 +1,7 @@
 /**
  * Polite HTTP: first-byte (4 s) and total (10 s) timeouts, one retry on 429/5xx
- * honoring Retry-After, per-host minimum spacing, and a per-host circuit breaker:
+ * honoring Retry-After, per-host minimum spacing and request limits (arXiv, CrossRef,
+ * Semantic Scholar with a key), and a per-host circuit breaker:
  * after 2 consecutive timeouts, network errors or 5xx answers the host is skipped
  * for the rest of the run. Until a host has answered once (and while it is failing)
  * only one request to it is in flight, so concurrent entries do not all wait out
@@ -30,6 +31,15 @@ const MAX_RETRY_AFTER_MS = 30_000;
 const BREAKER_THRESHOLD = 2;
 /** Time allowed until response headers arrive. */
 const FIRST_BYTE_TIMEOUT_MS = 4000;
+const CROSSREF = 'api.crossref.org';
+
+/**
+ * CrossRef's limits (its REST API documentation, "Etiquette"): the public pool allows about
+ * one request per second, one at a time; the polite pool (a `mailto` contact) about three
+ * per second and three at a time. The spacing keeps a little below each.
+ */
+const CROSSREF_PUBLIC = { intervalMs: 1100, concurrent: 1 };
+const CROSSREF_POLITE = { intervalMs: 350, concurrent: 3 };
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (ms <= 0) return Promise.resolve();
@@ -61,6 +71,10 @@ export class HttpClient {
   private readonly retryDelayMs: number;
   private readonly signal: AbortSignal | undefined;
   private readonly intervals: Record<string, number>;
+  /** Most requests in flight per host, for hosts that limit it. */
+  private readonly limits: Record<string, number>;
+  private readonly active = new Map<string, number>();
+  private readonly waiting = new Map<string, (() => void)[]>();
   private readonly nextSlot = new Map<string, number>();
   private readonly down = new Map<string, string>();
   private readonly failures = new Map<string, number>();
@@ -80,11 +94,14 @@ export class HttpClient {
     this.firstByteMs = Math.min(FIRST_BYTE_TIMEOUT_MS, this.timeoutMs);
     this.retryDelayMs = opts.retryDelayMs ?? 1000;
     this.signal = opts.signal;
+    const crossref = opts.mailto ? CROSSREF_POLITE : CROSSREF_PUBLIC;
     this.intervals = {
       'export.arxiv.org': opts.arxivIntervalMs ?? 3000,
+      [CROSSREF]: opts.crossrefIntervalMs ?? crossref.intervalMs,
       // Semantic Scholar's key allows 1 request per second; keyless requests share a pool.
       ...(opts.semanticScholarKey ? { 'api.semanticscholar.org': 1100 } : {}),
     };
+    this.limits = { [CROSSREF]: crossref.concurrent };
   }
 
   /** Marks a host as unusable for the rest of this run (e.g. a bot challenge). */
@@ -100,11 +117,32 @@ export class HttpClient {
   async get(url: string, accept: string, headers?: Record<string, string>): Promise<HttpResponse> {
     const host = new URL(url).host;
     const release = await this.acquire(host);
+    let free: (() => void) | undefined;
     try {
+      free = await this.slot(host);
       return await this.getOnce(url, accept, host, headers);
     } finally {
+      free?.();
       release();
     }
+  }
+
+  /** Waits until the host has room for one more request in flight (see `limits`). */
+  private async slot(host: string): Promise<() => void> {
+    const limit = this.limits[host];
+    if (!limit) return () => {};
+    while ((this.active.get(host) ?? 0) >= limit) {
+      await new Promise<void>((resolve) => {
+        const queue = this.waiting.get(host) ?? [];
+        queue.push(resolve);
+        this.waiting.set(host, queue);
+      });
+    }
+    this.active.set(host, (this.active.get(host) ?? 0) + 1);
+    return () => {
+      this.active.set(host, (this.active.get(host) ?? 1) - 1);
+      this.waiting.get(host)?.shift()?.();
+    };
   }
 
   private async getOnce(
@@ -245,11 +283,49 @@ export async function getJson<T>(
   if (res.status < 200 || res.status >= 300) {
     throw new SourceUnavailableError(host, `${host} answered HTTP ${res.status}`);
   }
+  let data: unknown;
   try {
-    return { status: res.status, data: JSON.parse(res.body) as T };
+    data = JSON.parse(res.body);
   } catch {
     const reason = `${host} returned a non-JSON page (HTTP ${res.status}); it may be blocking automated requests`;
     client.markDown(host, reason);
     throw new SourceUnavailableError(host, reason);
+  }
+  // Every source answers with a JSON object; anything else is not an answer.
+  if (!isObject(data)) throw unexpectedData(host);
+  return { status: res.status, data: data as T };
+}
+
+/** A plain JSON object (not null, not an array). */
+export function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** A source answered, but not in the shape its API documents. */
+export function unexpectedData(host: string): SourceUnavailableError {
+  return new SourceUnavailableError(host, `${host} returned unexpected data`);
+}
+
+/**
+ * The list at `value` in a source's answer. Absent is `[]` only where the API leaves an
+ * empty list out (`optional`); anything else that is not an array is unexpected data.
+ */
+export function listIn(host: string, value: unknown, optional = false): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (value === undefined && optional) return [];
+  throw unexpectedData(host);
+}
+
+/**
+ * Reads a parsed answer. A TypeError while reading it (a field of another type than the API
+ * documents, such as a number where a string belongs) becomes "unexpected data" for that
+ * source, never a crash with a JavaScript message.
+ */
+export function readAnswer<T>(host: string, read: () => T): T {
+  try {
+    return read();
+  } catch (err) {
+    if (err instanceof TypeError) throw unexpectedData(host);
+    throw err;
   }
 }

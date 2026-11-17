@@ -7,6 +7,7 @@ import {
   duplicateProblems,
   publishedVersionProblems,
   retractedProblems,
+  retractionUncheckedProblems,
   uncitedProblems,
 } from './extra.js';
 import type { RefResult } from './types.js';
@@ -127,6 +128,15 @@ export const refsRules: RuleInfo[] = [
     summary:
       'CrossRef records a retraction or withdrawal for the work this entry matched (publisher notices and Retraction Watch data). Citing it as sound evidence misleads readers. Needs the lookup to find the work by DOI; entries without a DOI are not checked for this.',
     fix: 'Read the retraction notice. Replace the work with one that stands, or cite it only to say it was retracted, together with the notice.',
+  },
+  {
+    id: 'reference-retraction-unchecked',
+    check: 'references',
+    severity: 'info',
+    title: 'Retraction check incomplete',
+    summary:
+      'CrossRef could not be asked whether some matched works are retracted or withdrawn (a request failed or its answer was unreadable). Works it did answer for were checked; the others were not.',
+    fix: 'Run `overfull check` again later. Answers are kept for one day, so the next run asks only about the works that were missed.',
   },
   {
     id: 'reference-published-version',
@@ -533,6 +543,7 @@ export function refsCheck(results: RefResult[], opts: RefsCheckOptions = {}): Ch
       })
       .map((r) => unprovenProblem(r, byKey.get(r.key))),
     ...retractedProblems(results, byKey),
+    ...retractionUncheckedProblems(results),
     ...publishedVersionProblems(results, byKey),
     ...(opts.entries ? duplicateProblems(opts.entries) : []),
     ...(opts.reportUncited && opts.entries && opts.citedKeys

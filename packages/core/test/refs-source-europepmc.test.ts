@@ -16,7 +16,7 @@ import { readFixture, recordedFetch } from './fixtures/refs/fake-fetch.js';
 
 const opts = () => {
   const f = recordedFetch();
-  return { f, o: { fetch: f.fetch, arxivIntervalMs: 0, retryDelayMs: 0 } };
+  return { f, o: { fetch: f.fetch, arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 } };
 };
 
 describe('PubMed and PubMed Central ids', () => {

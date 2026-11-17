@@ -8,13 +8,14 @@ import {
   titleCacheKey,
 } from './cache.js';
 import { type HttpClient, SourceUnavailableError } from './http.js';
+import { foldName, normalizeTitle } from './normalize.js';
 import { aclById } from './sources/acl.js';
 import { arxivById, arxivByIds, arxivSearch } from './sources/arxiv.js';
 import { crossrefSearch } from './sources/crossref.js';
 import { dblpSearch } from './sources/dblp.js';
 import { type DoiResolution, resolveDoi } from './sources/doi.js';
 import { europepmcByPmcid, europepmcByPmid, europepmcSearch } from './sources/europepmc.js';
-import { openalexSearch } from './sources/openalex.js';
+import { openalexByDoi, openalexSearch } from './sources/openalex.js';
 import { semanticScholarSearch } from './sources/semanticscholar.js';
 import type { RefCache, RefSource, RefsOptions, WorkRecord } from './types.js';
 
@@ -30,16 +31,22 @@ export interface Ctx {
 }
 
 /**
- * Fetches the arXiv records of many entries in one request, for the ids that are not
- * in the cache yet. Best effort: when the batch fails or returns nothing, every id is
- * looked up on its own as before.
+ * Fetches the arXiv records of many entries in one request, for the ids without a usable
+ * cache entry (none, an unreadable one, or one too old). Best effort: when the batch fails
+ * or returns nothing, every id is looked up on its own as before.
  */
 export async function prefetchArxiv(ctx: Ctx, ids: string[]): Promise<void> {
   if (!sourceAllowed(ctx.opts, 'arxiv')) return;
   const wanted: string[] = [];
+  const maxAge = cacheMaxAge(ctx.opts.cacheMaxAgeDays);
   for (const id of new Set(ids)) {
     const hit = ctx.opts.refresh ? undefined : await ctx.opts.cache?.get(arxivCacheKey(id));
-    if (hit === undefined) wanted.push(id);
+    const stored = hit as { record?: unknown; cachedAt?: number } | null | undefined;
+    const usable =
+      stored !== null &&
+      typeof stored === 'object' &&
+      isFresh(stored.cachedAt, !stored.record, maxAge);
+    if (!usable) wanted.push(id);
   }
   if (wanted.length < 2) return;
   try {
@@ -102,6 +109,26 @@ export async function arxivByIdCached(ctx: Ctx, id: string): Promise<WorkRecord 
       record:
         ctx.arxivBatch?.get(id.replace(/v\d+$/, '').toLowerCase()) ??
         (await arxivById(ctx.client, id)),
+    }),
+    {
+      isNegative: (v) => !v.record,
+      maxAge: cacheMaxAge(ctx.opts.cacheMaxAgeDays),
+      refresh: ctx.opts.refresh === true,
+    },
+  );
+  return value.record;
+}
+
+/**
+ * The OpenAlex record for a DOI (cached); null when OpenAlex does not know it. One record
+ * by id: without a key this does not use OpenAlex's daily search budget.
+ */
+export async function openalexByDoiCached(ctx: Ctx, doi: string): Promise<WorkRecord | null> {
+  const value = await cached(
+    ctx.opts.cache,
+    `openalex:${doiCacheKey(doi)}`,
+    async () => ({
+      record: await openalexByDoi(ctx.client, doi, ctx.opts.openalexKey, ctx.opts.mailto),
     }),
     {
       isNegative: (v) => !v.record,
@@ -227,9 +254,13 @@ export async function titleSearch(
   visit: (records: WorkRecord[], source: RefSource) => boolean,
 ): Promise<SearchOutcome> {
   const outcome: SearchOutcome = { searched: [], failures: [] };
-  const cacheKey =
-    titleCacheKey(q.title, q.year, q.isTex) +
-    (q.hinted && q.firstAuthor ? `|author:${q.firstAuthor.toLowerCase()}` : '');
+  // A title with no letter or digit has nothing to search for (and would share one cache
+  // key with every other such title).
+  if (!normalizeTitle(q.title, q.isTex)) return outcome;
+  // CrossRef is asked with the first author, so its answer depends on that author: the
+  // author is part of the key whenever it is sent.
+  const author = q.firstAuthor ? foldName(q.firstAuthor) : '';
+  const cacheKey = titleCacheKey(q.title, q.year, q.isTex) + (author ? `|author:${author}` : '');
   // Independent indexes are asked at the same time, in two waves: CrossRef and dblp first,
   // then (only when neither verified) the rest. arXiv has a strict request spacing, so it
   // is not queried for entries the first wave already settled. Answers are visited in the

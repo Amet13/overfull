@@ -11,7 +11,7 @@
  * CORS: answers carry `access-control-allow-origin: *`, so a browser can read it.
  */
 
-import { getJson, type HttpClient } from '../http.js';
+import { getJson, type HttpClient, isObject, listIn, readAnswer, unexpectedData } from '../http.js';
 import type { WorkRecord } from '../types.js';
 
 interface EpmcResult {
@@ -37,10 +37,6 @@ interface EpmcResult {
   pubYear?: string;
   firstPublicationDate?: string;
   bookOrReportDetails?: { publisher?: string; yearOfPublication?: number };
-}
-
-interface EpmcResponse {
-  resultList?: { result?: EpmcResult[] };
 }
 
 const PMID_PREFIX = /^\s*PMID[\s:]+(\d{1,9})\s*$/i;
@@ -138,10 +134,15 @@ function fromEuropePmc(r: EpmcResult): WorkRecord | null {
 }
 
 async function query(client: HttpClient, url: string): Promise<WorkRecord[]> {
-  const { data } = await getJson<EpmcResponse>(client, url);
-  return (data?.resultList?.result ?? [])
-    .map(fromEuropePmc)
-    .filter((r): r is WorkRecord => r !== null);
+  const { data } = await getJson<Record<string, unknown>>(client, url);
+  if (!data) return [];
+  const host = 'www.ebi.ac.uk';
+  return readAnswer(host, () => {
+    if (!isObject(data.resultList)) throw unexpectedData(host);
+    return listIn(host, data.resultList.result, true)
+      .map((r) => fromEuropePmc(r as EpmcResult))
+      .filter((r): r is WorkRecord => r !== null);
+  });
 }
 
 /** The record for a PubMed id, or null when Europe PMC has none. */
