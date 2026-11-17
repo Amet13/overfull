@@ -4535,16 +4535,31 @@ function stripTags(s) {
   }
   return out;
 }
+function codePointText(n) {
+  if (!Number.isInteger(n) || n < 0 || n > 1114111 || n >= 55296 && n <= 57343) {
+    return "\uFFFD";
+  }
+  return String.fromCodePoint(n);
+}
+function decodeNumericEntities(s) {
+  return s.replace(/&#x([0-9a-f]+);/gi, (_m, h) => codePointText(Number.parseInt(h, 16))).replace(/&#(\d+);/g, (_m, d) => codePointText(Number(d)));
+}
 function stripMarkup(s) {
-  const decoded = s.replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(Number.parseInt(h, 16))).replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d))).replace(/&([a-z]+);/gi, (m, name) => ENTITIES[name.toLowerCase()] ?? m);
+  const decoded = decodeNumericEntities(s).replace(
+    /&([a-z]+);/gi,
+    (m, name) => ENTITIES[name.toLowerCase()] ?? m
+  );
   return stripTags(decoded).replace(/\s+/g, " ").trim();
 }
 function foldText(plain2) {
-  return plain2.toLowerCase().replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `).replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c).normalize("NFKD").replace(/[̀-ͯ]/g, "");
+  return plain2.toLowerCase().normalize("NFKD").replace(new RegExp("\\p{M}", "gu"), "").replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `).replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c);
 }
 function titleWords(title, isTex = true) {
   const plain2 = isTex ? texToPlain(title) : stripMarkup(title);
-  return foldText(plain2).replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+  return foldText(plain2).replace(NO_SPACE_SCRIPTS, " $1 ").replace(/[^\p{L}\p{N}]+/gu, " ").trim().split(" ").filter(Boolean);
+}
+function asciiNormalizeTitle(title) {
+  return texToPlain(title).toLowerCase().replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `).replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 }
 function normalizeTitle(title, isTex = true) {
   return titleWords(title, isTex).join(" ");
@@ -4580,7 +4595,7 @@ function titleSimilarity(bibTitle, recordTitle) {
   return score;
 }
 function foldName(name) {
-  return foldText(stripMarkup(name)).replace(/[^a-z\s-]+/g, "").replace(/[\s-]+/g, " ").trim();
+  return foldText(stripMarkup(name)).replace(/[^\p{L}\s-]+/gu, "").replace(/[\s-]+/g, " ").trim();
 }
 function significant(name) {
   return name.split(" ").filter((w) => w.length > 1 && !PARTICLES.has(w));
@@ -4594,7 +4609,7 @@ function namesMatch(a, b) {
   const [small, large] = sa.length <= sb.length ? [sa, sb] : [sb, sa];
   return small.every((w) => large.includes(w));
 }
-var GREEK_NAMES, FOLD, ENTITIES, PARTICLES;
+var GREEK_NAMES, FOLD, ENTITIES, NO_SPACE_SCRIPTS, PARTICLES;
 var init_normalize = __esm({
   "../packages/core/src/refs/normalize.ts"() {
     "use strict";
@@ -4646,6 +4661,7 @@ var init_normalize = __esm({
       apos: "'",
       nbsp: " "
     };
+    NO_SPACE_SCRIPTS = /([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu;
     PARTICLES = /* @__PURE__ */ new Set([
       "van",
       "von",
@@ -4967,15 +4983,37 @@ async function getJson(client, url, accept = "application/json", headers) {
   if (res.status < 200 || res.status >= 300) {
     throw new SourceUnavailableError(host, `${host} answered HTTP ${res.status}`);
   }
+  let data;
   try {
-    return { status: res.status, data: JSON.parse(res.body) };
+    data = JSON.parse(res.body);
   } catch {
     const reason = `${host} returned a non-JSON page (HTTP ${res.status}); it may be blocking automated requests`;
     client.markDown(host, reason);
     throw new SourceUnavailableError(host, reason);
   }
+  if (!isObject(data)) throw unexpectedData(host);
+  return { status: res.status, data };
 }
-var SourceUnavailableError, MAX_RETRY_AFTER_MS, BREAKER_THRESHOLD, FIRST_BYTE_TIMEOUT_MS, HttpClient;
+function isObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function unexpectedData(host) {
+  return new SourceUnavailableError(host, `${host} returned unexpected data`);
+}
+function listIn(host, value, optional = false) {
+  if (Array.isArray(value)) return value;
+  if (value === void 0 && optional) return [];
+  throw unexpectedData(host);
+}
+function readAnswer(host, read) {
+  try {
+    return read();
+  } catch (err) {
+    if (err instanceof TypeError) throw unexpectedData(host);
+    throw err;
+  }
+}
+var SourceUnavailableError, MAX_RETRY_AFTER_MS, BREAKER_THRESHOLD, FIRST_BYTE_TIMEOUT_MS, CROSSREF, CROSSREF_PUBLIC, CROSSREF_POLITE, HttpClient;
 var init_http = __esm({
   "../packages/core/src/refs/http.ts"() {
     "use strict";
@@ -4990,12 +5028,19 @@ var init_http = __esm({
     MAX_RETRY_AFTER_MS = 3e4;
     BREAKER_THRESHOLD = 2;
     FIRST_BYTE_TIMEOUT_MS = 4e3;
+    CROSSREF = "api.crossref.org";
+    CROSSREF_PUBLIC = { intervalMs: 1100, concurrent: 1 };
+    CROSSREF_POLITE = { intervalMs: 350, concurrent: 3 };
     HttpClient = class {
       fetchFn;
       timeoutMs;
       retryDelayMs;
       signal;
       intervals;
+      /** Most requests in flight per host, for hosts that limit it. */
+      limits;
+      active = /* @__PURE__ */ new Map();
+      waiting = /* @__PURE__ */ new Map();
       nextSlot = /* @__PURE__ */ new Map();
       down = /* @__PURE__ */ new Map();
       failures = /* @__PURE__ */ new Map();
@@ -5012,11 +5057,14 @@ var init_http = __esm({
         this.firstByteMs = Math.min(FIRST_BYTE_TIMEOUT_MS, this.timeoutMs);
         this.retryDelayMs = opts.retryDelayMs ?? 1e3;
         this.signal = opts.signal;
+        const crossref = opts.mailto ? CROSSREF_POLITE : CROSSREF_PUBLIC;
         this.intervals = {
           "export.arxiv.org": opts.arxivIntervalMs ?? 3e3,
+          [CROSSREF]: opts.crossrefIntervalMs ?? crossref.intervalMs,
           // Semantic Scholar's key allows 1 request per second; keyless requests share a pool.
           ...opts.semanticScholarKey ? { "api.semanticscholar.org": 1100 } : {}
         };
+        this.limits = { [CROSSREF]: crossref.concurrent };
       }
       /** Marks a host as unusable for the rest of this run (e.g. a bot challenge). */
       markDown(host, reason) {
@@ -5030,11 +5078,32 @@ var init_http = __esm({
       async get(url, accept, headers) {
         const host = new URL(url).host;
         const release = await this.acquire(host);
+        let free;
         try {
+          free = await this.slot(host);
           return await this.getOnce(url, accept, host, headers);
         } finally {
+          free?.();
           release();
         }
+      }
+      /** Waits until the host has room for one more request in flight (see `limits`). */
+      async slot(host) {
+        const limit = this.limits[host];
+        if (!limit) return () => {
+        };
+        while ((this.active.get(host) ?? 0) >= limit) {
+          await new Promise((resolve5) => {
+            const queue = this.waiting.get(host) ?? [];
+            queue.push(resolve5);
+            this.waiting.set(host, queue);
+          });
+        }
+        this.active.set(host, (this.active.get(host) ?? 0) + 1);
+        return () => {
+          this.active.set(host, (this.active.get(host) ?? 1) - 1);
+          this.waiting.get(host)?.shift()?.();
+        };
       }
       async getOnce(url, accept, host, headers) {
         let res = await this.attempt(url, accept, host, headers);
@@ -5229,7 +5298,7 @@ function parseArxivId(input2) {
   return m ? m[1] : null;
 }
 function xmlText(s) {
-  return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(Number.parseInt(h, 16))).replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d))).replace(/&(amp|lt|gt|quot|apos);/g, (_m, e) => XML_ENTITIES[e]).replace(/\s+/g, " ").trim();
+  return decodeNumericEntities(s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")).replace(/&(amp|lt|gt|quot|apos);/g, (_m, e) => XML_ENTITIES[e]).replace(/\s+/g, " ").trim();
 }
 function tag(xml, name) {
   const m = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`).exec(xml);
@@ -5396,7 +5465,8 @@ async function resolveDoi(client, doi) {
   } catch {
     return { kind: "no-metadata" };
   }
-  const record = fromCsl(item, "doi.org");
+  if (!isObject(item)) return { kind: "no-metadata" };
+  const record = readAnswer("doi.org", () => fromCsl(item, "doi.org"));
   if (!record) return { kind: "no-metadata" };
   if (!record.doi) record.doi = doi;
   return { kind: "found", record };
@@ -5477,7 +5547,12 @@ function fromEuropePmc(r) {
 }
 async function query2(client, url) {
   const { data } = await getJson(client, url);
-  return (data?.resultList?.result ?? []).map(fromEuropePmc).filter((r) => r !== null);
+  if (!data) return [];
+  const host = "www.ebi.ac.uk";
+  return readAnswer(host, () => {
+    if (!isObject(data.resultList)) throw unexpectedData(host);
+    return listIn(host, data.resultList.result, true).map((r) => fromEuropePmc(r)).filter((r) => r !== null);
+  });
 }
 async function europepmcByPmid(client, pmid) {
   return (await query2(client, europepmcPmidUrl(pmid)))[0] ?? null;
@@ -5516,12 +5591,27 @@ function parseOpenReviewId(value) {
   const id = url.searchParams.get("id");
   return id && /^[A-Za-z0-9_-]{5,40}$/.test(id) ? id : null;
 }
+function unescapeTexId(value) {
+  return value.replace(/\\([_%#&])/g, "$1").replace(/[{}]/g, "");
+}
 function unwrapUrl(value) {
   const v = value.trim().slice(0, 600);
   return v.startsWith("\\url{") && v.endsWith("}") ? v.slice(5, -1).trim() : v;
 }
+function idFields(entry) {
+  const f = { ...entry.fields };
+  for (const name of ["doi", "eprint", "pmid", "pmcid"]) {
+    const v = f[name];
+    if (v !== void 0) f[name] = unescapeTexId(v);
+  }
+  for (const name of ["url", "howpublished"]) {
+    const v = f[name];
+    if (v?.includes("\\")) f[name] = v.replace(/\\([_%#&])/g, "$1");
+  }
+  return f;
+}
 function otherIdentifiers(entry, doi) {
-  const f = entry.fields;
+  const f = idFields(entry);
   const ids = {};
   const archive = (f.eprinttype ?? f.archiveprefix ?? "").toLowerCase();
   const acl = [f.url, f.howpublished, doi ?? void 0].map((v) => v ? parseAclId(unwrapUrl(v)) : null).find((v) => Boolean(v));
@@ -5535,7 +5625,7 @@ function otherIdentifiers(entry, doi) {
   return ids;
 }
 function identifiersOf(entry) {
-  const f = entry.fields;
+  const f = idFields(entry);
   const ids = {};
   const doi = (f.doi ? parseDoi(f.doi) : null) ?? [f.url, f.howpublished].map((v) => {
     const m = /https?:\/\/(?:dx\.)?doi\.org\/(10\.\d{4,9}\/[^\s{}]+)/i.exec(v ?? "");
@@ -5643,10 +5733,15 @@ function bibYear(entry) {
 function bibFacts(entry) {
   const people = parseNames(entry.fields.author ?? entry.fields.editor);
   const facts = {
-    surnames: people.filter((p) => !p.corporate).map((p) => foldName(p.family)),
-    firstIsPersonal: people.length > 0 && !people[0]?.corporate
+    surnames: people.filter((p) => !p.corporate).map((p) => foldName(p.family)).filter(Boolean),
+    // A first author whose name has no letters (`{???}`) cannot be compared either.
+    firstIsPersonal: people.length > 0 && !people[0]?.corporate && foldName(people[0]?.family ?? "") !== ""
   };
-  if (entry.fields.title) facts.title = entry.fields.title;
+  const title = entry.fields.title;
+  if (title) {
+    facts.hasTitleField = true;
+    if (normalizeTitle(title, true)) facts.title = title;
+  }
   const authorText2 = entry.fields.author ?? entry.fields.editor;
   if (authorText2) facts.authorText = authorText2;
   const year = bibYear(entry);
@@ -5814,6 +5909,24 @@ function retractedProblems(results, byKey) {
   }
   return problems;
 }
+function retractionUncheckedProblems(results) {
+  const missed = results.filter((r) => r.retractionUnchecked);
+  if (!missed.length) return [];
+  const reason = missed[missed.length - 1]?.retractionUnchecked;
+  const keys = missed.map((r) => r.key);
+  const n = keys.length;
+  return [
+    {
+      rule: "reference-retraction-unchecked",
+      check: "references",
+      severity: "info",
+      message: `retraction check incomplete: ${reason}`,
+      detail: `${n} matched ${n === 1 ? "work was" : "works were"} not checked for a retraction or withdrawal: ${keys.map((k) => `\`${k}\``).join(", ")}.`,
+      fix: "Run `overfull check` again later; only the works that were missed are asked about again.",
+      data: { keys, reason }
+    }
+  ];
+}
 function publishedVersionProblems(results, byKey) {
   const problems = [];
   for (const r of results) {
@@ -5912,109 +6025,6 @@ var init_extra = __esm({
   }
 });
 
-// ../packages/core/src/refs/retraction.ts
-function dateOf(u) {
-  const [y, m, d] = u.updated?.["date-parts"]?.[0] ?? [];
-  if (!y) return void 0;
-  return [y, m, d].filter((n) => typeof n === "number").map((n, i) => String(n).padStart(i === 0 ? 4 : 2, "0")).join("-");
-}
-function retractionOf(work) {
-  const updates = work["updated-by"] ?? [];
-  const pick2 = updates.find((u) => u.type === "retraction") ?? updates.find((u) => u.type === "withdrawal");
-  if (!pick2 || !work.DOI) return void 0;
-  const notice = {
-    kind: pick2.type === "withdrawal" ? "withdrawal" : "retraction",
-    doi: work.DOI.toLowerCase()
-  };
-  if (pick2.DOI) notice.noticeDoi = pick2.DOI.toLowerCase();
-  const date = dateOf(pick2);
-  if (date) notice.date = date;
-  if (pick2.source) notice.assertedBy = pick2.source;
-  return notice;
-}
-function crossrefUpdatesUrl(dois, mailto) {
-  const params = new URLSearchParams({
-    filter: dois.map((d) => `doi:${d}`).join(","),
-    select: "DOI,updated-by",
-    rows: String(dois.length)
-  });
-  if (mailto) params.set("mailto", mailto);
-  return `https://api.crossref.org/works?${params}`;
-}
-async function findRetractions(client, ctx, dois) {
-  const { cache: cache2 } = ctx.opts;
-  const found = /* @__PURE__ */ new Map();
-  const maxAge = { ...cacheMaxAge(ctx.opts.cacheMaxAgeDays) };
-  maxAge.negative = Math.min(maxAge.negative, 1);
-  maxAge.positive = Math.min(maxAge.positive, 1);
-  const todo = [];
-  for (const doi of [...new Set(dois)]) {
-    if (doi.includes(",")) continue;
-    const hit = cache2 && !ctx.opts.refresh ? await cache2.get(`retraction:${doi}`) : null;
-    if (hit && typeof hit === "object" && isFresh(hit.cachedAt, false, maxAge)) {
-      if (hit.notice) found.set(doi, hit.notice);
-    } else todo.push(doi);
-  }
-  for (let i = 0; i < todo.length; i += BATCH2) {
-    const chunk = todo.slice(i, i + BATCH2);
-    const { data } = await getJson(
-      client,
-      crossrefUpdatesUrl(chunk, ctx.opts.mailto)
-    );
-    const items = data?.message?.items;
-    if (!Array.isArray(items)) continue;
-    const byDoi = /* @__PURE__ */ new Map();
-    for (const item of items) {
-      const notice = retractionOf(item);
-      if (notice) byDoi.set(notice.doi, notice);
-    }
-    for (const doi of chunk) {
-      const notice = byDoi.get(doi);
-      if (notice) found.set(doi, notice);
-      if (cache2)
-        await cache2.set(`retraction:${doi}`, {
-          ...notice ? { notice } : {},
-          cachedAt: Date.now()
-        });
-    }
-  }
-  return found;
-}
-async function attachRetractions(ctx, results) {
-  if (!ctx.opts.checkRetractions) return;
-  if (ctx.opts.sources && !ctx.opts.sources.includes("crossref")) return;
-  const candidates = [];
-  for (const r of results) {
-    const doi = r.matched?.doi?.toLowerCase();
-    if ((r.status === "verified" || r.status === "mismatch") && !r.wrongWork && doi) {
-      if (!doi.startsWith("10.48550/")) candidates.push({ r, doi });
-    }
-  }
-  if (!candidates.length) return;
-  try {
-    const found = await findRetractions(
-      ctx.client,
-      ctx,
-      candidates.map((c) => c.doi)
-    );
-    for (const { r, doi } of candidates) {
-      const notice = found.get(doi);
-      if (notice) r.retraction = notice;
-    }
-  } catch (err) {
-    if (ctx.opts.signal?.aborted) throw err;
-  }
-}
-var BATCH2;
-var init_retraction = __esm({
-  "../packages/core/src/refs/retraction.ts"() {
-    "use strict";
-    init_cache();
-    init_http();
-    BATCH2 = 40;
-  }
-});
-
 // ../packages/core/src/refs/sources/crossref.ts
 function crossrefSearchUrl(q, mailto) {
   const text2 = [q.title, q.firstAuthor, q.year].filter(Boolean).join(" ");
@@ -6023,13 +6033,14 @@ function crossrefSearchUrl(q, mailto) {
   return `https://api.crossref.org/works?${params}`;
 }
 async function crossrefSearch(client, q, mailto) {
-  const { data } = await getJson(
-    client,
-    crossrefSearchUrl(q, mailto)
-  );
-  return (data?.message?.items ?? []).map((item) => fromCsl(item, "crossref")).filter((r) => r !== null);
+  const { data } = await getJson(client, crossrefSearchUrl(q, mailto));
+  if (!data) return [];
+  return readAnswer(HOST, () => {
+    if (!isObject(data.message)) throw unexpectedData(HOST);
+    return listIn(HOST, data.message.items).map((item) => fromCsl(item, "crossref")).filter((r) => r !== null);
+  });
 }
-var SELECT;
+var SELECT, HOST;
 var init_crossref = __esm({
   "../packages/core/src/refs/sources/crossref.ts"() {
     "use strict";
@@ -6048,6 +6059,7 @@ var init_crossref = __esm({
       "container-title",
       "is-referenced-by-count"
     ].join(",");
+    HOST = "api.crossref.org";
   }
 });
 
@@ -6083,7 +6095,16 @@ function fromDblp(info3) {
 }
 async function dblpSearch(client, title) {
   const { data } = await getJson(client, dblpSearchUrl(title));
-  return (data?.result?.hits?.hit ?? []).map((h) => h.info ? fromDblp(h.info) : null).filter((r) => r !== null);
+  if (!data) return [];
+  const host = "dblp.org";
+  return readAnswer(host, () => {
+    const hits = isObject(data.result) ? data.result.hits : void 0;
+    if (!isObject(hits)) throw unexpectedData(host);
+    return listIn(host, hits.hit, true).map((h) => {
+      const info3 = h.info;
+      return info3 ? fromDblp(info3) : null;
+    }).filter((r) => r !== null);
+  });
 }
 var init_dblp = __esm({
   "../packages/core/src/refs/sources/dblp.ts"() {
@@ -6098,7 +6119,14 @@ function openalexSearchUrl(title, apiKey, mailto) {
   const params = new URLSearchParams({ search: title, "per-page": "5" });
   if (apiKey) params.set("api_key", apiKey);
   if (mailto) params.set("mailto", mailto);
-  return `https://api.openalex.org/works?${params}`;
+  return `https://${HOST2}/works?${params}`;
+}
+function openalexDoiUrl(doi, apiKey, mailto) {
+  const params = new URLSearchParams({ select: SELECT2 });
+  if (apiKey) params.set("api_key", apiKey);
+  if (mailto) params.set("mailto", mailto);
+  const path = encodeURIComponent(doi).replace(/%2F/gi, "/");
+  return `https://${HOST2}/works/doi:${path}?${params}`;
 }
 function fromOpenAlex(w) {
   const title = w.display_name ?? w.title;
@@ -6124,13 +6152,34 @@ async function openalexSearch(client, title, apiKey, mailto) {
     client,
     openalexSearchUrl(title, apiKey, mailto)
   );
-  return (data?.results ?? []).map(fromOpenAlex).filter((r) => r !== null);
+  if (!data) return [];
+  return readAnswer(
+    HOST2,
+    () => listIn(HOST2, data.results).map((w) => fromOpenAlex(w)).filter((r) => r !== null)
+  );
 }
+async function openalexByDoi(client, doi, apiKey, mailto) {
+  const { data } = await getJson(client, openalexDoiUrl(doi, apiKey, mailto));
+  if (!data) return null;
+  return readAnswer(HOST2, () => fromOpenAlex(data));
+}
+var HOST2, SELECT2;
 var init_openalex = __esm({
   "../packages/core/src/refs/sources/openalex.ts"() {
     "use strict";
     init_names();
     init_http();
+    HOST2 = "api.openalex.org";
+    SELECT2 = [
+      "display_name",
+      "title",
+      "publication_year",
+      "doi",
+      "type",
+      "cited_by_count",
+      "authorships",
+      "primary_location"
+    ].join(",");
   }
 });
 
@@ -6170,7 +6219,12 @@ async function semanticScholarSearch(client, title, apiKey) {
     "application/json",
     apiKey ? { "x-api-key": apiKey } : void 0
   );
-  return (data?.data ?? []).map(fromSemanticScholar).filter((r) => r !== null);
+  if (!data) return [];
+  const host = "api.semanticscholar.org";
+  return readAnswer(
+    host,
+    () => listIn(host, data.data, true).map((p) => fromSemanticScholar(p)).filter((r) => r !== null)
+  );
 }
 var FIELDS, TYPES2;
 var init_semanticscholar = __esm({
@@ -6192,9 +6246,12 @@ var init_semanticscholar = __esm({
 async function prefetchArxiv(ctx, ids) {
   if (!sourceAllowed(ctx.opts, "arxiv")) return;
   const wanted = [];
+  const maxAge = cacheMaxAge(ctx.opts.cacheMaxAgeDays);
   for (const id of new Set(ids)) {
     const hit = ctx.opts.refresh ? void 0 : await ctx.opts.cache?.get(arxivCacheKey(id));
-    if (hit === void 0) wanted.push(id);
+    const stored = hit;
+    const usable = stored !== null && typeof stored === "object" && isFresh(stored.cachedAt, !stored.record, maxAge);
+    if (!usable) wanted.push(id);
   }
   if (wanted.length < 2) return;
   try {
@@ -6222,6 +6279,21 @@ async function arxivByIdCached(ctx, id) {
     arxivCacheKey(id),
     async () => ({
       record: ctx.arxivBatch?.get(id.replace(/v\d+$/, "").toLowerCase()) ?? await arxivById(ctx.client, id)
+    }),
+    {
+      isNegative: (v) => !v.record,
+      maxAge: cacheMaxAge(ctx.opts.cacheMaxAgeDays),
+      refresh: ctx.opts.refresh === true
+    }
+  );
+  return value.record;
+}
+async function openalexByDoiCached(ctx, doi) {
+  const value = await cached(
+    ctx.opts.cache,
+    `openalex:${doiCacheKey(doi)}`,
+    async () => ({
+      record: await openalexByDoi(ctx.client, doi, ctx.opts.openalexKey, ctx.opts.mailto)
     }),
     {
       isNegative: (v) => !v.record,
@@ -6309,7 +6381,9 @@ async function searchOne(ctx, cacheKey, source, run2) {
 }
 async function titleSearch(ctx, q, visit) {
   const outcome = { searched: [], failures: [] };
-  const cacheKey = titleCacheKey(q.title, q.year, q.isTex) + (q.hinted && q.firstAuthor ? `|author:${q.firstAuthor.toLowerCase()}` : "");
+  if (!normalizeTitle(q.title, q.isTex)) return outcome;
+  const author = q.firstAuthor ? foldName(q.firstAuthor) : "";
+  const cacheKey = titleCacheKey(q.title, q.year, q.isTex) + (author ? `|author:${author}` : "");
   const sources = titleSources(ctx, q);
   const first2 = sources.filter(([s]) => s === "crossref" || s === "dblp");
   const waves = [first2, sources.filter((entry) => !first2.includes(entry))];
@@ -6382,6 +6456,7 @@ var init_search = __esm({
     init_tex();
     init_cache();
     init_http();
+    init_normalize();
     init_acl();
     init_arxiv();
     init_crossref();
@@ -6392,6 +6467,132 @@ var init_search = __esm({
     init_semanticscholar();
     MAX_TITLE_ANSWERS = 3;
     writes = /* @__PURE__ */ new WeakMap();
+  }
+});
+
+// ../packages/core/src/refs/retraction.ts
+function dateOf(u) {
+  const [y, m, d] = u.updated?.["date-parts"]?.[0] ?? [];
+  if (!y) return void 0;
+  return [y, m, d].filter((n) => typeof n === "number").map((n, i) => String(n).padStart(i === 0 ? 4 : 2, "0")).join("-");
+}
+function retractionOf(work) {
+  const updates = work["updated-by"] ?? [];
+  const pick2 = updates.find((u) => u.type === "retraction") ?? updates.find((u) => u.type === "withdrawal");
+  if (!pick2 || !work.DOI) return void 0;
+  const notice = {
+    kind: pick2.type === "withdrawal" ? "withdrawal" : "retraction",
+    doi: work.DOI.toLowerCase()
+  };
+  if (pick2.DOI) notice.noticeDoi = pick2.DOI.toLowerCase();
+  const date = dateOf(pick2);
+  if (date) notice.date = date;
+  if (pick2.source) notice.assertedBy = pick2.source;
+  return notice;
+}
+function crossrefUpdatesUrl(dois, mailto) {
+  const params = new URLSearchParams({
+    filter: dois.map((d) => `doi:${d}`).join(","),
+    select: "DOI,updated-by",
+    rows: String(dois.length)
+  });
+  if (mailto) params.set("mailto", mailto);
+  return `https://api.crossref.org/works?${params}`;
+}
+function noticesIn(data) {
+  const host = "api.crossref.org";
+  return readAnswer(host, () => {
+    const message = isObject(data) ? data.message : void 0;
+    if (!isObject(message)) throw unexpectedData(host);
+    const byDoi = /* @__PURE__ */ new Map();
+    for (const item of listIn(host, message.items)) {
+      const notice = retractionOf(item);
+      if (notice) byDoi.set(notice.doi, notice);
+    }
+    return byDoi;
+  });
+}
+async function findRetractions(client, ctx, dois) {
+  const { cache: cache2 } = ctx.opts;
+  const found = /* @__PURE__ */ new Map();
+  const unchecked = [];
+  let incomplete;
+  const maxAge = { ...cacheMaxAge(ctx.opts.cacheMaxAgeDays) };
+  maxAge.negative = Math.min(maxAge.negative, 1);
+  maxAge.positive = Math.min(maxAge.positive, 1);
+  const todo = [];
+  for (const doi of [...new Set(dois)]) {
+    if (doi.includes(",")) continue;
+    const hit = cache2 && !ctx.opts.refresh ? await cache2.get(`retraction:${doi}`) : null;
+    if (hit && typeof hit === "object" && isFresh(hit.cachedAt, false, maxAge)) {
+      if (hit.notice) found.set(doi, hit.notice);
+    } else todo.push(doi);
+  }
+  for (let i = 0; i < todo.length; i += BATCH2) {
+    const chunk = todo.slice(i, i + BATCH2);
+    let byDoi;
+    try {
+      const { data } = await getJson(client, crossrefUpdatesUrl(chunk, ctx.opts.mailto));
+      byDoi = noticesIn(data);
+    } catch (err) {
+      if (ctx.opts.signal?.aborted) throw err;
+      unchecked.push(...chunk);
+      incomplete = failureReason(err);
+      continue;
+    }
+    for (const doi of chunk) {
+      const notice = byDoi.get(doi);
+      if (notice) found.set(doi, notice);
+      if (cache2)
+        await cache2.set(`retraction:${doi}`, {
+          ...notice ? { notice } : {},
+          cachedAt: Date.now()
+        });
+    }
+  }
+  return { found, unchecked, ...incomplete ? { incomplete } : {} };
+}
+async function attachRetractions(ctx, results) {
+  if (!ctx.opts.checkRetractions) return;
+  if (ctx.opts.sources && !ctx.opts.sources.includes("crossref")) return;
+  const candidates = [];
+  for (const r of results) {
+    const doi = r.matched?.doi?.toLowerCase();
+    if ((r.status === "verified" || r.status === "mismatch") && !r.wrongWork && doi) {
+      if (!doi.startsWith("10.48550/")) candidates.push({ r, doi });
+    }
+  }
+  if (!candidates.length) return;
+  let check2;
+  try {
+    check2 = await findRetractions(
+      ctx.client,
+      ctx,
+      candidates.map((c) => c.doi)
+    );
+  } catch (err) {
+    if (ctx.opts.signal?.aborted) throw err;
+    check2 = {
+      found: /* @__PURE__ */ new Map(),
+      unchecked: candidates.map((c) => c.doi),
+      incomplete: failureReason(err)
+    };
+  }
+  const unchecked = new Set(check2.unchecked);
+  for (const { r, doi } of candidates) {
+    const notice = check2.found.get(doi);
+    if (notice) r.retraction = notice;
+    else if (unchecked.has(doi)) r.retractionUnchecked = check2.incomplete ?? "request failed";
+  }
+}
+var BATCH2;
+var init_retraction = __esm({
+  "../packages/core/src/refs/retraction.ts"() {
+    "use strict";
+    init_cache();
+    init_http();
+    init_search();
+    BATCH2 = 40;
   }
 });
 
@@ -6449,7 +6650,21 @@ async function checkDoi(ctx, doi, facts, ev) {
     if (res.kind !== "found") return null;
     return assessIdentified(facts, res.record, ev, "doi", doi, "resolves to");
   } catch (err) {
-    return sourceFailed(ctx, ev, "doi.org", err);
+    sourceFailed(ctx, ev, "doi.org", err);
+  }
+  const viaOpenalex = await checkOpenalexDoi(ctx, doi, facts, ev, "doi", doi);
+  if (!viaOpenalex) ev.doiUnchecked = true;
+  return viaOpenalex;
+}
+async function checkOpenalexDoi(ctx, doi, facts, ev, field, id) {
+  if (!sourceAllowed(ctx.opts, "openalex")) return null;
+  try {
+    const record = await openalexByDoiCached(ctx, doi);
+    if (!record) return null;
+    ev.searched.add("openalex");
+    return assessIdentified(facts, record, ev, field, id, field === "doi" ? "resolves to" : "is");
+  } catch (err) {
+    return sourceFailed(ctx, ev, "openalex", err);
   }
 }
 function assessIdentified(facts, record, ev, field, id, verb) {
@@ -6479,8 +6694,12 @@ async function checkArxiv(ctx, id, facts, ev) {
     }
     return assessIdentified(facts, record, ev, "eprint", id, "is");
   } catch (err) {
-    return sourceFailed(ctx, ev, "arxiv", err);
+    sourceFailed(ctx, ev, "arxiv", err);
+    return checkOpenalexDoi(ctx, arxivDoi(id), facts, ev, "eprint", id);
   }
+}
+function arxivDoi(id) {
+  return `10.48550/arxiv.${id.toLowerCase()}`;
 }
 async function checkOtherId(ctx, source, label, fetchRecord, facts, ev) {
   ev.queries.push(label);
@@ -6588,7 +6807,7 @@ function noMatch(ctx, base, entry, kind, ids, ev) {
     (s) => !sourceAllowed(opts, s)
   );
   const skippedNote = skipped3.length ? `(${sourcesText(skipped3).replace(/ or /, " and ")} ${skipped3.length === 1 ? "was" : "were"} not searched)` : "";
-  const titleNote = entry.fields.title ? " and no record has a similar title" : "";
+  const titleNote = ev.queries.some((q) => q.startsWith("title:")) ? " and no record has a similar title" : "";
   if (ev.arxivMissing) {
     return {
       ...withSearched,
@@ -6668,23 +6887,76 @@ async function verifyEntry(entry, ctx, ignore) {
   const kind = entryKind(entry, ids);
   if (kind === "not-indexed") return { ...base, reason: notIndexedReason(entry) };
   const facts = bibFacts(entry);
-  if (!facts.title && !ids.doi && !ids.arxivId)
-    return { ...base, reason: "no title, DOI or arXiv id to look up" };
+  if (!facts.title && !ids.doi && !ids.arxivId) {
+    const reason = facts.hasTitleField ? "the title has no letters or digits to look up, and there is no DOI or arXiv id" : "no title, DOI or arXiv id to look up";
+    return { ...base, reason };
+  }
   const ev = {
     assessments: [],
     searched: /* @__PURE__ */ new Set(),
     failures: [],
     doiMissing: false,
     arxivMissing: false,
+    doiUnchecked: false,
     queries: []
   };
-  const viaId = (ids.doi && sourceAllowed(ctx.opts, "doi.org") ? await checkDoi(ctx, ids.doi, facts, ev) : null) ?? (ids.arxivId && sourceAllowed(ctx.opts, "arxiv") ? await checkArxiv(ctx, ids.arxivId, facts, ev) : null) ?? await checkOtherIds(ctx, ids, facts, ev);
+  const viaId = (ids.doi && sourceAllowed(ctx.opts, "doi.org") ? await checkDoi(ctx, ids.doi, facts, ev) : null) ?? (ids.arxivId ? sourceAllowed(ctx.opts, "arxiv") ? await checkArxiv(ctx, ids.arxivId, facts, ev) : (
+    // arXiv may not be asked (the browser check): OpenAlex knows arXiv's DOIs.
+    await checkOpenalexDoi(ctx, arxivDoi(ids.arxivId), facts, ev, "eprint", ids.arxivId)
+  ) : null) ?? await checkOtherIds(ctx, ids, facts, ev);
   const withQuery = (r) => ({ ...r, query: ev.queries[0] ?? "" });
-  if (viaId) return withQuery(withBrokenIds(fromAssessment(base, viaId, ev), ids, ev));
+  const found = (a) => withQuery(withBrokenIds(withUncheckedDoi(fromAssessment(base, a, ev), a, ids, ev), ids, ev));
+  if (viaId) return found(viaId);
   await searchByTitle(ctx, facts, kind, ev);
-  const best = bestAssessment(ev.assessments);
-  if (best) return withQuery(withBrokenIds(fromAssessment(base, best, ev), ids, ev));
+  const best = ev.doiUnchecked ? bestForDoi(ev.assessments, ids.doi) : bestAssessment(ev.assessments);
+  if (best) return found(best);
   return withQuery(noMatch(ctx, base, entry, kind, ids, ev));
+}
+function bestForDoi(list2, doi) {
+  const sameDoi = list2.filter((a) => doi && a.record.doi?.toLowerCase() === doi);
+  return bestAssessment(sameDoi) ?? bestAssessment(list2);
+}
+function withUncheckedDoi(result, a, ids, ev) {
+  if (!ev.doiUnchecked || !ids.doi) return result;
+  const recordDoi = a.record.doi?.toLowerCase();
+  if (recordDoi === ids.doi) return result;
+  const failures = lastFailures(ev.failures);
+  if (recordDoi) {
+    const { reason: _reason2, ...rest2 } = result;
+    return {
+      ...rest2,
+      status: "mismatch",
+      differences: [
+        { field: "doi", bib: ids.doi, record: recordDoi },
+        ...(result.differences ?? []).filter((d) => d.field !== "doi")
+      ],
+      reason: `doi.org could not be reached, and the record found for this entry has DOI ${recordDoi}, not ${ids.doi}`
+    };
+  }
+  if (result.status !== "verified") return result;
+  const { reason: _reason, ...rest } = result;
+  return {
+    ...rest,
+    status: "error",
+    failed: [...new Set(ev.failures.map((f) => f.source))],
+    failures,
+    reason: `a matching record exists, but the DOI ${ids.doi} could not be checked: ${failuresText(failures)}`
+  };
+}
+async function verifyEntrySafely(entry, ctx, ignore) {
+  try {
+    return await verifyEntry(entry, ctx, ignore);
+  } catch (err) {
+    if (ctx.opts.signal?.aborted) throw err;
+    const result = {
+      key: entry.key,
+      status: "error",
+      reason: `lookup incomplete: ${failureReason(err)}`
+    };
+    if (entry.line)
+      result.location = { line: entry.line, ...entry.file ? { file: entry.file } : {} };
+    return result;
+  }
 }
 async function runPool(items, limit, worker) {
   const results = new Array(items.length);
@@ -6719,7 +6991,7 @@ async function verifyEntries(entries, opts = {}) {
   );
   let done = 0;
   const results = await runPool(entries, opts.concurrency ?? 4, async (e) => {
-    const result = await verifyEntry(e, ctx, ignore);
+    const result = await verifyEntrySafely(e, ctx, ignore);
     opts.onProgress?.(++done, entries.length);
     return opts.requireProvenance && isUnproven(e, result) ? { ...result, unproven: true } : result;
   });
@@ -6734,9 +7006,22 @@ function isUnproven(entry, result) {
 function hasValidProvenance(entry) {
   const f = entry.fields;
   const ids = identifiersOf(entry);
-  return Boolean(provenanceOf(entry) && (ids.doi || ids.arxivId || f.doi || f.eprint || f.url));
+  const marked = provenanceOf(entry) !== void 0 || hasLegacyProvenance(entry);
+  return Boolean(marked && (ids.doi || ids.arxivId || f.doi || f.eprint || f.url));
 }
-var SOURCE_NAMES, SECOND_OPINION;
+function hasLegacyProvenance(entry) {
+  const title = entry.fields.title ?? "";
+  const legacy = asciiNormalizeTitle(title);
+  if (legacy === normalizeTitle(title, true)) return false;
+  const value = entry.fields[PROVENANCE_FIELD]?.replace(/\s+/g, " ").trim();
+  const m = value ? /^cite\s+\S+\s+\d{4}-\d{2}-\d{2}\s+([0-9a-f]{12})$/i.exec(value) : null;
+  if (!m) return false;
+  const parts = provenanceCanonical(entry).split(SEP);
+  if (parts.length !== 7) return false;
+  parts[2] = legacy;
+  return sha256Hex(parts.join(SEP)).slice(0, 12) === m[1].toLowerCase();
+}
+var SOURCE_NAMES, SECOND_OPINION, SEP;
 var init_verify = __esm({
   "../packages/core/src/refs/verify.ts"() {
     "use strict";
@@ -6748,6 +7033,7 @@ var init_verify = __esm({
     init_normalize();
     init_retraction();
     init_search();
+    init_sha256();
     SOURCE_NAMES = {
       "doi.org": "doi.org",
       crossref: "CrossRef",
@@ -6759,6 +7045,7 @@ var init_verify = __esm({
       europepmc: "Europe PMC"
     };
     SECOND_OPINION = ["openalex", "semanticscholar", "dblp"];
+    SEP = "";
   }
 });
 
@@ -7029,6 +7316,7 @@ function refsCheck(results, opts = {}) {
       return Boolean(opts.requireProvenance && entry && isUnproven(entry, r));
     }).map((r) => unprovenProblem(r, byKey.get(r.key))),
     ...retractedProblems(results, byKey),
+    ...retractionUncheckedProblems(results),
     ...publishedVersionProblems(results, byKey),
     ...opts.entries ? duplicateProblems(opts.entries) : [],
     ...opts.reportUncited && opts.entries && opts.citedKeys ? uncitedProblems(opts.entries, opts.citedKeys) : []
@@ -7179,6 +7467,14 @@ var init_check = __esm({
         title: "Cited work is retracted or withdrawn",
         summary: "CrossRef records a retraction or withdrawal for the work this entry matched (publisher notices and Retraction Watch data). Citing it as sound evidence misleads readers. Needs the lookup to find the work by DOI; entries without a DOI are not checked for this.",
         fix: "Read the retraction notice. Replace the work with one that stands, or cite it only to say it was retracted, together with the notice."
+      },
+      {
+        id: "reference-retraction-unchecked",
+        check: "references",
+        severity: "info",
+        title: "Retraction check incomplete",
+        summary: "CrossRef could not be asked whether some matched works are retracted or withdrawn (a request failed or its answer was unreadable). Works it did answer for were checked; the others were not.",
+        fix: "Run `overfull check` again later. Answers are kept for one day, so the next run asks only about the works that were missed."
       },
       {
         id: "reference-published-version",
@@ -25774,20 +26070,20 @@ var init_pdf_worker = __esm({
       };
     });
     an_object_or_undefined_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var $String = String;
       var $TypeError = TypeError;
       module.exports = function(argument) {
-        if (argument === void 0 || isObject(argument)) return argument;
+        if (argument === void 0 || isObject2(argument)) return argument;
         throw new $TypeError($String(argument) + " is not an object or undefined");
       };
     });
     an_object_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var $String = String;
       var $TypeError = TypeError;
       module.exports = function(argument) {
-        if (isObject(argument)) return argument;
+        if (isObject2(argument)) return argument;
         throw new $TypeError($String(argument) + " is not an object");
       };
     });
@@ -25841,7 +26137,7 @@ var init_pdf_worker = __esm({
       var DESCRIPTORS = descriptors_namespaceFn();
       var globalThis2 = global_this_namespaceFn();
       var isCallable = is_callable_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var hasOwn = has_own_property_namespaceFn();
       var classof = classof_namespaceFn();
       var tryToString = try_to_string_namespaceFn();
@@ -25886,18 +26182,18 @@ var init_pdf_worker = __esm({
         BigUint64Array: 8
       };
       var isView = function isView2(it) {
-        if (!isObject(it)) return false;
+        if (!isObject2(it)) return false;
         var klass = classof(it);
         return klass === "DataView" || hasOwn(TypedArrayConstructorsList, klass) || hasOwn(BigIntArrayConstructorsList, klass);
       };
       var getTypedArrayConstructor = function(it) {
         var proto = getPrototypeOf(it);
-        if (!isObject(proto)) return;
+        if (!isObject2(proto)) return;
         var state = getInternalState(proto);
         return state && hasOwn(state, TYPED_ARRAY_CONSTRUCTOR) ? state[TYPED_ARRAY_CONSTRUCTOR] : getTypedArrayConstructor(proto);
       };
       var isTypedArray = function(it) {
-        if (!isObject(it)) return false;
+        if (!isObject2(it)) return false;
         var klass = classof(it);
         return hasOwn(TypedArrayConstructorsList, klass) || hasOwn(BigIntArrayConstructorsList, klass);
       };
@@ -25984,7 +26280,7 @@ var init_pdf_worker = __esm({
         defineBuiltInAccessor(TypedArrayPrototype, TO_STRING_TAG, {
           configurable: true,
           get: function() {
-            return isObject(this) ? this[TYPED_ARRAY_TAG] : void 0;
+            return isObject2(this) ? this[TYPED_ARRAY_TAG] : void 0;
           }
         });
         for (NAME in TypedArrayConstructorsList) if (globalThis2[NAME]) {
@@ -26241,9 +26537,9 @@ var init_pdf_worker = __esm({
     });
     document_create_element_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var globalThis2 = global_this_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var document2 = globalThis2.document;
-      var EXISTS = isObject(document2) && isObject(document2.createElement);
+      var EXISTS = isObject2(document2) && isObject2(document2.createElement);
       module.exports = function(it) {
         return EXISTS ? document2.createElement(it) : {};
       };
@@ -26574,7 +26870,7 @@ var init_pdf_worker = __esm({
     internal_state_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var NATIVE_WEAK_MAP = weak_map_basic_detection_namespaceFn();
       var globalThis2 = global_this_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var createNonEnumerableProperty = create_non_enumerable_property_namespaceFn();
       var hasOwn = has_own_property_namespaceFn();
       var shared = shared_store_namespaceFn();
@@ -26590,7 +26886,7 @@ var init_pdf_worker = __esm({
       var getterFor = function(TYPE) {
         return function(it) {
           var state;
-          if (!isObject(it) || (state = get(it)).type !== TYPE) {
+          if (!isObject2(it) || (state = get(it)).type !== TYPE) {
             throw new TypeError2("Incompatible receiver, " + TYPE + " required");
           }
           return state;
@@ -26693,19 +26989,19 @@ var init_pdf_worker = __esm({
       };
     });
     is_possible_prototype_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       module.exports = function(argument) {
-        return isObject(argument) || argument === null;
+        return isObject2(argument) || argument === null;
       };
     });
     is_pure_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       module.exports = false;
     });
     is_raw_json_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var getInternalState = internal_state_namespaceFn().get;
       module.exports = function isRawJSON(O) {
-        if (!isObject(O)) return false;
+        if (!isObject2(O)) return false;
         var state = getInternalState(O);
         return !!state && state.type === "RawJSON";
       };
@@ -26959,7 +27255,7 @@ var init_pdf_worker = __esm({
     iterators_core_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var fails = fails_namespaceFn();
       var isCallable = is_callable_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var create = object_create_namespaceFn();
       var getPrototypeOf = object_get_prototype_of_namespaceFn();
       var defineBuiltIn = define_built_in_namespaceFn();
@@ -26976,7 +27272,7 @@ var init_pdf_worker = __esm({
           if (PrototypeOfArrayIteratorPrototype !== Object.prototype) IteratorPrototype = PrototypeOfArrayIteratorPrototype;
         }
       }
-      var NEW_ITERATOR_PROTOTYPE = !isObject(IteratorPrototype) || fails(function() {
+      var NEW_ITERATOR_PROTOTYPE = !isObject2(IteratorPrototype) || fails(function() {
         var test = {};
         return IteratorPrototype[ITERATOR].call(test) !== test;
       });
@@ -27301,7 +27597,7 @@ var init_pdf_worker = __esm({
     });
     object_set_prototype_of_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var uncurryThisAccessor = function_uncurry_this_accessor_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var requireObjectCoercible = require_object_coercible_namespaceFn();
       var aPossiblePrototype = a_possible_prototype_namespaceFn();
       module.exports = Object.setPrototypeOf || ("__proto__" in {} ? (function() {
@@ -27317,7 +27613,7 @@ var init_pdf_worker = __esm({
         return function setPrototypeOf(O, proto) {
           requireObjectCoercible(O);
           aPossiblePrototype(proto);
-          if (!isObject(O)) return O;
+          if (!isObject2(O)) return O;
           if (CORRECT_SETTER) setter(O, proto);
           else O.__proto__ = proto;
           return O;
@@ -27327,13 +27623,13 @@ var init_pdf_worker = __esm({
     ordinary_to_primitive_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var call = function_call_namespaceFn();
       var isCallable = is_callable_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var $TypeError = TypeError;
       module.exports = function(input2, pref) {
         var fn, val;
-        if (pref === "string" && isCallable(fn = input2.toString) && !isObject(val = call(fn, input2))) return val;
-        if (isCallable(fn = input2.valueOf) && !isObject(val = call(fn, input2))) return val;
-        if (pref !== "string" && isCallable(fn = input2.toString) && !isObject(val = call(fn, input2))) return val;
+        if (pref === "string" && isCallable(fn = input2.toString) && !isObject2(val = call(fn, input2))) return val;
+        if (isCallable(fn = input2.valueOf) && !isObject2(val = call(fn, input2))) return val;
+        if (pref !== "string" && isCallable(fn = input2.toString) && !isObject2(val = call(fn, input2))) return val;
         throw new $TypeError("Can't convert object to primitive value");
       };
     });
@@ -27407,11 +27703,11 @@ var init_pdf_worker = __esm({
     };
     promise_resolve_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var anObject = an_object_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var newPromiseCapability = new_promise_capability_namespaceFn();
       module.exports = function(C, x) {
         anObject(C);
-        if (isObject(x) && x.constructor === C) return x;
+        if (isObject2(x) && x.constructor === C) return x;
         var promiseCapability = newPromiseCapability.f(C);
         var resolve5 = promiseCapability.resolve;
         resolve5(x);
@@ -27735,7 +28031,7 @@ var init_pdf_worker = __esm({
     };
     to_primitive_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var call = function_call_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var isSymbol = is_symbol_namespaceFn();
       var getMethod = get_method_namespaceFn();
       var ordinaryToPrimitive = ordinary_to_primitive_namespaceFn();
@@ -27743,13 +28039,13 @@ var init_pdf_worker = __esm({
       var $TypeError = TypeError;
       var TO_PRIMITIVE = wellKnownSymbol("toPrimitive");
       module.exports = function(input2, pref) {
-        if (!isObject(input2) || isSymbol(input2)) return input2;
+        if (!isObject2(input2) || isSymbol(input2)) return input2;
         var exoticToPrim = getMethod(input2, TO_PRIMITIVE);
         var result;
         if (exoticToPrim) {
           if (pref === void 0) pref = "default";
           result = call(exoticToPrim, input2, pref);
-          if (!isObject(result) || isSymbol(result)) return result;
+          if (!isObject2(result) || isSymbol(result)) return result;
           throw new $TypeError("Can't convert object to primitive value");
         }
         if (pref === void 0) pref = "number";
@@ -28413,7 +28709,7 @@ var init_pdf_worker = __esm({
       var fails = fails_namespaceFn();
       var isArray = is_array_namespaceFn();
       var isCallable = is_callable_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var create = object_create_namespaceFn();
       var isRawJSON = is_raw_json_namespaceFn();
       var isSymbol = is_symbol_namespaceFn();
@@ -28503,7 +28799,7 @@ var init_pdf_worker = __esm({
         return kind === "Number" && hasInternalSlot(thisNumberValue, it) || kind === "String" && hasInternalSlot(stringValueOf, it) || kind === "Boolean" && hasInternalSlot(booleanValueOf, it) || !!bigIntValueOf && kind === "BigInt" && hasInternalSlot(bigIntValueOf, it);
       };
       var isSerializedAsObject = function(it) {
-        if (!isObject(it) || isCallable(it) || isArray(it)) return false;
+        if (!isObject2(it) || isCallable(it) || isArray(it)) return false;
         try {
           return !isBoxedPrimitive(it);
         } catch (error) {
@@ -28514,7 +28810,7 @@ var init_pdf_worker = __esm({
         return {
           toJSON: function() {
             var element = holder[key];
-            if (isObject(element) || typeof element == "bigint") {
+            if (isObject2(element) || typeof element == "bigint") {
               var elementToJSON = element.toJSON;
               if (isCallable(elementToJSON)) element = call(elementToJSON, element, key);
             }
@@ -87339,20 +87635,20 @@ var init_pdf2 = __esm({
       };
     });
     an_object_or_undefined_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var $String = String;
       var $TypeError = TypeError;
       module.exports = function(argument) {
-        if (argument === void 0 || isObject(argument)) return argument;
+        if (argument === void 0 || isObject2(argument)) return argument;
         throw new $TypeError($String(argument) + " is not an object or undefined");
       };
     });
     an_object_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var $String = String;
       var $TypeError = TypeError;
       module.exports = function(argument) {
-        if (isObject(argument)) return argument;
+        if (isObject2(argument)) return argument;
         throw new $TypeError($String(argument) + " is not an object");
       };
     });
@@ -87406,7 +87702,7 @@ var init_pdf2 = __esm({
       var DESCRIPTORS = descriptors_namespaceFn2();
       var globalThis2 = global_this_namespaceFn2();
       var isCallable = is_callable_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var hasOwn = has_own_property_namespaceFn2();
       var classof = classof_namespaceFn2();
       var tryToString = try_to_string_namespaceFn2();
@@ -87451,18 +87747,18 @@ var init_pdf2 = __esm({
         BigUint64Array: 8
       };
       var isView = function isView2(it) {
-        if (!isObject(it)) return false;
+        if (!isObject2(it)) return false;
         var klass = classof(it);
         return klass === "DataView" || hasOwn(TypedArrayConstructorsList, klass) || hasOwn(BigIntArrayConstructorsList, klass);
       };
       var getTypedArrayConstructor = function(it) {
         var proto = getPrototypeOf(it);
-        if (!isObject(proto)) return;
+        if (!isObject2(proto)) return;
         var state = getInternalState(proto);
         return state && hasOwn(state, TYPED_ARRAY_CONSTRUCTOR) ? state[TYPED_ARRAY_CONSTRUCTOR] : getTypedArrayConstructor(proto);
       };
       var isTypedArray = function(it) {
-        if (!isObject(it)) return false;
+        if (!isObject2(it)) return false;
         var klass = classof(it);
         return hasOwn(TypedArrayConstructorsList, klass) || hasOwn(BigIntArrayConstructorsList, klass);
       };
@@ -87549,7 +87845,7 @@ var init_pdf2 = __esm({
         defineBuiltInAccessor(TypedArrayPrototype, TO_STRING_TAG, {
           configurable: true,
           get: function() {
-            return isObject(this) ? this[TYPED_ARRAY_TAG] : void 0;
+            return isObject2(this) ? this[TYPED_ARRAY_TAG] : void 0;
           }
         });
         for (NAME in TypedArrayConstructorsList) if (globalThis2[NAME]) {
@@ -87806,9 +88102,9 @@ var init_pdf2 = __esm({
     });
     document_create_element_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var globalThis2 = global_this_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var document2 = globalThis2.document;
-      var EXISTS = isObject(document2) && isObject(document2.createElement);
+      var EXISTS = isObject2(document2) && isObject2(document2.createElement);
       module.exports = function(it) {
         return EXISTS ? document2.createElement(it) : {};
       };
@@ -88145,14 +88441,14 @@ var init_pdf2 = __esm({
     });
     inherit_if_required_namespaceFn = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var isCallable = is_callable_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var setPrototypeOf = object_set_prototype_of_namespaceFn2();
       module.exports = function($this, dummy, Wrapper) {
         var NewTarget, NewTargetPrototype;
         if (
           // it can work only with native `setPrototypeOf`
           setPrototypeOf && // we haven't completely correct pre-ES6 way for getting `new.target`, so use this
-          isCallable(NewTarget = dummy.constructor) && NewTarget !== Wrapper && isObject(NewTargetPrototype = NewTarget.prototype) && NewTargetPrototype !== Wrapper.prototype
+          isCallable(NewTarget = dummy.constructor) && NewTarget !== Wrapper && isObject2(NewTargetPrototype = NewTarget.prototype) && NewTargetPrototype !== Wrapper.prototype
         ) setPrototypeOf($this, NewTargetPrototype);
         return $this;
       };
@@ -88172,7 +88468,7 @@ var init_pdf2 = __esm({
     internal_state_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var NATIVE_WEAK_MAP = weak_map_basic_detection_namespaceFn2();
       var globalThis2 = global_this_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var createNonEnumerableProperty = create_non_enumerable_property_namespaceFn2();
       var hasOwn = has_own_property_namespaceFn2();
       var shared = shared_store_namespaceFn2();
@@ -88188,7 +88484,7 @@ var init_pdf2 = __esm({
       var getterFor = function(TYPE) {
         return function(it) {
           var state;
-          if (!isObject(it) || (state = get(it)).type !== TYPE) {
+          if (!isObject2(it) || (state = get(it)).type !== TYPE) {
             throw new TypeError2("Incompatible receiver, " + TYPE + " required");
           }
           return state;
@@ -88291,19 +88587,19 @@ var init_pdf2 = __esm({
       };
     });
     is_possible_prototype_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       module.exports = function(argument) {
-        return isObject(argument) || argument === null;
+        return isObject2(argument) || argument === null;
       };
     });
     is_pure_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       module.exports = false;
     });
     is_raw_json_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var getInternalState = internal_state_namespaceFn2().get;
       module.exports = function isRawJSON(O) {
-        if (!isObject(O)) return false;
+        if (!isObject2(O)) return false;
         var state = getInternalState(O);
         return !!state && state.type === "RawJSON";
       };
@@ -88557,7 +88853,7 @@ var init_pdf2 = __esm({
     iterators_core_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var fails = fails_namespaceFn2();
       var isCallable = is_callable_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var create = object_create_namespaceFn2();
       var getPrototypeOf = object_get_prototype_of_namespaceFn2();
       var defineBuiltIn = define_built_in_namespaceFn2();
@@ -88574,7 +88870,7 @@ var init_pdf2 = __esm({
           if (PrototypeOfArrayIteratorPrototype !== Object.prototype) IteratorPrototype = PrototypeOfArrayIteratorPrototype;
         }
       }
-      var NEW_ITERATOR_PROTOTYPE = !isObject(IteratorPrototype) || fails(function() {
+      var NEW_ITERATOR_PROTOTYPE = !isObject2(IteratorPrototype) || fails(function() {
         var test = {};
         return IteratorPrototype[ITERATOR].call(test) !== test;
       });
@@ -88908,7 +89204,7 @@ var init_pdf2 = __esm({
     });
     object_set_prototype_of_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var uncurryThisAccessor = function_uncurry_this_accessor_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var requireObjectCoercible = require_object_coercible_namespaceFn2();
       var aPossiblePrototype = a_possible_prototype_namespaceFn2();
       module.exports = Object.setPrototypeOf || ("__proto__" in {} ? (function() {
@@ -88924,7 +89220,7 @@ var init_pdf2 = __esm({
         return function setPrototypeOf(O, proto) {
           requireObjectCoercible(O);
           aPossiblePrototype(proto);
-          if (!isObject(O)) return O;
+          if (!isObject2(O)) return O;
           if (CORRECT_SETTER) setter(O, proto);
           else O.__proto__ = proto;
           return O;
@@ -88934,13 +89230,13 @@ var init_pdf2 = __esm({
     ordinary_to_primitive_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var call = function_call_namespaceFn2();
       var isCallable = is_callable_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var $TypeError = TypeError;
       module.exports = function(input2, pref) {
         var fn, val;
-        if (pref === "string" && isCallable(fn = input2.toString) && !isObject(val = call(fn, input2))) return val;
-        if (isCallable(fn = input2.valueOf) && !isObject(val = call(fn, input2))) return val;
-        if (pref !== "string" && isCallable(fn = input2.toString) && !isObject(val = call(fn, input2))) return val;
+        if (pref === "string" && isCallable(fn = input2.toString) && !isObject2(val = call(fn, input2))) return val;
+        if (isCallable(fn = input2.valueOf) && !isObject2(val = call(fn, input2))) return val;
+        if (pref !== "string" && isCallable(fn = input2.toString) && !isObject2(val = call(fn, input2))) return val;
         throw new $TypeError("Can't convert object to primitive value");
       };
     });
@@ -89014,11 +89310,11 @@ var init_pdf2 = __esm({
     };
     promise_resolve_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var anObject = an_object_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var newPromiseCapability = new_promise_capability_namespaceFn2();
       module.exports = function(C, x) {
         anObject(C);
-        if (isObject(x) && x.constructor === C) return x;
+        if (isObject2(x) && x.constructor === C) return x;
         var promiseCapability = newPromiseCapability.f(C);
         var resolve5 = promiseCapability.resolve;
         resolve5(x);
@@ -89345,7 +89641,7 @@ var init_pdf2 = __esm({
     };
     to_primitive_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var call = function_call_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var isSymbol = is_symbol_namespaceFn2();
       var getMethod = get_method_namespaceFn2();
       var ordinaryToPrimitive = ordinary_to_primitive_namespaceFn2();
@@ -89353,13 +89649,13 @@ var init_pdf2 = __esm({
       var $TypeError = TypeError;
       var TO_PRIMITIVE = wellKnownSymbol("toPrimitive");
       module.exports = function(input2, pref) {
-        if (!isObject(input2) || isSymbol(input2)) return input2;
+        if (!isObject2(input2) || isSymbol(input2)) return input2;
         var exoticToPrim = getMethod(input2, TO_PRIMITIVE);
         var result;
         if (exoticToPrim) {
           if (pref === void 0) pref = "default";
           result = call(exoticToPrim, input2, pref);
-          if (!isObject(result) || isSymbol(result)) return result;
+          if (!isObject2(result) || isSymbol(result)) return result;
           throw new $TypeError("Can't convert object to primitive value");
         }
         if (pref === void 0) pref = "number";
@@ -90139,7 +90435,7 @@ var init_pdf2 = __esm({
       var uncurryThis = function_uncurry_this_namespaceFn2();
       var call = function_call_namespaceFn2();
       var isCallable = is_callable_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var isArray = is_array_namespaceFn2();
       var hasOwn = has_own_property_namespaceFn2();
       var toString = to_string_namespaceFn2();
@@ -90180,7 +90476,7 @@ var init_pdf2 = __esm({
         var unmodified = node && val === node.value;
         var context = unmodified && typeof node.source == "string" ? { source: node.source } : {};
         var elementRecordsLen, keys, len, i, P;
-        if (isObject(val)) {
+        if (isObject2(val)) {
           var nodeIsArray = isArray(val);
           var nodes = unmodified ? node.nodes : nodeIsArray ? [] : {};
           if (nodeIsArray) {
@@ -90384,7 +90680,7 @@ var init_pdf2 = __esm({
       var fails = fails_namespaceFn2();
       var isArray = is_array_namespaceFn2();
       var isCallable = is_callable_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var create = object_create_namespaceFn2();
       var isRawJSON = is_raw_json_namespaceFn2();
       var isSymbol = is_symbol_namespaceFn2();
@@ -90474,7 +90770,7 @@ var init_pdf2 = __esm({
         return kind === "Number" && hasInternalSlot(thisNumberValue, it) || kind === "String" && hasInternalSlot(stringValueOf, it) || kind === "Boolean" && hasInternalSlot(booleanValueOf, it) || !!bigIntValueOf && kind === "BigInt" && hasInternalSlot(bigIntValueOf, it);
       };
       var isSerializedAsObject = function(it) {
-        if (!isObject(it) || isCallable(it) || isArray(it)) return false;
+        if (!isObject2(it) || isCallable(it) || isArray(it)) return false;
         try {
           return !isBoxedPrimitive(it);
         } catch (error) {
@@ -90485,7 +90781,7 @@ var init_pdf2 = __esm({
         return {
           toJSON: function() {
             var element = holder[key];
-            if (isObject(element) || typeof element == "bigint") {
+            if (isObject2(element) || typeof element == "bigint") {
               var elementToJSON = element.toJSON;
               if (isCallable(elementToJSON)) element = call(elementToJSON, element, key);
             }
