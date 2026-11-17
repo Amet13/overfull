@@ -494,7 +494,10 @@ function classifyWarning(
   if (m) return { kind: 'duplicate-label', data: { label: m[1] } };
   // Only these mean labels moved, so undefined references may resolve on the next run.
   // Other reruns (rerunfilecheck's outlines, longtable widths) do not touch labels.
-  if (/^Label\(s\) may have changed|Rerun to get cross-references right/.test(message)) {
+  if (
+    /^Label\(s\) may have changed/.test(message) ||
+    /Rerun to get cross-references right/.test(message)
+  ) {
     return { kind: 'labels-changed', data: {} };
   }
   if (/Please \(re\)run Biber/i.test(message)) return { kind: 'rerun-biber', data: {} };

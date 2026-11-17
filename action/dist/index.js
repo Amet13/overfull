@@ -2032,7 +2032,7 @@ function classifyWarning(source, message) {
   }
   m = /^Label [`']([^']+)' multiply defined/.exec(message);
   if (m) return { kind: "duplicate-label", data: { label: m[1] } };
-  if (/^Label\(s\) may have changed|Rerun to get cross-references right/.test(message)) {
+  if (/^Label\(s\) may have changed/.test(message) || /Rerun to get cross-references right/.test(message)) {
     return { kind: "labels-changed", data: {} };
   }
   if (/Please \(re\)run Biber/i.test(message)) return { kind: "rerun-biber", data: {} };
@@ -3130,7 +3130,7 @@ var init_tex2 = __esm({
 // ../packages/core/src/log/bibliography.ts
 function bblEntries(text2) {
   const out = [];
-  const re = /\\(?:bibitem\s*(?:\[[^\]]{0,2000}\])?\s*\{([^}]{1,1000})\}|entry\s*\{([^}]{1,1000})\})/g;
+  const re = /\\(?:bibitem\s*(?:\[[^\]]{0,2000}\]\s*)?\{([^}]{1,1000})\}|entry\s*\{([^}]{1,1000})\})/g;
   let pos = 0;
   let line = 1;
   for (let m = re.exec(text2); m; m = re.exec(text2)) {

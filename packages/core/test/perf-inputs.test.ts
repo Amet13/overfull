@@ -110,6 +110,15 @@ describe('1 MB .bbl files stay linear', () => {
   });
 });
 
+describe('bibliography attribution stays linear', () => {
+  it('\\bibitem followed by a long run of whitespace and no brace', () => {
+    const text = `\\bibitem${' \t'.repeat(MB / 4)}x`;
+    expect(
+      timed(() => attributeBibliography([], { bbl: { path: 'main.bbl', text } })),
+    ).toBeLessThan(LIMIT_MS);
+  });
+});
+
 describe('XML text from outside services stays linear', () => {
   it('many unclosed CDATA sections', () => {
     const text = fill('<![CDATA[a');

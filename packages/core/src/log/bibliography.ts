@@ -32,9 +32,11 @@ interface BblEntry {
 /** Entries in the order of the file; line numbers are counted in one pass. */
 function bblEntries(text: string): BblEntry[] {
   const out: BblEntry[] = [];
-  // Bounded repeats: an unclosed `[` or `{` must not make the scan quadratic.
+  // Bounded repeats: an unclosed `[` or `{` must not make the scan quadratic. The
+  // whitespace after the optional `[…]` belongs to it, so a run of spaces before a
+  // missing `{` has only one way to match.
   const re =
-    /\\(?:bibitem\s*(?:\[[^\]]{0,2000}\])?\s*\{([^}]{1,1000})\}|entry\s*\{([^}]{1,1000})\})/g;
+    /\\(?:bibitem\s*(?:\[[^\]]{0,2000}\]\s*)?\{([^}]{1,1000})\}|entry\s*\{([^}]{1,1000})\})/g;
   let pos = 0;
   let line = 1;
   for (let m = re.exec(text); m; m = re.exec(text)) {
