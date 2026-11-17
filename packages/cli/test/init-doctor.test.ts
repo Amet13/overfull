@@ -80,16 +80,39 @@ describe('overfull doctor', () => {
     expect(text).toMatch(/api\.crossref\.org +unreachable/);
   });
 
-  it('reports an invalid config without failing', async () => {
+  it('marks an invalid config with ✕ and exits 1', async () => {
     const dir = tempDir();
     writeFileSync(join(dir, 'overfull.yml'), 'mian: x.tex');
     const io = memIo(dir);
     const code = await main(['doctor', '--json'], io);
-    const { items, canBuild } = JSON.parse(io.stdoutText()) as {
-      canBuild: boolean;
-      items: { name: string; ok: boolean; detail: string }[];
+    const { items, configValid } = JSON.parse(io.stdoutText()) as {
+      configValid: boolean;
+      items: { name: string; ok: boolean; error?: boolean; detail: string }[];
     };
-    expect(code).toBe(canBuild ? 0 : 1);
-    expect(items.find((i) => i.name === 'overfull.yml')).toMatchObject({ ok: false });
+    expect(code).toBe(1);
+    expect(configValid).toBe(false);
+    expect(items.find((i) => i.name === 'overfull.yml')).toMatchObject({ ok: false, error: true });
+    const human = memIo(dir);
+    expect(await main(['doctor'], human)).toBe(1);
+    expect(human.stdoutText()).toMatch(/✕ overfull\.yml +overfull\.yml: unknown key `mian`/);
+  });
+
+  it('a missing --config file is ✕ and exit 1', async () => {
+    const io = memIo(tempDir());
+    expect(await main(['doctor', '--config', 'nope.yml'], io)).toBe(1);
+    expect(io.stdoutText()).toContain('✕ overfull.yml');
+    expect(io.stdoutText()).toContain('Config file not found: nope.yml');
+  });
+
+  it('keeps the whole YAML error, with the line it points at (doctor and check)', async () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, 'overfull.yml'), 'main: a: b\n');
+    const io = memIo(dir);
+    expect(await main(['doctor'], io)).toBe(1);
+    expect(io.stdoutText()).toMatch(/invalid YAML: .*at line 1, column \d+:\n/);
+    expect(io.stdoutText()).toContain('main: a: b');
+    const check = memIo(dir);
+    expect(await main(['check'], check)).toBe(2);
+    expect(check.stderrText()).toMatch(/at line 1, column \d+:\n\nmain: a: b\n +\^/);
   });
 });

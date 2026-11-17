@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { relative } from 'node:path';
 import {
   AmbiguousLookupError,
   type BibEntry,
@@ -13,8 +14,8 @@ import {
   unescapeTexId,
 } from '@overfull/core';
 import { parse, str } from '../args.js';
-import { loadConfig } from '../config.js';
-import { type Io, UsageError } from '../io.js';
+import { loadConfig, locateProject } from '../config.js';
+import { type Io, noteProject, testRefsTiming, UsageError } from '../io.js';
 import { insideRootForWrite } from '../safety.js';
 
 const citeHelp = `Usage: overfull cite <doi | arXiv:id | ACL id | PMID | PMCID | "title"> [options]
@@ -222,9 +223,15 @@ export async function citeCommand(
       `Invalid --key "${explicitKey}": use only letters, digits and _ : . + - / (a BibTeX key cannot contain spaces, braces, commas or quotes).`,
     );
   }
-  const config = loadConfig(io.cwd, str(values.config), io.env);
-  const bibRel = str(values.bib) ?? config.bib[0] ?? 'references.bib';
-  const bibPath = insideRootForWrite(config.root, bibRel, 'Bibliography file');
+  // Run from a subfolder, the project is the folder of the nearest overfull.yml above.
+  const location = locateProject(io.cwd, str(values.config));
+  noteProject(io, location);
+  const config = loadConfig(location.root, str(values.config), io.env);
+  const bibArg = str(values.bib);
+  const bibInRoot = bibArg ? location.rebase(bibArg) : (config.bib[0] ?? 'references.bib');
+  const bibPath = insideRootForWrite(config.root, bibInRoot, 'Bibliography file');
+  // Messages name the file as seen from where the command runs.
+  const bibRel = location.above ? relative(io.cwd, bibPath).split('\\').join('/') : bibInRoot;
   // Read without checking for the file first: a missing file is an empty bibliography.
   let text = '';
   try {
@@ -266,6 +273,7 @@ export async function citeCommand(
       ...(semanticScholarKey ? { semanticScholarKey } : {}),
       ...(hint ? { hint } : {}),
       onSearch: (o) => tracker.report(o),
+      ...testRefsTiming(io.env),
     });
   } catch (error) {
     if (!(error instanceof AmbiguousLookupError)) {

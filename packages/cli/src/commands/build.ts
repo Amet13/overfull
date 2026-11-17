@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, join, relative } from 'node:path';
+import { basename, isAbsolute, join, relative } from 'node:path';
 import {
   analyzeLog,
   type CheckResult,
@@ -13,8 +13,8 @@ import {
 } from '@overfull/core';
 import { parse, str } from '../args.js';
 import { bibliographyAttribution, mergeOutput } from '../check.js';
-import { type Config, type Engine, loadConfig } from '../config.js';
-import { type Io, UsageError, useColor } from '../io.js';
+import { type Config, type Engine, loadConfig, locateProject, requireMain } from '../config.js';
+import { type Io, noteProject, UsageError, useColor } from '../io.js';
 import { readPdfFacts } from '../pdf.js';
 import { readIfExists } from '../project.js';
 import { insideRoot, safeImage, safeJobname, safeRelPath } from '../safety.js';
@@ -356,6 +356,18 @@ export async function imageInstallsOnDemand(image: string): Promise<boolean> {
   }
 }
 
+/** The main file to build does not exist: say where it came from and what to do. */
+function mainNotFound(config: Config, main: string, given: boolean): UsageError {
+  if (given) return new UsageError(`${main} not found in ${config.root}.`);
+  if (config.mainSource === 'overfull.yml')
+    return new UsageError(
+      `${main} (\`main:\` in ${basename(config.file ?? 'overfull.yml')}) not found in ${config.root}. Fix \`main:\`, or pass the main file: \`overfull build <file>.tex\`.`,
+    );
+  return new UsageError(
+    `No ${main} in ${config.root} and no other LaTeX document found. Run in the project folder, or pass the main file: \`overfull build <file>.tex\`.`,
+  );
+}
+
 export async function buildCommand(args: string[], io: Io): Promise<number> {
   const { values, positionals } = parse(
     args,
@@ -373,10 +385,19 @@ export async function buildCommand(args: string[], io: Io): Promise<number> {
     io.stdout(buildHelp);
     return 0;
   }
-  const config = loadConfig(io.cwd, str(values.config), io.env);
-  const main = positionals[0] ?? config.main;
+  if (positionals.length > 1)
+    throw new UsageError(
+      `Build one main file at a time; got ${positionals.join(' ')}.\nRun \`overfull build --help\` for usage.`,
+    );
+  // Run from a subfolder, the project is the folder of the nearest overfull.yml above.
+  const location = locateProject(io.cwd, str(values.config));
+  noteProject(io, location);
+  const config = loadConfig(location.root, str(values.config), io.env);
+  const given = positionals[0] === undefined ? undefined : location.rebase(positionals[0]);
+  if (given === undefined) requireMain(config);
+  const main = given ?? config.main;
   safeRelPath(main);
-  if (positionals[0]) {
+  if (given) {
     config.main = main;
     // The jobname follows the file being built unless overfull.yml (or
     // overfull.yaml, or --config) sets one explicitly.
@@ -384,11 +405,7 @@ export async function buildCommand(args: string[], io: Io): Promise<number> {
       config.jobname = safeJobname(main.replace(/^.*\//, '').replace(/\.tex$/i, ''));
   }
   insideRoot(config.root, main, 'Main file');
-  if (!existsSync(join(config.root, main))) {
-    throw new UsageError(
-      `${main} not found in ${config.root}. Pass the main file: \`overfull build thesis.tex\`.`,
-    );
-  }
+  if (!existsSync(join(config.root, main))) throw mainNotFound(config, main, given !== undefined);
   const engineArg = (str(values.engine) ?? config.build.engine) as Engine;
   if (!['auto', 'local', 'docker'].includes(engineArg))
     throw new UsageError('--engine must be auto, local or docker');

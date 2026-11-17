@@ -46,7 +46,7 @@ describe('offerMailto', () => {
 
   it('writes the git e-mail only after a yes on a terminal', async () => {
     const { dir, path } = setup();
-    const io = { ...memIo(dir, gitEnv('ann@example.org')), isTTY: true };
+    const io = { ...memIo(dir, gitEnv('ann@example.org')), isTTY: true, stdinIsTTY: true };
     const asked: string[] = [];
     const note = await offerMailto(path, io, async (q) => {
       asked.push(q);
@@ -60,7 +60,7 @@ describe('offerMailto', () => {
 
   it('writes nothing after a no, and prints the hint', async () => {
     const { dir, path } = setup();
-    const io = { ...memIo(dir, gitEnv('ann@example.org')), isTTY: true };
+    const io = { ...memIo(dir, gitEnv('ann@example.org')), isTTY: true, stdinIsTTY: true };
     const note = await offerMailto(path, io, async () => false);
     expect(note).toMatch(/^Tip: set references\.mailto/);
     expect(readFileSync(path, 'utf8')).toBe(CONFIG);
@@ -80,7 +80,7 @@ describe('offerMailto', () => {
   it('only hints when git has no usable e-mail', async () => {
     for (const email of [undefined, 'not an address', 'a@b.org"; rm']) {
       const { dir, path } = setup();
-      const io = { ...memIo(dir, gitEnv(email)), isTTY: true };
+      const io = { ...memIo(dir, gitEnv(email)), isTTY: true, stdinIsTTY: true };
       const note = await offerMailto(path, io, async () => {
         throw new Error('must not ask');
       });
@@ -93,9 +93,9 @@ describe('offerMailto', () => {
     const dir = tempDir();
     const path = join(dir, 'overfull.yml');
     writeFileSync(path, 'checks: [build, output]\n');
-    expect(await offerMailto(path, { ...memIo(dir), isTTY: true }, async () => true)).toBe(
-      undefined,
-    );
+    expect(
+      await offerMailto(path, { ...memIo(dir), isTTY: true, stdinIsTTY: true }, async () => true),
+    ).toBe(undefined);
   });
 });
 

@@ -16,7 +16,8 @@ export function memIo(cwd: string, env: Record<string, string | undefined> = {})
   return {
     cwd,
     // Keep PATH so tool detection works, but no colors and no real network by default.
-    env: { PATH: process.env.PATH, NO_COLOR: '1', ...env },
+    // OVERFULL_TEST_NO_SPACING: no arXiv/CrossRef request spacing in tests (see testRefsTiming).
+    env: { PATH: process.env.PATH, NO_COLOR: '1', OVERFULL_TEST_NO_SPACING: '1', ...env },
     isTTY: false,
     out,
     err,

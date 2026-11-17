@@ -272,7 +272,13 @@ describe('C2: \\nocite{*} verifies every entry', () => {
       urls.push(String(u));
       return new Response('', { status: 404 });
     }) as typeof globalThis.fetch;
-    await runCheck({ cwd: dir, checks: ['references'], fetch, cache: false, env: {} });
+    await runCheck({
+      cwd: dir,
+      checks: ['references'],
+      fetch,
+      cache: false,
+      env: { OVERFULL_TEST_NO_SPACING: '1' },
+    });
     const joined = decodeURIComponent(urls.join(' '));
     for (const k of ['a', 'b', 'c']) expect(joined).toContain(`10.9999/${k}`);
   });

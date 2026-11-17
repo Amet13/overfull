@@ -49,7 +49,9 @@ also writes a two-line `.latexmkrc` that keeps your engine. Without one,
 | `--hooks` | A git pre-commit hook that runs `overfull guard --staged`, only if `.git/hooks/pre-commit` does not exist. If it does, the line to add is printed. With `--agents`, the hook settings for Claude Code and Gemini CLI are written too. See [Guard](./with-an-agent.md#guard). |
 | `--all` | All four. |
 
-On a terminal, with none of these flags, Overfull asks about each part.
+On a terminal (stdin and stdout both), with none of these flags and no `--yes`,
+Overfull asks about each part; the end of input counts as no. Anywhere else it
+asks nothing and lists what it wrote.
 
 ## Safe to run again
 

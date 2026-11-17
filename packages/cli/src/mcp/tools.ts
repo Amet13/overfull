@@ -1,5 +1,5 @@
 /**
- * The five MCP tools. Each one builds the argument list of the matching CLI
+ * The MCP tools (five, and `build` with `--allow-build`). Each one builds the argument list of the matching CLI
  * command from validated input and runs it in-process through `main` with an
  * in-memory Io, so behaviour and safety are those of the CLI: `cite` and
  * `pages` write only inside the project (safety.ts), and nothing from the
@@ -31,6 +31,8 @@ export interface ToolContext {
   env: Record<string, string | undefined>;
   fetch?: typeof fetch;
   run: Runner;
+  /** `overfull mcp --allow-build`: add the `build` tool (it runs the project's .latexmkrc). */
+  allowBuild?: boolean;
 }
 
 export interface ToolDef {
@@ -136,13 +138,47 @@ async function cli(ctx: ToolContext, argv: string[]): Promise<CliRun> {
   return { code, out: o, err: err.join(''), json };
 }
 
+/**
+ * A CLI message reworded for an MCP client, which cannot run shell commands: "run
+ * `overfull build` first" becomes "call the build tool first" (with --allow-build) or
+ * says that a person must build; flags become tool arguments.
+ */
+export function forClient(message: string, allowBuild = false): string {
+  const build = allowBuild
+    ? 'call the build tool first'
+    : 'a person must build the document first (this server cannot build)';
+  return message
+    .replace(/run `overfull build` first/g, build)
+    .replace(/Build first \(`overfull build`\) or pass --pdf\./g, `Not built yet: ${build}.`)
+    .replace(/`overfull check --main ([^`]+)`/g, 'the `main` argument ($1)')
+    .replace(/then run `overfull cite` again/g, 'then call cite again')
+    .replace(/\nRun `overfull [a-z]+ --help` for usage\./g, '');
+}
+
 /** The message the CLI printed for a failed command (JSON `error.message`, or stderr). */
-function cliMessage(r: CliRun, what: string): string {
+function cliMessage(r: CliRun, what: string, allowBuild = false): string {
   const j = asObject(r.json);
   const e = asObject(j?.error);
-  if (typeof e?.message === 'string') return e.message;
-  if (typeof j?.message === 'string') return j.message;
-  return r.err.trim() || `overfull ${what} failed (exit code ${r.code}).`;
+  let m: string;
+  if (typeof e?.message === 'string') m = e.message;
+  else if (typeof j?.message === 'string') m = j.message;
+  else m = r.err.trim() || `overfull ${what} failed (exit code ${r.code}).`;
+  return forClient(m, allowBuild);
+}
+
+/** A check report with its skip reasons reworded for the client (see forClient). */
+function reportForClient(report: Json, allowBuild: boolean): Json {
+  const checks = Array.isArray(report.checks) ? report.checks : undefined;
+  if (!checks) return report;
+  return {
+    ...report,
+    checks: checks.map((c) => {
+      const o = asObject(c);
+      return o && typeof o.skippedReason === 'string'
+        ? { ...o, skippedReason: forClient(o.skippedReason, allowBuild) }
+        : c;
+    }),
+  };
 }
 
 function candidatesText(j: Json): string {
@@ -198,11 +234,16 @@ function readPng(cwd: string, file: string, limit: number): Buffer | undefined {
 const noArgs = { type: 'object', properties: {}, additionalProperties: false };
 
 export function createTools(ctx: ToolContext): ToolDef[] {
+  const allowBuild = ctx.allowBuild === true;
+  const message = (r: CliRun, what: string) => cliMessage(r, what, allowBuild);
   const check: ToolDef = {
     name: 'check',
     title: 'Check the document',
     description:
-      'Checks the built LaTeX document (log, PDF, references, accessibility, venue rules) and returns the same report as `overfull check --json`.',
+      'Checks the built LaTeX document (log, PDF, references, accessibility, venue rules) and returns the same report as `overfull check --json`. ' +
+      (allowBuild
+        ? 'It does not build: call build first after changing the sources.'
+        : 'It does not build, and this server cannot: a person must build the document first, or start the server with --allow-build. Without a build, only references are checked.'),
     inputSchema: {
       type: 'object',
       properties: {
@@ -256,8 +297,10 @@ export function createTools(ctx: ToolContext): ToolDef[] {
       }
       const r = await cli(ctx, argv);
       // Exit 1 is a report with failures: a result, not a tool error.
-      if ((r.code === 0 || r.code === 1) && asObject(r.json)) return jsonResult(r.json);
-      return failure(cliMessage(r, 'check'));
+      const report = asObject(r.json);
+      if ((r.code === 0 || r.code === 1) && report)
+        return jsonResult(reportForClient(report, allowBuild));
+      return failure(message(r, 'check'));
     },
   };
 
@@ -319,11 +362,11 @@ export function createTools(ctx: ToolContext): ToolDef[] {
       if (r.code === 0 && j) return jsonResult(j);
       if (j?.ambiguous === true) {
         return failure(
-          `${cliMessage(r, 'cite')} Nothing was added.\n${candidatesText(j)}\n` +
+          `${message(r, 'cite')} Nothing was added.\n${candidatesText(j)}\n` +
             'Cite the right one by DOI, or call cite again with author/year. If none is right, ask the author.',
         );
       }
-      return failure(cliMessage(r, 'cite'));
+      return failure(message(r, 'cite'));
     },
   };
 
@@ -356,7 +399,7 @@ export function createTools(ctx: ToolContext): ToolDef[] {
         ctx,
         rule ? ['explain', '--json', '--', rule] : ['explain', '--list', '--json'],
       );
-      if (r.code !== 0 || r.json === undefined) return failure(cliMessage(r, 'explain'));
+      if (r.code !== 0 || r.json === undefined) return failure(message(r, 'explain'));
       return rule ? jsonResult(r.json) : jsonResult(r.json, 'rules');
     },
   };
@@ -399,7 +442,7 @@ export function createTools(ctx: ToolContext): ToolDef[] {
       const r = await cli(ctx, ['pages', '--json', '--', range]);
       const j = asObject(r.json);
       const list = Array.isArray(j?.pages) ? (j.pages as Json[]) : undefined;
-      if (r.code !== 0 || !list) return failure(cliMessage(r, 'pages'));
+      if (r.code !== 0 || !list) return failure(message(r, 'pages'));
       const images: ImageContent[] = [];
       let total = 0;
       const files = list.map((p) => {
@@ -444,9 +487,60 @@ export function createTools(ctx: ToolContext): ToolDef[] {
       const r = await cli(ctx, ['doctor', '--json']);
       // Exit 1 means "cannot build": still a report.
       if ((r.code === 0 || r.code === 1) && asObject(r.json)) return jsonResult(r.json);
-      return failure(cliMessage(r, 'doctor'));
+      return failure(message(r, 'doctor'));
     },
   };
 
-  return [check, cite, explain, pages, doctor];
+  const build: ToolDef = {
+    name: 'build',
+    title: 'Build the document',
+    description:
+      'Compiles the document with latexmk (local TeX Live, or the Overfull Docker image) and returns the build report, the same as `overfull build --json`. Unchanged sources are not rebuilt unless force is true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        main: {
+          type: 'string',
+          maxLength: 260,
+          description:
+            'Main .tex file, relative to the project. Default: from overfull.yml or detected.',
+        },
+        force: {
+          type: 'boolean',
+          description: 'Build even when no source changed (default false).',
+        },
+      },
+      additionalProperties: false,
+    },
+    annotations: {
+      title: 'Build the document',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    async run(args) {
+      const argv = ['build', '--json'];
+      if (args.force === true) argv.push('--force');
+      const main = str(args.main);
+      if (main !== undefined) {
+        try {
+          insideRoot(ctx.cwd, safeRelPath(main), 'Main file');
+        } catch (e) {
+          if (e instanceof UsageError) return failure(e.message);
+          throw e;
+        }
+        argv.push('--', main);
+      }
+      const r = await cli(ctx, argv);
+      const report = asObject(r.json);
+      // Exit 1 with a report is a build with errors: a result, not a tool error.
+      if ((r.code === 0 || r.code === 1) && report && !report.error) return jsonResult(report);
+      return failure(message(r, 'build'));
+    },
+  };
+
+  return allowBuild
+    ? [build, check, cite, explain, pages, doctor]
+    : [check, cite, explain, pages, doctor];
 }

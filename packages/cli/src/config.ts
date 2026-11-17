@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
   CHECK_IDS,
   type CheckId,
@@ -121,28 +121,30 @@ function stringList(v: unknown, field: string, file: string): string[] {
   throw new ConfigError(file, `\`${field}\` must be a string or a list of strings`);
 }
 
-function closest(word: string, options: string[]): string | undefined {
-  const dist = (a: string, b: string) => {
-    const d = Array.from(
-      { length: a.length + 1 },
-      (_, i) => [i, ...Array(b.length).fill(0)] as number[],
-    );
-    for (let j = 1; j <= b.length; j++) (d[0] as number[])[j] = j;
-    for (let i = 1; i <= a.length; i++) {
-      for (let j = 1; j <= b.length; j++) {
-        const row = d[i] as number[];
-        const prev = d[i - 1] as number[];
-        row[j] = Math.min(
-          (prev[j] as number) + 1,
-          (row[j - 1] as number) + 1,
-          (prev[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
-        );
-      }
+/** Levenshtein distance between two strings. */
+export function editDistance(a: string, b: string): number {
+  const d = Array.from(
+    { length: a.length + 1 },
+    (_, i) => [i, ...Array(b.length).fill(0)] as number[],
+  );
+  for (let j = 1; j <= b.length; j++) (d[0] as number[])[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const row = d[i] as number[];
+      const prev = d[i - 1] as number[];
+      row[j] = Math.min(
+        (prev[j] as number) + 1,
+        (row[j - 1] as number) + 1,
+        (prev[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
     }
-    return (d[a.length] as number[])[b.length] as number;
-  };
+  }
+  return (d[a.length] as number[])[b.length] as number;
+}
+
+function closest(word: string, options: string[]): string | undefined {
   const best = options
-    .map((o) => ({ o, d: dist(word.toLowerCase(), o.toLowerCase()) }))
+    .map((o) => ({ o, d: editDistance(word.toLowerCase(), o.toLowerCase()) }))
     .sort((x, y) => x.d - y.d)[0];
   return best && best.d <= Math.max(2, Math.floor(word.length / 3)) ? best.o : undefined;
 }
@@ -242,6 +244,51 @@ function discoverBib(root: string, main: string): string[] {
   }
 }
 
+/**
+ * The overfull.yml (or overfull.yaml) in `dir` or the nearest folder above it. The
+ * search stops at the git root (a folder with `.git`) or the filesystem root.
+ */
+export function findConfigFile(dir: string): string | undefined {
+  let d = resolve(dir);
+  for (;;) {
+    for (const name of [CONFIG_FILE, 'overfull.yaml']) {
+      if (existsSync(join(d, name))) return join(d, name);
+    }
+    if (existsSync(join(d, '.git'))) return undefined;
+    const parent = dirname(d);
+    if (parent === d) return undefined;
+    d = parent;
+  }
+}
+
+/** Where a command works: the project folder and how to read paths typed in `cwd`. */
+export interface ProjectLocation {
+  /** The folder of overfull.yml when it is in `cwd` or a folder above; else `cwd`. */
+  root: string;
+  /** The config file when it was found above `cwd`, relative to `cwd` (`../overfull.yml`). */
+  above?: string;
+  /** A path typed relative to `cwd`, made relative to `root`. Absolute paths stay as they are. */
+  rebase: (path: string) => string;
+}
+
+/**
+ * Finds the project for a command run in `cwd`: overfull.yml in `cwd` or the nearest
+ * folder above (up to the git root). With an explicit `--config`, `cwd` stays the root.
+ */
+export function locateProject(cwd: string, explicit?: string): ProjectLocation {
+  const same: ProjectLocation = { root: cwd, rebase: (p) => p };
+  if (explicit) return same;
+  const file = findConfigFile(cwd);
+  if (!file || resolve(dirname(file)) === resolve(cwd)) return same;
+  const root = dirname(file);
+  return {
+    root,
+    above: relative(cwd, file).split('\\').join('/'),
+    rebase: (p) =>
+      isAbsolute(p) ? p : relative(root, resolve(cwd, p)).split('\\').join('/') || '.',
+  };
+}
+
 /** Finds overfull.yml in `cwd` (or uses `explicit`) and returns the validated config with defaults. */
 export function loadConfig(
   cwd: string,
@@ -267,7 +314,9 @@ export function loadConfig(
     } catch (err) {
       throw new ConfigError(
         file,
-        `invalid YAML: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`,
+        // The whole message: its first line ends with "at line 2, column 5:" and the
+        // lines after it show where.
+        `invalid YAML: ${err instanceof Error ? err.message.trimEnd() : String(err)}`,
       );
     }
     if (data !== null && data !== undefined && !isObj(data))
