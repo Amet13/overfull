@@ -35,8 +35,8 @@ export const refsRules: RuleInfo[] = [
     severity: 'info',
     title: 'Project reference cache ignored',
     summary:
-      'With `references.cache: project`, lookups are cached in `.overfull/cache/refs.json` inside the project. That file is repository content: in CI (any provider, with or without a .git directory) it is never read, and anywhere a cache reached through a symlink is not used, because it could mark references as verified that were never looked up. Every reference is looked up again.',
-    fix: 'Keep `.overfull/` out of git (add it to .gitignore) and make sure it is a real directory, not a symlink; or drop `references.cache: project` to use the user cache directory.',
+      "With `--project-cache` (or `OVERFULL_REFS_CACHE=project`), lookups are cached in `.overfull/cache/refs.json` inside the project. That file is repository content: in CI (any provider, with or without a .git directory) it is never read, and anywhere a cache reached through a symlink is not used, because it could mark references as verified that were never looked up. `references.cache: project` in the project's own overfull.yml is ignored for the same reason. Every reference is looked up again.",
+    fix: 'Keep `.overfull/` out of git (add it to .gitignore) and make sure it is a real directory, not a symlink. To keep the cache in the project, pass `--project-cache` or set `OVERFULL_REFS_CACHE=project` in your own environment, not in overfull.yml.',
   },
   {
     id: 'reference-not-found',

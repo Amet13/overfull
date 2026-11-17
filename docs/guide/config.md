@@ -22,7 +22,6 @@ references:
   mailto: you@example.org # polite pool for CrossRef (and OpenAlex)
   ignore: [rfc9110]
   requireCite: true       # unverified entries need an `overfull cite` marker or an author-provided note
-  cache: user             # or project
 venue:
   pageLimit: { max: 9, endLabel: overfull:main-end }
   anonymous: false
@@ -49,7 +48,7 @@ build:
 | --- | --- | --- | --- |
 | `mailto` | email | `$OVERFULL_MAILTO`, else none | Contact address sent to CrossRef (and OpenAlex) for their polite pool. `--mailto` overrides it. |
 | `ignore` | string or list of keys | `[]` | Entries not to verify. |
-| `cache` | `user` \| `project` | `user` | Where lookups are cached. `user`: your cache folder, outside the project (see [Cache](#cache)). `project`: `.overfull/cache/refs.json`, the old location. |
+| `cache` | `user` \| `project` | `user` | Ignored. A project cannot choose to keep its own cache: `project` here gives a `refs-cache-ignored` notice. Use `--project-cache` or `OVERFULL_REFS_CACHE=project` instead (see [Cache](#cache)). |
 | `requireCite` | boolean | `false` | Every cited entry that is not verified must carry an intact `x-overfull = {cite … <hash>}` field from `overfull cite` (the hash makes edits evident; it is not authentication) and a DOI, eprint or URL, or the author's `note = {overfull: author-provided}` (authors only, never agents); otherwise `reference-unproven` (error), also offline. Offline, a valid marker gives `reference-not-reverified` (warning). Off by default; the templates turn it on. If you write entries yourself and use no agents, you can turn it off. See [References](./references.md#provenance). |
 
 `mailto` does not turn OpenAlex on. OpenAlex title search is used only when the
@@ -102,8 +101,13 @@ the repository could be committed, and a committed cache would let a pull
 request mark a made-up reference as verified. Delete the folder to force fresh
 lookups.
 
-`references.cache: project` keeps the cache in `.overfull/cache/refs.json`
-instead. That file is repository content, so in CI (`CI`, `GITHUB_ACTIONS`,
+`overfull check --project-cache`, or `OVERFULL_REFS_CACHE=project` in your
+environment, keeps the cache in `.overfull/cache/refs.json` instead. Only you
+can turn this on: `references.cache: project` in the project's `overfull.yml`
+is ignored with a `refs-cache-ignored` notice, because a repository that trusts
+its own cache could ship one that marks made-up references as verified.
+
+The project cache is repository content, so in CI (`CI`, `GITHUB_ACTIONS`,
 `TF_BUILD`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, `JENKINS_URL` or
 `TEAMCITY_VERSION` set) Overfull never reads it, tracked by git or not, and
 uses a fresh cache for the run. Outside CI a cache reached through a symlink
@@ -119,6 +123,7 @@ in `.overfull/diff`. The templates add `.overfull/` to `.gitignore`.
 | --- | --- |
 | `OVERFULL_MAILTO` | Contact address, used when `references.mailto` and `--mailto` are not set. |
 | `OVERFULL_IMAGE` | Docker image, overrides `build.image`; the image `overfull check` may use for veraPDF/pdffonts. |
+| `OVERFULL_REFS_CACHE` | Set to `project` to keep the reference cache in `.overfull/cache/refs.json` (like `check --project-cache`). Never used in CI. |
 | `OPENALEX_API_KEY` | Enables OpenAlex title search for `check` and `cite`. |
 | `OVERFULL_DEBUG` | Set to `1` to print a stack trace on an internal error. |
 

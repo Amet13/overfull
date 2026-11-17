@@ -53,8 +53,10 @@ Results are cached in your user cache folder (`~/.cache/overfull`, see
 [Configuration](./config.md#cache)), so repeat runs are fast and make few
 network requests. The cache is kept outside the project so it cannot be
 committed: a committed cache could make a made-up reference look verified.
-`references.cache: project` moves it into `.overfull/cache/refs.json`; that
-opt-in is ignored in CI and when the cache path goes through a symlink.
+`overfull check --project-cache` (or `OVERFULL_REFS_CACHE=project`) moves it
+into `.overfull/cache/refs.json`; that opt-in is ignored in CI and when the
+cache path goes through a symlink. `references.cache: project` in `overfull.yml`
+is ignored: a project cannot choose to trust its own cache.
 
 A found record is reused for 30 days and a "not found" answer for 1 day (new
 DOIs and new indexing appear quickly). A timeout, a server error or a bot wall
@@ -202,7 +204,6 @@ references:
   mailto: you@example.org   # sent to CrossRef (and OpenAlex) as a contact address
   ignore: [rfc9110]
   requireCite: true         # unverified entries need an `overfull cite` marker or an author-provided note
-  cache: user               # or `project`: .overfull/cache/refs.json (never read in CI)
   reportUncited: false      # true: report entries that nothing cites (reference-uncited)
 ```
 

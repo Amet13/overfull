@@ -34,6 +34,9 @@ Options:
   --offline           Do not look references up online
   --refresh           Ignore cached reference answers and look everything up again
                       (the new answers are still cached)
+  --project-cache     Cache reference answers in .overfull/cache/refs.json instead of
+                      your user cache folder (also OVERFULL_REFS_CACHE=project). Never
+                      used in CI. references.cache in overfull.yml cannot turn it on.
   --fail-on level     error (default), warning or never
   --json              Print the report as JSON (stable, for agents and scripts)
   --markdown          Print a Markdown summary (GitHub job summary / PR comment)
@@ -142,6 +145,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
       profile: { type: 'string' },
       offline: { type: 'boolean' },
       refresh: { type: 'boolean' },
+      'project-cache': { type: 'boolean' },
       'fail-on': { type: 'string' },
       json: { type: 'boolean' },
       markdown: { type: 'boolean' },
@@ -205,6 +209,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
       ...(str(values.mailto) ? { mailto: str(values.mailto) } : {}),
       offline,
       ...(values.refresh ? { refresh: true } : {}),
+      ...(values['project-cache'] ? { projectCache: true } : {}),
       ...(progress ? { progress } : {}),
       verapdf: values['no-verapdf'] !== true,
       engine: engine as 'auto' | 'local' | 'docker',

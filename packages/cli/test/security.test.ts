@@ -186,7 +186,7 @@ describe('S3: reference cache location', () => {
       cwd: dir,
       checks: ['references'],
       offline: true,
-      env: { PATH: process.env.PATH, CI: 'true' },
+      env: { PATH: process.env.PATH, CI: 'true', OVERFULL_REFS_CACHE: 'project' },
     });
     const rules = report.checks.flatMap((c) => c.problems.map((p) => p.rule));
     expect(rules).toContain('refs-cache-ignored');
@@ -194,7 +194,7 @@ describe('S3: reference cache location', () => {
       cwd: dir,
       checks: ['references'],
       offline: true,
-      env: { PATH: process.env.PATH },
+      env: { PATH: process.env.PATH, OVERFULL_REFS_CACHE: 'project' },
     });
     expect(local.checks.flatMap((c) => c.problems.map((p) => p.rule))).not.toContain(
       'refs-cache-ignored',

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ## [Unreleased]
 
+### Added
+
+- `overfull check --project-cache` and `OVERFULL_REFS_CACHE=project` keep the reference cache in `.overfull/cache/`
+
+### Changed
+
+### Fixed
+
+### Security
+
+- A project's own `overfull.yml` can no longer turn on its in-repository reference cache (`references.cache: project` is ignored with a notice), so a planted cache cannot mark made-up references as verified
+
 ## [v3.1.2] - 2026-11-16
 
 Changes merged since v3.1.1, each after the full test suite and the template

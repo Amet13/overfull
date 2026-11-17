@@ -101,23 +101,55 @@ async function statusOf(dir: string, env: Record<string, string | undefined>) {
 }
 
 describe('R1: a project cache never vouches for references in CI', () => {
-  it('control: outside CI a real .overfull cache is used (the forged entry verifies)', async () => {
-    const { refs } = await statusOf(forgedProject('real'), {});
+  it('control: outside CI a real .overfull cache is used when the user opts in (env)', async () => {
+    const { refs } = await statusOf(forgedProject('real'), { OVERFULL_REFS_CACHE: 'project' });
     expect(refs?.stats?.verified).toBe(1);
+  });
+
+  it('control: outside CI the --project-cache option also opts in', async () => {
+    const report = await runCheck({
+      cwd: forgedProject('real'),
+      checks: ['references'],
+      fetch: offlineFetch,
+      projectCache: true,
+      env: { PATH: process.env.PATH },
+    });
+    expect(report.checks.find((c) => c.check === 'references')?.stats?.verified).toBe(1);
+  });
+
+  it("the project's own overfull.yml cannot turn on its planted cache", async () => {
+    const { report, refs } = await statusOf(forgedProject('real'), {});
+    expect(refs?.stats?.verified).toBe(0);
+    expect(refs?.status).not.toBe('pass');
+    const notice = refs?.problems.find((p) => p.rule === 'refs-cache-ignored');
+    expect(notice?.severity).toBe('info');
+    expect(notice?.message).toMatch(/references\.cache: project/);
+    expect(rules(report)).not.toContain('reference-verified');
+  });
+
+  it('OVERFULL_REFS_CACHE with another value keeps the user cache', async () => {
+    const { refs } = await statusOf(forgedProject('real'), { OVERFULL_REFS_CACHE: 'yes' });
+    expect(refs?.stats?.verified).toBe(0);
   });
 
   it('CI + .overfull symlinked to a git-tracked dir: ignored', async () => {
     const dir = forgedProject('symlink');
     git(dir, 'init', '-q');
     git(dir, 'add', '-A');
-    const { report, refs } = await statusOf(dir, { GITHUB_ACTIONS: 'true' });
+    const { report, refs } = await statusOf(dir, {
+      GITHUB_ACTIONS: 'true',
+      OVERFULL_REFS_CACHE: 'project',
+    });
     expect(refs?.stats?.verified).toBe(0);
     expect(rules(report)).toContain('refs-cache-ignored');
   });
 
   it('CI without a .git directory (artifact, tarball): ignored, for any CI provider', async () => {
     for (const ci of ['CI', 'GITLAB_CI', 'TF_BUILD', 'BUILDKITE', 'JENKINS_URL']) {
-      const { report, refs } = await statusOf(forgedProject('real'), { [ci]: 'true' });
+      const { report, refs } = await statusOf(forgedProject('real'), {
+        [ci]: 'true',
+        OVERFULL_REFS_CACHE: 'project',
+      });
       expect(refs?.stats?.verified, ci).toBe(0);
       expect(rules(report), ci).toContain('refs-cache-ignored');
     }
@@ -125,7 +157,7 @@ describe('R1: a project cache never vouches for references in CI', () => {
 
   it('outside CI: a cache reached through a symlink is not used or written', async () => {
     const dir = forgedProject('symlink');
-    const { report, refs } = await statusOf(dir, {});
+    const { report, refs } = await statusOf(dir, { OVERFULL_REFS_CACHE: 'project' });
     expect(refs?.stats?.verified).toBe(0);
     expect(rules(report)).toContain('refs-cache-ignored');
     expect(readFileSync(join(dir, 'stuff', 'cache', 'refs.json'), 'utf8')).toBe(FORGED);
