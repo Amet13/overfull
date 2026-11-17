@@ -18,6 +18,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 - Slim image: latexdiff (`overfull diff`), XeLaTeX, the venue classes (IEEEtran, acmart, llncs, elsarticle, REVTeX), common packages (enumitem, multirow, titlesec, algorithm2e, tcolorbox, newtx, glossaries and more) and the Fira, Inconsolata and Libertine fonts
 - `overfull build --engine docker` installs missing packages on demand with the slim image too
 - CI: time a non-root LaTeX start, check the slim image offline, and run `overfull diff` in it
+- Venue: new rule `arxiv-bbl-version` warns when a shipped biblatex `.bbl` has a
+  format arXiv's TeX Live cannot read (TeX Live 2025, the default, reads 3.3).
+- Venue profiles: `anonymizedByClass` names a class that prints "Anonymous" itself
+  in review mode (NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, AISTATS, ACL/ARR, EMNLP, acmart).
+- Corpus cases for no-line-to-end, hyperref-error, command-already-defined,
+  unknown-package-option, bibliography-stale, float-too-large and font-feature-missing.
 
 ### Changed
 
@@ -28,6 +34,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   answer.
 - The default Docker image is `ghcr.io/amet13/overfull:3-slim` (the full image is `:3`); `build.image` still overrides it
 - veraPDF in the images is the command line only (no GUI), and the check image reuses its heavy layer across releases
+- Venue: `arxiv-missing-bbl` no longer says arXiv does not run Biber; it warns only when
+  neither the `.bib` files nor `<main>.bbl` are in the project. `arxiv-unsupported-engine`
+  says arXiv compiles with pdfLaTeX or XeLaTeX.
+- Reports: every format lists problems in one order, and Markdown renders `code` in
+  messages like HTML (only matched backtick pairs).
 
 ### Fixed
 
@@ -47,6 +58,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   or too old.
 - Docker images: LaTeX starts as fast for a non-root user as for root (it took about a minute in the full image)
 - Slim image: on-demand installs work for any user, survive a critical tlmgr update, and fall back to the frozen repository after the yearly TeX Live release
+- Venue: `anonymity-author-named` no longer fails a submission whose venue class hides the
+  authors in review mode, and it expands `\author{\PaperAuthors}` macros from the sources.
+- Log: a missing `.bbl` in a natbib or BibTeX project says BibTeX (not Biber) and uses the
+  real job name.
+- Log: undefined references are folded into "rerun LaTeX" only when labels changed, not for
+  rerunfilecheck or longtable reruns.
+- Log: parsing a log with many unmatched `(` is linear again (a 1 MB log took 26 s).
+- Log: `.bbl` error attribution is linear, and only moves errors at or after the
+  bibliography.
+- Log: overfull boxes "at lines 13--1" are dropped when an error sits in their paragraph;
+  "overfull boxs" is "overfull boxes".
+- Log: an error raised inside a TeX Live package while it loads points at the project file
+  that loaded it, not at the package's line.
 
 ### Security
 

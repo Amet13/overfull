@@ -38,7 +38,7 @@ function expandMacros(text: string, macros: Map<string, string>): string {
   for (let round = 0; round < MAX_ROUNDS; round++) {
     let changed = false;
     let budget = MAX_BODY * 4;
-    out = out.replace(/\\(?:([A-Za-z@]+)|[^])/g, (whole, name?: string) => {
+    out = out.replace(/\\(?:([A-Za-z@]+)|[\s\S])/g, (whole, name?: string) => {
       const body = name === undefined ? undefined : macros.get(name);
       if (body === undefined || body.length > budget) return whole;
       budget -= body.length;
