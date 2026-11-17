@@ -17343,13 +17343,13 @@ var init_config = __esm({
 // ../packages/cli/src/tools.ts
 import { spawn } from "node:child_process";
 import { accessSync, constants as constants3 } from "node:fs";
-import { delimiter, join as join4 } from "node:path";
+import { delimiter, isAbsolute as isAbsolute4, join as join4, win32 } from "node:path";
 function which(cmd, env = process.env, opts = {}) {
   const win = (opts.platform ?? process.platform) === "win32";
   const exts = win ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && (opts.allowBatch || !/^\.(bat|cmd)$/i.test(e))) : [""];
   const sepChar = win ? ";" : delimiter;
   for (const dir of (env.PATH ?? env.Path ?? "").split(sepChar)) {
-    if (!dir) continue;
+    if (!dir || !(win ? win32.isAbsolute(dir) : isAbsolute4(dir))) continue;
     for (const ext of exts) {
       const p = join4(dir, cmd + ext);
       try {
@@ -17361,12 +17361,34 @@ function which(cmd, env = process.env, opts = {}) {
   }
   return void 0;
 }
+function resolveCommand(cmd, env = process.env, opts = {}) {
+  if (/[\\/]/.test(cmd)) return cmd;
+  return which(cmd, env, opts);
+}
 function run(cmd, args, opts = {}) {
+  const lookupEnv = opts.env && (opts.env.PATH ?? opts.env.Path) ? opts.env : process.env;
+  const program = resolveCommand(cmd, lookupEnv, { allowBatch: opts.shell === true });
+  if (!program) {
+    return Promise.resolve({
+      code: 127,
+      stdout: "",
+      stderr: "",
+      error: `${cmd} was not found on PATH`
+    });
+  }
+  let file = program;
+  if (opts.shell && process.platform === "win32") {
+    try {
+      file = quoteWindowsArg(program);
+    } catch (err) {
+      return Promise.resolve({ code: 127, stdout: "", stderr: "", error: String(err) });
+    }
+  }
   return new Promise((resolvePromise) => {
     let stdout = "";
     let stderr = "";
     let pending = "";
-    const child = spawn(cmd, args, {
+    const child = spawn(file, args, {
       cwd: opts.cwd,
       env: opts.env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -17400,8 +17422,9 @@ function run(cmd, args, opts = {}) {
   });
 }
 async function dockerAvailable(env) {
-  if (!which("docker", env)) return false;
-  const r = await run("docker", ["info", "--format", "{{.ServerVersion}}"], { timeoutMs: 8e3 });
+  const docker = which("docker", env);
+  if (!docker) return false;
+  const r = await run(docker, ["info", "--format", "{{.ServerVersion}}"], { timeoutMs: 8e3 });
   return r.code === 0;
 }
 function quoteWindowsArg(arg) {
@@ -118372,13 +118395,15 @@ function loadPdfjs() {
 async function readPdfFacts(path, opts = {}) {
   const data = new Uint8Array(readFileSync4(path));
   const facts = await extractPdfFacts(data, await loadPdfjs());
-  if (which("pdffonts")) {
-    const r = await run("pdffonts", [path], { timeoutMs: 3e4 });
+  const pdffonts = which("pdffonts");
+  const docker = pdffonts ? void 0 : opts.docker && which("docker");
+  if (pdffonts) {
+    const r = await run(pdffonts, [path], { timeoutMs: 3e4 });
     if (r.code === 0) facts.fonts = parsePdffonts(r.stdout);
-  } else if (opts.docker) {
+  } else if (opts.docker && docker) {
     const rel2 = `./${relative4(opts.docker.root, path).split("\\").join("/")}`;
     const r = await run(
-      "docker",
+      docker,
       dockerToolArgs(opts.docker.image, opts.docker.root, "pdffonts", [rel2]),
       {
         timeoutMs: 6e4
@@ -118416,18 +118441,22 @@ async function runVeraPdf(pdf, env, opts = {}) {
       } catch (err) {
         return { compliant: false, failures: [], error: String(err) };
       }
-      r = win ? await run("verapdf", quoted, {
+      r = win ? await run(local, quoted, {
         timeoutMs: 18e4,
         shell: true
-      }) : await run("verapdf", [...args, pdf.startsWith("-") ? `./${pdf}` : pdf], {
+      }) : await run(local, [...args, pdf.startsWith("-") ? `./${pdf}` : pdf], {
         timeoutMs: 18e4
       });
     } else {
       const { image, root } = opts.docker;
       const rel2 = `./${relative5(root, pdf).split("\\").join("/")}`;
-      r = await run("docker", dockerToolArgs(image, root, "verapdf", [...args, rel2]), {
-        timeoutMs: 3e5
-      });
+      r = await run(
+        which("docker", env) ?? "docker",
+        dockerToolArgs(image, root, "verapdf", [...args, rel2]),
+        {
+          timeoutMs: 3e5
+        }
+      );
       if (r.code === 125)
         return {
           compliant: false,
@@ -118932,7 +118961,7 @@ init_safety();
 init_version();
 
 // src/inputs.ts
-import { isAbsolute as isAbsolute4, resolve as resolve3 } from "node:path";
+import { isAbsolute as isAbsolute5, resolve as resolve3 } from "node:path";
 function input(env, name) {
   const v = env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`];
   const t = v?.trim();
@@ -118956,7 +118985,7 @@ function readInputs(env, workspace) {
   const bib = splitList(input(env, "bib"));
   const opt = (name) => input(env, name);
   const check2 = {
-    cwd: isAbsolute4(workingDirectory) ? workingDirectory : resolve3(workspace, workingDirectory),
+    cwd: isAbsolute5(workingDirectory) ? workingDirectory : resolve3(workspace, workingDirectory),
     env,
     // The Action only checks existing outputs; it never starts containers.
     engine: "local",

@@ -40,20 +40,26 @@ export async function runVeraPdf(
       } catch (err) {
         return { compliant: false, failures: [], error: String(err) } satisfies VeraPdfResult;
       }
+      // The absolute path from `which` (quoted by `run` for cmd.exe), never the
+      // bare name: Windows would look in the current directory first.
       r = win
-        ? await run('verapdf', quoted, {
+        ? await run(local, quoted, {
             timeoutMs: 180000,
             shell: true,
           })
-        : await run('verapdf', [...args, pdf.startsWith('-') ? `./${pdf}` : pdf], {
+        : await run(local, [...args, pdf.startsWith('-') ? `./${pdf}` : pdf], {
             timeoutMs: 180000,
           });
     } else {
       const { image, root } = opts.docker as DockerTools;
       const rel = `./${relative(root, pdf).split('\\').join('/')}`;
-      r = await run('docker', dockerToolArgs(image, root, 'verapdf', [...args, rel]), {
-        timeoutMs: 300000,
-      });
+      r = await run(
+        which('docker', env) ?? 'docker',
+        dockerToolArgs(image, root, 'verapdf', [...args, rel]),
+        {
+          timeoutMs: 300000,
+        },
+      );
       if (r.code === 125)
         return {
           compliant: false,
