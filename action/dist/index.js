@@ -16976,6 +16976,11 @@ var require_dist = __commonJS({
 });
 
 // ../packages/cli/src/io.ts
+function testRefsTiming(env) {
+  const testRun = Boolean(process.env.VITEST) || process.env.NODE_ENV === "test";
+  if (!testRun || env.OVERFULL_TEST_NO_SPACING !== "1") return {};
+  return { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
+}
 var UsageError;
 var init_io = __esm({
   "../packages/cli/src/io.ts"() {
@@ -17356,7 +17361,7 @@ var init_project = __esm({
 
 // ../packages/cli/src/config.ts
 import { existsSync as existsSync3, readdirSync as readdirSync2, readFileSync as readFileSync3 } from "node:fs";
-import { basename as basename2, dirname as dirname4, isAbsolute as isAbsolute3, join as join3, resolve as resolve2 } from "node:path";
+import { basename as basename2, dirname as dirname4, isAbsolute as isAbsolute3, join as join3, relative as relative4, resolve as resolve2 } from "node:path";
 function latexmkrcDirs(root) {
   const out = {};
   for (const name of [".latexmkrc", "latexmkrc"]) {
@@ -17379,27 +17384,27 @@ function stringList(v, field, file) {
   if (Array.isArray(v) && v.every((x) => typeof x === "string")) return v;
   throw new ConfigError(file, `\`${field}\` must be a string or a list of strings`);
 }
-function closest2(word, options) {
-  const dist = (a, b) => {
-    const d = Array.from(
-      { length: a.length + 1 },
-      (_, i) => [i, ...Array(b.length).fill(0)]
-    );
-    for (let j = 1; j <= b.length; j++) d[0][j] = j;
-    for (let i = 1; i <= a.length; i++) {
-      for (let j = 1; j <= b.length; j++) {
-        const row = d[i];
-        const prev = d[i - 1];
-        row[j] = Math.min(
-          prev[j] + 1,
-          row[j - 1] + 1,
-          prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-        );
-      }
+function editDistance2(a, b) {
+  const d = Array.from(
+    { length: a.length + 1 },
+    (_, i) => [i, ...Array(b.length).fill(0)]
+  );
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const row = d[i];
+      const prev = d[i - 1];
+      row[j] = Math.min(
+        prev[j] + 1,
+        row[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
     }
-    return d[a.length][b.length];
-  };
-  const best = options.map((o) => ({ o, d: dist(word.toLowerCase(), o.toLowerCase()) })).sort((x, y) => x.d - y.d)[0];
+  }
+  return d[a.length][b.length];
+}
+function closest2(word, options) {
+  const best = options.map((o) => ({ o, d: editDistance2(word.toLowerCase(), o.toLowerCase()) })).sort((x, y) => x.d - y.d)[0];
   return best && best.d <= Math.max(2, Math.floor(word.length / 3)) ? best.o : void 0;
 }
 function checkKeys(obj, allowed, where, file) {
@@ -17509,7 +17514,9 @@ function loadConfig(cwd, explicit, env = {}, opts = {}) {
     } catch (err) {
       throw new ConfigError(
         file,
-        `invalid YAML: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`
+        // The whole message: its first line ends with "at line 2, column 5:" and the
+        // lines after it show where.
+        `invalid YAML: ${err instanceof Error ? err.message.trimEnd() : String(err)}`
       );
     }
     if (data !== null && data !== void 0 && !isObj2(data))
@@ -118684,7 +118691,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
 
 // ../packages/cli/src/pdf.ts
 import { readFileSync as readFileSync4 } from "node:fs";
-import { relative as relative4 } from "node:path";
+import { relative as relative5 } from "node:path";
 function loadPdfjs() {
   pdfjsPromise ??= (async () => {
     const warn3 = console.warn;
@@ -118712,7 +118719,7 @@ async function readPdfFacts(path, opts = {}) {
     const r = await run(pdffonts, [path], { timeoutMs: 3e4 });
     if (r.code === 0) facts.fonts = parsePdffonts(r.stdout);
   } else if (opts.docker && docker) {
-    const rel2 = `./${relative4(opts.docker.root, path).split("\\").join("/")}`;
+    const rel2 = `./${relative5(opts.docker.root, path).split("\\").join("/")}`;
     const r = await run(
       docker,
       dockerToolArgs(opts.docker.image, opts.docker.root, "pdffonts", [rel2]),
@@ -118734,7 +118741,7 @@ var init_pdf3 = __esm({
 });
 
 // ../packages/cli/src/verapdf.ts
-import { relative as relative5 } from "node:path";
+import { relative as relative6 } from "node:path";
 function verapdfFlavour(pdfuaPart) {
   return pdfuaPart === 1 ? "ua1" : "ua2";
 }
@@ -118760,7 +118767,7 @@ async function runVeraPdf(pdf, env, opts = {}) {
       });
     } else {
       const { image, root } = opts.docker;
-      const rel2 = `./${relative5(root, pdf).split("\\").join("/")}`;
+      const rel2 = `./${relative6(root, pdf).split("\\").join("/")}`;
       r = await run(
         which("docker", env) ?? "docker",
         dockerToolArgs(image, root, "verapdf", [...args, rel2]),
@@ -118803,7 +118810,7 @@ var init_version = __esm({
 
 // ../packages/cli/src/check.ts
 import { existsSync as existsSync4 } from "node:fs";
-import { join as join5, relative as relative6 } from "node:path";
+import { join as join5, relative as relative7 } from "node:path";
 function sourcesOf(inp) {
   if (!inp.sources) {
     const files = listFiles(inp.root);
@@ -119068,9 +119075,10 @@ async function references(inp, opts) {
     ignore: config.references.ignore,
     ...config.references.requireCite ? { requireProvenance: true } : {},
     // The CLI asks CrossRef about retractions; the core library leaves it off by default.
-    checkRetractions: true
+    checkRetractions: true,
+    ...testRefsTiming(env)
   };
-  const results = await verifyEntries(toVerify, refsOptions);
+  const results = await verifyWithMemo(toVerify, refsOptions, opts.refsMemo);
   cache2?.save();
   const result = refsCheck(results, {
     entries: toVerify,
@@ -119085,6 +119093,21 @@ async function references(inp, opts) {
     return { ...result, status: statusOf(result.problems) };
   }
   return result;
+}
+async function verifyWithMemo(entries, refsOptions, memo) {
+  if (!memo) return verifyEntries(entries, refsOptions);
+  const todo = entries.filter((e) => !memo.has(memoKey(e)));
+  const fresh = todo.length ? await verifyEntries(todo, refsOptions) : [];
+  todo.forEach((e, i) => {
+    const r = fresh[i];
+    if (r && keepable(r)) memo.set(memoKey(e), r);
+  });
+  let next = 0;
+  return entries.map((e) => {
+    if (todo[next] === e) return fresh[next++];
+    const { location: _old, ...kept } = memo.get(memoKey(e));
+    return e.line ? { ...kept, location: { line: e.line, ...e.file ? { file: e.file } : {} } } : kept;
+  });
 }
 function buildFailed(inp, results) {
   const build2 = results.find((r) => r.check === "build");
@@ -119207,7 +119230,7 @@ function exitCodeFor(report, failOn) {
   if (failOn === "warning" && report.status === "warn") return 1;
   return 0;
 }
-var skipped2, rel;
+var skipped2, rel, memoKey, keepable;
 var init_check3 = __esm({
   "../packages/cli/src/check.ts"() {
     "use strict";
@@ -119227,14 +119250,16 @@ var init_check3 = __esm({
       problems: [],
       skippedReason: reason
     });
-    rel = (root, abs) => relative6(root, abs).split("\\").join("/") || ".";
+    rel = (root, abs) => relative7(root, abs).split("\\").join("/") || ".";
+    memoKey = (e) => JSON.stringify([e.file ?? "", e.raw]);
+    keepable = (r) => r.reason !== "offline" && r.status !== "error" && (r.status !== "unverifiable" || r.reason === "skipped by author");
   }
 });
 
 // src/index.ts
 import { appendFileSync, writeFileSync as writeFileSync3 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join as join6, relative as relative7, resolve as resolve4 } from "node:path";
+import { join as join6, relative as relative8, resolve as resolve4 } from "node:path";
 
 // ../packages/cli/src/index.ts
 init_src();
@@ -119353,7 +119378,7 @@ async function main2() {
     `${guard.start}${neutralizeWorkflowCommands(formatHuman(report, { color: true, verbose: true }))}${guard.end}`
   );
   if (inputs.annotations) {
-    const root = relative7(workspace, resolve4(inputs.check.cwd ?? workspace)) || ".";
+    const root = relative8(workspace, resolve4(inputs.check.cwd ?? workspace)) || ".";
     for (const line of githubAnnotations(report, { root, limit: 50 }))
       process.stdout.write(`${line}
 `);
@@ -119371,7 +119396,7 @@ async function main2() {
     writeReport(
       target,
       formatSarif(report, {
-        root: relative7(workspace, cwd) || ".",
+        root: relative8(workspace, cwd) || ".",
         ...fallbackFile ? { fallbackFile } : {}
       })
     );
