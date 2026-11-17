@@ -296,6 +296,13 @@ const ENGINE_FLAG: Record<TexEngine, string> = {
 };
 
 /** latexmk arguments that build the project with the detected engine. */
+/**
+ * The image of the generated Makefile and workflow. They run plain latexmk, which
+ * installs nothing on demand, so they use the full image: an existing project may load
+ * any TeX Live package.
+ */
+const LATEXMK_IMAGE = 'ghcr.io/amet13/overfull:3';
+
 function latexmkCommand(d: Detected): string {
   return [
     'latexmk',
@@ -371,7 +378,7 @@ export function renderMakefile(d: Detected): string {
 # Run \`make help\` for all targets.
 
 JOB    ?= $(shell sed -n 's/^jobname: *\\([^ #]*\\).*/\\1/p' overfull.yml)
-IMAGE  ?= $(or $(OVERFULL_IMAGE),${DEFAULT_IMAGE})
+IMAGE  ?= $(or $(OVERFULL_IMAGE),${LATEXMK_IMAGE})
 BASE   ?= origin/main
 PAGES  ?= 1-3
 # Engine flags are left out when .latexmkrc names the engine.
@@ -440,7 +447,7 @@ export function renderWorkflow(d: Detected): string {
   return `# Build the PDF in the Overfull image, run the preflight and publish results.
 # Written by \`overfull init --here\`. Engine: ${d.engine} (${d.engineHow}).
 # Push: PDF artifact + job summary. Pull request: also a PDF of the changes.
-# Uses the image ${DEFAULT_IMAGE}, published with Overfull v3.0.0.
+# Uses the image ${LATEXMK_IMAGE} (all of TeX Live), published with Overfull v3.0.0.
 name: overfull
 
 on:
@@ -461,7 +468,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     container:
-      image: ${DEFAULT_IMAGE}
+      image: ${LATEXMK_IMAGE}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

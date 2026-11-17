@@ -153,6 +153,10 @@ jobs:
           tags: overfull:ci
           cache-from: type=gha,scope=overfull-linux-amd64
           cache-to: type=gha,scope=overfull-linux-amd64,mode=max
+      # Every built-in path runs the image as a non-root user; a font list readable only
+      # by root costs about a minute per LaTeX start.
+      - name: LaTeX starts fast for a non-root user
+        run: bash docker/smoke/start-time.sh overfull:ci 20
       - name: Corpus reproduces every rule on TeX Live 2026
         run: docker run --rm -v "$PWD:/repo" -w /repo -e OVERFULL_TEX_LOCAL=1 overfull:ci node scripts/corpus.mjs --verify
 
@@ -178,6 +182,19 @@ jobs:
           tags: overfull:ci-slim
           cache-from: type=gha,scope=slim-linux-amd64
           cache-to: type=gha,scope=slim-linux-amd64,mode=max
+      - name: LaTeX starts fast for a non-root user, also on a read-only root filesystem
+        run: |
+          bash docker/smoke/start-time.sh overfull:ci-slim 20
+          bash docker/smoke/start-time.sh overfull:ci-slim 20 --read-only
+      # Offline, as a non-root user: each venue class, the common packages, XeLaTeX, the
+      # fonts and latexdiff are in the image (no on-demand install can hide a gap).
+      - name: The slim image has what it promises, offline
+        run: docker run --rm --network none -u 1000:1000 -e HOME=/tmp -v "$PWD/docker/smoke:/smoke:ro" overfull:ci-slim sh /smoke/slim.sh
+      - name: On-demand install works for a non-root user
+        run: |
+          dir="$(mktemp -d)" && chmod 777 "$dir"
+          printf '%s\n' '\documentclass{article}\usepackage{chemfig}' '\begin{document}\chemfig{A-B}\end{document}' > "$dir/main.tex"
+          docker run --rm -u 1000:1000 -e HOME=/tmp -v "$dir:/work" -w /work overfull:ci-slim overfull build
       # The image the template workflow uses: every template must build in it and pass
       # its own preflight (a package missing from the image is installed on demand and
       # named in the log, so the image's package list can be completed).
@@ -185,6 +202,16 @@ jobs:
         run: bash scripts/e2e-templates.sh overfull:ci-slim out
       - name: The paper template's arXiv build (pdfLaTeX) works in the slim image
         run: docker run --rm -v "$PWD/out/paper:/work" -w /work overfull:ci-slim latexmk -pdf -jobname=paper-arxiv
+      # The template workflow's pull request step.
+      - name: overfull diff works in the slim image
+        working-directory: out/paper
+        run: |
+          git init -q && git add -A
+          git -c user.name=ci -c user.email=ci@example.invalid commit -qm base
+          sed -i 's/\\end{document}/Changed in CI.\n\\end{document}/' main.tex
+          git -c user.name=ci -c user.email=ci@example.invalid commit -qam change
+          docker run --rm -v "$PWD:/work" -w /work overfull:ci-slim overfull diff --base HEAD~1
+          test -s overfull-diff.pdf
       - name: Action runs on a built template
         id: action
         uses: ./
@@ -273,6 +300,7 @@ jobs:
           docker run --rm overfull:ci-arm64 sh -c 'overfull --version && verapdf --version'
           if [ "$TARGET" = overfull ]; then
             docker run --rm overfull:ci-arm64 sh -c 'lualatex --version | head -1 && latexmk --version | head -2'
+            bash docker/smoke/start-time.sh overfull:ci-arm64 20
           fi
 
   site:

@@ -13,7 +13,7 @@ import { UsageError } from './io.js';
 import { ambiguousMainError, detectMain } from './project.js';
 import { safeImage, safeJobname, safeRelPath } from './safety.js';
 
-export const DEFAULT_IMAGE = 'ghcr.io/amet13/overfull:3';
+export const DEFAULT_IMAGE = 'ghcr.io/amet13/overfull:3-slim';
 const CONFIG_FILE = 'overfull.yml';
 
 export type Engine = 'auto' | 'local' | 'docker';
