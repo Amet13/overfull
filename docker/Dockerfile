@@ -11,9 +11,10 @@
 #                   templates embedded, no node_modules). No TeX Live here, so a code
 #                   change never rebuilds or re-downloads a TeX layer.
 #   texbase-full    TeX Live 2026, scheme-full (pinned digest)
-#   texbase-slim    TeX Live 2026, scheme-basic + LuaTeX + the recommended LaTeX and font
-#                   collections + what the templates use. Missing packages are installed
-#                   from CTAN by `overfull build` (OVERFULL_TEX_INSTALL=1).
+#   texbase-slim    TeX Live 2026, scheme-basic + LuaTeX, XeTeX, the recommended LaTeX and
+#                   font collections, latexdiff, the venue classes and common packages.
+#                   Missing packages are installed from CTAN by `overfull build`
+#                   (OVERFULL_TEX_INSTALL=1), as any user.
 #   tex             texbase-$TEX_FLAVOR + fonts, poppler, qpdf, veraPDF
 #   check           Debian slim + Node + veraPDF + poppler + git + CLI, no TeX Live
 #   overfull        tex + Node + CLI (default target)
@@ -97,17 +98,32 @@ RUN node scripts/build-standalone.mjs \
 FROM texlive/texlive:latest@sha256:07e8062637249c4f780ca59f42cc2ed592bc2dc1db4320769406aee3f98aa70e AS texbase-full
 
 FROM texlive/texlive:latest-basic@sha256:e930edb4e2ef4ed70de1374b262e0ae15fe55ae1e6a10ea7c52e82618f42ad77 AS texbase-slim
-# scheme-basic plus what most papers use: LuaLaTeX (the templates' engine), the
-# recommended LaTeX packages and fonts, biblatex with biber, and the packages the
-# templates load. Everything else comes from CTAN when a document asks for it.
+# scheme-basic plus what most papers use: LuaLaTeX (the templates' engine) and XeLaTeX,
+# the recommended LaTeX packages and fonts, biblatex with biber, latexdiff (for
+# `overfull diff`), the classes of the venue profiles in venues/ with what they load,
+# common packages, the Fira and Inconsolata fonts, and the packages the templates load.
+# Everything else comes from CTAN when a document asks for it
+# (docker/smoke/slim.sh checks the list offline).
 # mirror.ctan.org sends each request to a random mirror, and one that is down or
 # mid-sync fails the build, so try it a few times, then two fixed mirrors, and leave
 # the redirector as the repository for on-demand installs.
-RUN set -eux; \
+# The TeX Live tree is then made writable for every user, in the same layer (a later
+# chmod would copy the whole tree into a new layer): containers usually run with the
+# host user's uid (`--user`), and on-demand installs must work for any of them.
+RUN --mount=type=secret,id=build_ca,required=false \
+    set -eux; \
+    if [ -s /run/secrets/build_ca ]; then cp /run/secrets/build_ca /usr/local/share/ca-certificates/zz-build-ca.crt && update-ca-certificates >/dev/null; fi; \
     pkgs="collection-luatex collection-latexrecommended collection-fontsrecommended \
       latexmk biblatex biblatex-ieee biber csquotes babel-english \
       pgf pgfplots siunitx cleveref tocloft lastpage fontsize setspace float \
-      booktabs mathtools unicode-math fontspec microtype lm"; \
+      booktabs mathtools unicode-math fontspec microtype lm \
+      xetex xetexconfig latexdiff ulem \
+      ieeetran acmart llncs elsarticle revtex \
+      xstring totpages hyperxmp ifoddpage ncctools relsize comment upquote preprint \
+      aliascnt fontaxes libertine libertinus-fonts \
+      enumitem multirow titlesec xurl algorithm2e algorithmicx algorithms tcolorbox \
+      tikz-cd threeparttable makecell adjustbox newtx glossaries lipsum fontawesome5 \
+      fira firamath inconsolata"; \
     ctan=https://mirror.ctan.org/systems/texlive/tlnet; \
     ok=; \
     for repo in "$ctan" "$ctan" "$ctan" \
@@ -119,7 +135,9 @@ RUN set -eux; \
     test -n "$ok"; \
     tlmgr option repository "$ctan"; \
     tlmgr path add; \
-    rm -rf /usr/local/texlive/*/tlpkg/backups/* /usr/local/texlive/*/texmf-var/web2c/tlmgr.log
+    rm -rf /usr/local/texlive/*/tlpkg/backups/* /usr/local/texlive/*/texmf-var/web2c/tlmgr*.log; \
+    if [ -f /usr/local/share/ca-certificates/zz-build-ca.crt ]; then rm /usr/local/share/ca-certificates/zz-build-ca.crt && update-ca-certificates --fresh >/dev/null; fi; \
+    chmod -R a+rwX /usr/local/texlive
 ENV OVERFULL_TEX_INSTALL=1
 
 # ---------------------------------------------------------------------------
