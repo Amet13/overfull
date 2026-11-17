@@ -431,7 +431,13 @@ class Parser {
       // "lines 13--1": the paragraph began in an \input file that has closed since; the
       // end line is in the current file, so point there rather than at a wrong line.
       warning.line = Math.min(from, to);
-      if (from > to) data.spansFiles = true;
+      if (from > to) {
+        data.spansFiles = true;
+        // The file the paragraph began in: the one that closed last.
+        if (this.stack.lastClosed && this.stack.lastClosed !== warning.file) {
+          data.fromFile = this.stack.lastClosed;
+        }
+      }
     }
     warning.page = this.stack.page + 1;
   }
@@ -461,7 +467,11 @@ function classifyWarning(
   }
   m = /^Label [`']([^']+)' multiply defined/.exec(message);
   if (m) return { kind: 'duplicate-label', data: { label: m[1] } };
-  if (/^Label\(s\) may have changed/.test(message)) return { kind: 'labels-changed', data: {} };
+  // Only these mean labels moved, so undefined references may resolve on the next run.
+  // Other reruns (rerunfilecheck's outlines, longtable widths) do not touch labels.
+  if (/^Label\(s\) may have changed|Rerun to get cross-references right/.test(message)) {
+    return { kind: 'labels-changed', data: {} };
+  }
   if (/Please \(re\)run Biber/i.test(message)) return { kind: 'rerun-biber', data: {} };
   if (/Please \(re\)run BibTeX/i.test(message)) return { kind: 'rerun-bibtex', data: {} };
   m = /^The following entry could not be found in the database: (\S+)/.exec(message);
