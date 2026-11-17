@@ -1,7 +1,9 @@
 #!/bin/sh
 # Tests install.sh against a local fake release served over HTTP.
 # Cases: a good download installs a working file; a tampered one installs nothing; a
-# release with gzip copies installs from the .gz; a tampered .gz installs nothing.
+# release with gzip copies installs from the .gz; a tampered .gz installs nothing;
+# with gh logged in, a passing attestation installs and a failing one installs nothing.
+# A fake gh comes first on PATH, so a real, logged-in gh never runs here.
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -23,6 +25,22 @@ esac
 
 if command -v sha256sum >/dev/null 2>&1; then sum() { sha256sum "$1" | cut -d ' ' -f 1; }
 else sum() { shasum -a 256 "$1" | cut -d ' ' -f 1; }; fi
+
+# Fake gh: FAKE_GH=out (not logged in, the default), ok (attestation passes) or fail.
+mkdir -p "$work/fakebin"
+cat > "$work/fakebin/gh" <<'GH'
+#!/bin/sh
+printf '%s\n' "$*" >> "$FAKE_GH_LOG"
+case "$1" in
+  auth) [ "${FAKE_GH:-out}" != out ] ;;
+  attestation) [ "$3" = --help ] || [ "${FAKE_GH:-out}" = ok ] ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$work/fakebin/gh"
+PATH="$work/fakebin:$PATH"
+FAKE_GH_LOG="$work/gh.log"
+export PATH FAKE_GH_LOG
 
 good="$work/good"
 bad="$work/bad"
@@ -84,6 +102,35 @@ if OVERFULL_BASE_URL="http://127.0.0.1:$port" OVERFULL_INSTALL_DIR="$work/out4/b
   exit 1
 fi
 [ ! -e "$work/out4/bin/overfull" ] || { echo "FAIL: a file was installed" >&2; exit 1; }
+stop
+
+echo "case 5: gh logged in and the attestation verifies: installs"
+serve "$good" "$port"
+: > "$FAKE_GH_LOG"
+FAKE_GH=ok OVERFULL_BASE_URL="http://127.0.0.1:$port" OVERFULL_INSTALL_DIR="$work/out5/bin" sh "$root/install.sh"
+[ -x "$work/out5/bin/overfull" ] || { echo "FAIL: nothing installed" >&2; exit 1; }
+grep -q "^attestation verify .*/$asset --repo amet13/overfull\$" "$FAKE_GH_LOG" ||
+  { echo "FAIL: gh attestation verify was not run on the download" >&2; cat "$FAKE_GH_LOG" >&2; exit 1; }
+stop
+
+echo "case 6: gh logged in and the attestation fails: installs nothing"
+serve "$good" "$port"
+if FAKE_GH=fail OVERFULL_BASE_URL="http://127.0.0.1:$port" OVERFULL_INSTALL_DIR="$work/out6/bin" sh "$root/install.sh"; then
+  echo "FAIL: install.sh succeeded although the attestation failed" >&2
+  exit 1
+fi
+[ ! -e "$work/out6/bin/overfull" ] || { echo "FAIL: a file was installed" >&2; exit 1; }
+stop
+
+echo "case 7: gh not logged in: the checksum alone installs"
+serve "$good" "$port"
+: > "$FAKE_GH_LOG"
+OVERFULL_BASE_URL="http://127.0.0.1:$port" OVERFULL_INSTALL_DIR="$work/out7/bin" sh "$root/install.sh"
+[ -x "$work/out7/bin/overfull" ] || { echo "FAIL: nothing installed" >&2; exit 1; }
+if grep -q "^attestation verify .*$asset" "$FAKE_GH_LOG"; then
+  echo "FAIL: gh attestation verify ran without a login" >&2
+  exit 1
+fi
 stop
 
 echo "test-install: ok"
