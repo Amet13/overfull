@@ -87,9 +87,13 @@ commit `action/dist`: `pnpm --filter overfull-action build` (CI checks it).
 Overfull ships as a Docker image, GitHub Release downloads and the Action. It is
 not published to npm.
 
-Releases normally happen on their own: `autorelease.yml` proposes a patch release
-every month and publishes it once merged (see [MAINTAINING.md](MAINTAINING.md)). To
-release by hand, for example a minor or major version:
+Releases normally happen on their own: `autorelease.yml` proposes a release every
+month and publishes it once merged (see [MAINTAINING.md](MAINTAINING.md)).
+`scripts/release-notes.mjs` moves the `[Unreleased]` section into the new, dated
+version section, merges the commit subjects into its `### Changed` list and folds
+dependency bumps into one line. The version is a minor bump when the section has
+`### Added` entries, else a patch bump. Write user-visible changes into
+`[Unreleased]` as you go. To release by hand, for example a major version:
 
 1. `node scripts/bump-version.mjs X.Y.Z --dry-run`, then without `--dry-run`.
    It updates every `package.json`, core's `VERSION`, `CITATION.cff` and, on a
