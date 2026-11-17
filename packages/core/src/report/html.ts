@@ -1,6 +1,7 @@
 import type { CheckStatus, Problem, Report, Severity } from '../types.js';
 import {
   checkLine,
+  codeSpans,
   formatLocation,
   nothingCheckedLine,
   sortProblems,
@@ -11,9 +12,11 @@ import {
 
 const esc = (s: string) => stripUnsafe(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-/** Inline `code` spans; everything else is escaped text. */
+/** Inline `code` spans (matched backtick pairs, as in Markdown); everything else is escaped text. */
 const inline = (s: string) =>
-  esc(s).replace(/`([^`\n]+)`/g, (_m, code: string) => `<code>${code}</code>`);
+  codeSpans(stripUnsafe(s))
+    .map((span) => (span.code ? `<code>${esc(span.text)}</code>` : esc(span.text)))
+    .join('');
 
 const STATUS_WORD: Record<CheckStatus, string> = {
   pass: 'Pass',
