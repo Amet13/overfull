@@ -123,7 +123,7 @@ Docker otherwise. Force one with `--engine local` or `--engine docker`.
 
 Reference lookups go to CrossRef, doi.org, arXiv, DBLP, OpenAlex, Semantic
 Scholar, the ACL Anthology and Europe PMC (see
-[References](./references.md)). They need network access. Use
+[What leaves your machine](./references.md#what-leaves-your-machine)). They need network access. Use
 `overfull check --offline` to skip them.
 
 ## Dev Container and VS Code

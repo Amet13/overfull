@@ -42,14 +42,13 @@ unverifiable, or lookup failed. You decide what that means.
 
 ## What data leaves my machine?
 
-Reference checks (and `overfull cite`) send titles, DOIs and arXiv ids of your
-cited entries to CrossRef, doi.org, arXiv and DBLP. If you set the
-`OPENALEX_API_KEY` environment variable, titles also go to OpenAlex, with the
-key. If you set a `mailto` address, it goes to CrossRef and OpenAlex. Nothing
-else is sent. Use `--offline` to send nothing. The browser check on the website
-reads your files in the browser and never uploads them; with online
-verification on, it sends each reference's DOI or title to CrossRef and doi.org
-only.
+Only what the reference lookups need: the identifiers (DOI, arXiv, PubMed or ACL
+Anthology id) or the title, first author's surname and year of each cited
+entry, and your `mailto` and API keys if you set them. Your sources, PDF and
+log are never sent. Use `--offline` to send nothing. The browser check on the
+website reads your files in the browser and never uploads them. Which service
+receives what, for the command line and the browser check:
+[What leaves your machine](./references.md#what-leaves-your-machine).
 
 ## Does Overfull use AI?
 

@@ -125,26 +125,21 @@ provenance field (source, date, hash over the identifying fields), which `guard`
 checks.
 
 The browser check asks only the sources that allow requests from web pages:
-CrossRef, doi.org and OpenAlex.
+CrossRef, doi.org and OpenAlex. What each source receives is listed in
+[What leaves your machine](guide/references.md#what-leaves-your-machine), and
+`scripts/test/privacy-doc.test.ts` keeps that list in step with the request hosts
+in `refs/`.
 
 ## Command line
 
-```text
-overfull init --here [--agents] [--ci] [--make] [--hooks] [--all]   add Overfull to this project
-overfull init [thesis|paper|slides] [dir]                           start from a template
-overfull build [main.tex] [--engine auto|local|docker]              compile with latexmk, check the log
-overfull check [files] [--json|--markdown|--sarif|--annotations] [--checks a,b]
-               [--profile p] [--offline] [--refresh] [--fail-on error|warning|never] [--watch]
-overfull cite <doi | arXiv:id | ACL id | PMID | PMCID | "title"> [--bib f] [--key k]
-overfull guard --staged | --hook [claude|gemini|codex]              block hand-written .bib entries
-overfull mcp                                                        MCP server: check, cite, explain, pages, doctor
-overfull pages <range>                                              PDF pages to PNG
-overfull diff [--base ref]                                          PDF with changes highlighted (latexdiff)
-overfull explain <rule> | --list
-overfull doctor
-```
+Commands: `init` (and `init --here`, alias `adopt`), `build`, `check`, `cite`,
+`guard`, `mcp`, `pages`, `diff`, `explain` and `doctor`, one module each in
+`packages/cli/src/commands/`, loaded only when that command runs. Each command's
+`--help` is the source of truth for its flags; [the CLI reference](guide/cli.md)
+documents them, and `packages/cli/test/docs-reference.test.ts` fails when the
+reference, the README's command list or `overfull --help` drift from it.
 
-`adopt` is an alias of `init --here`. Without `overfull.yml`, `check` finds the
+Without `overfull.yml`, `check` finds the
 main file (`main.tex`, or the only `.tex` file with `\documentclass`) and says what
 it assumed. `check` never runs code the project chooses: `build.image` is used by
 `build` only.

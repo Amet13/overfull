@@ -57,6 +57,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ### Fixed
 
+- Docs: the privacy notes in the FAQ, SECURITY.md and the guide listed only some
+  of the services that receive data. One list in
+  [References](docs/guide/references.md#what-leaves-your-machine) now says which
+  service receives what (DOI; title, first author and year; arXiv, PubMed and ACL
+  ids), for the command line and the browser check, and a test keeps it in step
+  with the code.
+- Docs: the CLI reference missed `guard`, `check --project-cache`, the ACL, PMID and
+  PMCID ids of `cite`, `guard --hook codex` and venue ids for `--profile`, and said
+  every command takes `--json` (`mcp` does not). A test now compares the reference,
+  the README and `overfull --help` with each command's `--help`.
+- README: the Claude Code plugin install command (`/plugin marketplace add
+  amet13/overfull`, then `/plugin install overfull@overfull`); the repository is not
+  a GitHub template.
 - Releases: the images are tagged before the GitHub release and `v3` are created, so a release can no longer come out without its images
 - References: titles in Cyrillic, Chinese, Arabic and other non-Latin scripts
   were always reported as not found; a title without letters or digits is now

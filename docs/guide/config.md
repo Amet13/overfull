@@ -46,14 +46,16 @@ build:
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `mailto` | email | `$OVERFULL_MAILTO`, else none | Contact address sent to CrossRef (and OpenAlex) for their polite pool. `--mailto` overrides it. |
+| `mailto` | email | `$OVERFULL_MAILTO`, else none | Contact address sent to CrossRef and OpenAlex for their polite pool (see [What leaves your machine](./references.md#what-leaves-your-machine)). `--mailto` overrides it. |
 | `ignore` | string or list of keys | `[]` | Entries not to verify. |
 | `cache` | `user` \| `project` | `user` | Ignored. A project cannot choose to keep its own cache: `project` here gives a `refs-cache-ignored` notice. Use `--project-cache` or `OVERFULL_REFS_CACHE=project` instead (see [Cache](#cache)). |
 | `requireCite` | boolean | `false` | Every cited entry that is not verified must carry an intact `x-overfull = {cite … <hash>}` field from `overfull cite` (the hash makes edits evident; it is not authentication) and a DOI, eprint or URL, or the author's `note = {overfull: author-provided}` (authors only, never agents); otherwise `reference-unproven` (error), also offline. Offline, a valid marker gives `reference-not-reverified` (warning). Off by default; the templates turn it on. If you write entries yourself and use no agents, you can turn it off. See [References](./references.md#provenance). |
 
-`mailto` does not turn OpenAlex on. OpenAlex title search is used only when the
-`OPENALEX_API_KEY` environment variable is set. There is no config key for the
-key, so it never ends up in the repository.
+`mailto` does not turn OpenAlex on. With the `OPENALEX_API_KEY` environment
+variable set, OpenAlex is one of the title searches; without it, OpenAlex is asked
+without a key only when DBLP gives no answer, or for one DOI when doi.org cannot
+answer. There is no config key for the key, so it never ends up in the
+repository. What each service receives: [What leaves your machine](./references.md#what-leaves-your-machine).
 
 You can also skip a single entry with `note = {overfull: skip}` in the `.bib`.
 See [References](./references.md).
@@ -125,7 +127,8 @@ in `.overfull/diff`. The templates add `.overfull/` to `.gitignore`.
 | `OVERFULL_MAILTO` | Contact address, used when `references.mailto` and `--mailto` are not set. |
 | `OVERFULL_IMAGE` | Docker image, overrides `build.image`; the image `overfull check` may use for veraPDF/pdffonts. |
 | `OVERFULL_REFS_CACHE` | Set to `project` to keep the reference cache in `.overfull/cache/refs.json` (like `check --project-cache`). Never used in CI. |
-| `OPENALEX_API_KEY` | Enables OpenAlex title search for `check` and `cite`. |
+| `OPENALEX_API_KEY` | Sent to OpenAlex; makes it one of the title searches for `check` and `cite` (without it, OpenAlex is only a fallback). |
+| `SEMANTIC_SCHOLAR_API_KEY` | Sent to Semantic Scholar for a higher rate limit. |
 | `OVERFULL_DEBUG` | Set to `1` to print a stack trace on an internal error. |
 
 ## Agents and this file
