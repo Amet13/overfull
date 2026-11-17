@@ -175,3 +175,26 @@ describe('plurals in messages', () => {
     expect(message).not.toContain('boxs');
   });
 });
+
+describe('errors raised inside a distribution package while it loads', () => {
+  it('point at the project file that loaded the package, not at the package line', () => {
+    const text = [
+      banner,
+      '(./main.tex',
+      '(/usr/local/texlive/2026/texmf-dist/tex/latex/amsmath/amsmath.sty',
+      "! LaTeX Error: Unknown option `sumlimit' for package `amsmath'.",
+      '',
+      'See the LaTeX manual or LaTeX Companion for explanation.',
+      'Type  H <return>  for immediate help.',
+      ' ...                                              ',
+      '                                                  ',
+      'l.97 \\ProcessOptions\\par',
+      '                         ',
+      ')',
+      ')',
+    ].join('\n');
+    const p = analyzeLog(text).build.problems[0];
+    expect(p?.rule).toBe('unknown-package-option');
+    expect(p?.location).toEqual({ file: 'main.tex' });
+  });
+});

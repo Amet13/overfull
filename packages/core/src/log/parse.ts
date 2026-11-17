@@ -9,6 +9,7 @@
 
 import { LineReader, type LogicalLine } from './lines.js';
 import {
+  isDistributionPath,
   isFileToken,
   normalizePath,
   SPACED_PATH_SOURCE,
@@ -101,7 +102,12 @@ class FileStack {
    * a file; `innermost` is the innermost file open at that depth, so `current()` is O(1)
    * even under many unmatched `(`.
    */
-  private readonly entries: { path: string | null; innermost: string | undefined }[] = [];
+  private readonly entries: {
+    path: string | null;
+    innermost: string | undefined;
+    /** Innermost file at this depth that is not part of the TeX distribution. */
+    project: string | undefined;
+  }[] = [];
   lastClosed: string | undefined;
   readonly opened: string[] = [];
   /** Last page number shipped out (`[12]`). */
@@ -115,6 +121,16 @@ class FileStack {
 
   current(): string | undefined {
     return this.entries[this.entries.length - 1]?.innermost ?? this.lastClosed;
+  }
+
+  /**
+   * When the innermost open file belongs to the TeX distribution (a package raised the
+   * error while loading), the innermost project file that loaded it; else undefined.
+   */
+  loader(): string | undefined {
+    const top = this.entries[this.entries.length - 1];
+    if (!top || top.innermost === top.project) return undefined;
+    return top.project;
   }
 
   scan(text: string): void {
@@ -147,11 +163,14 @@ class FileStack {
     const unquoted = token.startsWith('"') ? token.slice(1, -1) : token;
     if (isFileToken(unquoted)) {
       const path = normalizePath(unquoted, this.root);
-      this.entries.push({ path, innermost: path });
+      const below = this.entries[this.entries.length - 1];
+      const project = isDistributionPath(unquoted) ? below?.project : path;
+      this.entries.push({ path, innermost: path, project });
       this.opened.push(path);
       return end;
     }
-    this.entries.push({ path: null, innermost: this.entries[this.entries.length - 1]?.innermost });
+    const below = this.entries[this.entries.length - 1];
+    this.entries.push({ path: null, innermost: below?.innermost, project: below?.project });
     return start;
   }
 
@@ -313,7 +332,13 @@ class Parser {
       error.line = Number(fle[2]);
     } else {
       const file = this.stack.current();
-      if (file) error.file = file;
+      const loader = this.stack.loader();
+      if (loader) {
+        // Raised inside a package of the distribution while it loads: its `l.` line is in
+        // the package, which the author cannot change. Point at the file that loaded it.
+        error.file = loader;
+        delete error.line;
+      } else if (file) error.file = file;
     }
     if (
       /^(?:Emergency stop|==> Fatal error occurred|TeX capacity exceeded|Interruption)/.test(

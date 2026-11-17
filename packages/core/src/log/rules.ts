@@ -135,6 +135,7 @@ export const logRules: RuleInfo[] = [
     title: 'Line break with no line to end',
     summary: '`\\\\` is used after a blank line or at the start of a paragraph.',
     fix: 'Remove the `\\\\`; use a blank line or `\\vspace` for spacing.',
+    corpus: 'no-line-to-end',
   },
   {
     id: 'missing-begin-document',
@@ -264,6 +265,7 @@ export const logRules: RuleInfo[] = [
     title: 'hyperref error',
     summary: 'hyperref reported an error, typically a driver or option conflict.',
     fix: 'Load hyperref last and set options with `\\hypersetup`.',
+    corpus: 'hyperref-error',
   },
   {
     id: 'command-already-defined',
@@ -272,6 +274,7 @@ export const logRules: RuleInfo[] = [
     title: 'Command already defined',
     summary: '`\\newcommand` tried to define a name that already exists.',
     fix: 'Choose another name, or use `\\renewcommand` deliberately.',
+    corpus: 'command-already-defined',
   },
   {
     id: 'unknown-package-option',
@@ -280,6 +283,7 @@ export const logRules: RuleInfo[] = [
     title: 'Unknown package option',
     summary: 'A package or class was given an option it does not support.',
     fix: 'Check the option against the package documentation.',
+    corpus: 'unknown-package-option',
   },
   {
     id: 'tex-error',
@@ -326,6 +330,7 @@ export const logRules: RuleInfo[] = [
     title: 'Bibliography out of date',
     summary: 'Citations changed since Biber or BibTeX last ran.',
     fix: 'Build with `latexmk`, or rerun biber/bibtex and LaTeX.',
+    corpus: 'bibliography-stale',
   },
   {
     id: 'rerun-needed',
@@ -408,6 +413,7 @@ export const logRules: RuleInfo[] = [
     title: 'Float taller than the page',
     summary: 'A figure or table does not fit on a page.',
     fix: 'Scale it down or split it.',
+    corpus: 'float-too-large',
   },
   {
     id: 'font-feature-missing',
@@ -416,5 +422,6 @@ export const logRules: RuleInfo[] = [
     title: 'Font lacks a requested feature',
     summary: 'fontspec could not apply a requested OpenType feature or script.',
     fix: 'Pick a font that supports it or drop the option.',
+    corpus: 'font-feature-missing',
   },
 ];

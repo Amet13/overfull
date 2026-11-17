@@ -1,0 +1,6 @@
+{
+  "title": "Font lacks the requested OpenType feature (fontspec)",
+  "engine": "lualatex",
+  "check": "output",
+  "expect": ["font-feature-missing"]
+}
