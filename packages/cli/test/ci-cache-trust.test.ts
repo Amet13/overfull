@@ -51,7 +51,7 @@ function _commandsIn(text: string): string[] {
 
 const FAKE_TITLE = 'Zorbulating hyperflux capacitors in submerged tandem orchards two';
 const FORGED = JSON.stringify({
-  [`title:${FAKE_TITLE.toLowerCase()}|2023`]: {
+  [`title:${FAKE_TITLE.toLowerCase()}|2023|author:zyx`]: {
     crossref: [
       {
         source: 'crossref',
