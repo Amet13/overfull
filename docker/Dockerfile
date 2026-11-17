@@ -159,7 +159,20 @@ RUN --mount=type=secret,id=build_ca,required=false \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
     fc-cache -f; \
-    luaotfload-tool -q -u -f; \
+    # LuaLaTeX's font list (luaotfload) and the caches of the common fonts, built once
+    # into TEXMFSYSVAR and writable for every user. luaotfload reads its list only from
+    # the first writable cache directory; were that the user's own (empty) directory, as
+    # for any non-root user, each container would rebuild the list (about a minute
+    # with all of TeX Live).
+    sysvar="$(kpsewhich -var-value TEXMFSYSVAR)"; \
+    TEXMFVAR="$sysvar" luaotfload-tool -q -u -f; \
+    mkdir /tmp/warm; \
+    printf '%s\n' '\documentclass{article}\usepackage{unicode-math}' \
+      '\begin{document}Text \textbf{bold} \emph{it} \texttt{mono} $x+1$\end{document}' > /tmp/warm/warm.tex; \
+    (cd /tmp/warm && TEXMFVAR="$sysvar" lualatex -interaction=nonstopmode warm.tex >/dev/null); \
+    rm -rf /tmp/warm; \
+    chmod a+rwx "$sysvar"; \
+    chmod -R a+rwX "$sysvar/luatex-cache"; \
     verapdf --version
 
 WORKDIR /work
