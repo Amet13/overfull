@@ -1,3 +1,4 @@
+import { codePointText } from '../refs/normalize.js';
 import type { VeraPdfFailure, VeraPdfResult } from './types.js';
 
 const MAX_CONTEXTS = 3;
@@ -29,8 +30,8 @@ function decodeXml(s: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCodePoint(Number.parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d: string) => codePointText(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => codePointText(Number.parseInt(h, 16)))
     .replace(/&amp;/g, '&')
     .trim();
 }

@@ -329,6 +329,18 @@ describe('parseVeraPdfReport', () => {
     expect(r).toMatchObject({ compliant: true, failures: [] });
   });
 
+  it('decodes out-of-range numeric entities without throwing', () => {
+    const xml = readText('verapdf-ua1.xml').replace(
+      /(<description>)/,
+      '$1Bad &#99999999; and &#xD800; entities ',
+    );
+    const r = parseVeraPdfReport(xml);
+    expect(r.error).toBeUndefined();
+    expect(r.failures.some((f) => f.description.includes('Bad \uFFFD and \uFFFD entities'))).toBe(
+      true,
+    );
+  });
+
   it('reports errors instead of throwing', () => {
     expect(parseVeraPdfReport('').error).toBeTruthy();
     expect(parseVeraPdfReport('{oops').error).toMatch(/JSON/);
