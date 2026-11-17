@@ -97,7 +97,7 @@ Output goes to `build.outDir` from `overfull.yml` (passed as `-outdir` and
 Only build projects you trust: a `.latexmkrc` is Perl code that `latexmk` runs.
 
 Without `--image`, the image is `$OVERFULL_IMAGE` if set, else `build.image`
-from `overfull.yml`, else `ghcr.io/amet13/overfull:3`. Exit codes: 0 built,
+from `overfull.yml`, else `ghcr.io/amet13/overfull:3-slim`. Exit codes: 0 built,
 1 build failed, 2 usage error. With `--json`, a build that fails before LaTeX
 writes a log prints `{"error": {"code": "build-failed", "message", "exitCode"}}`.
 
@@ -154,7 +154,7 @@ those files. Any other extension is a usage error (exit 2).
 | `--mailto address` | Contact address for CrossRef's polite pool. |
 | `--no-verapdf` | Do not run veraPDF, even if it is installed. |
 | `--engine e` | Where veraPDF and `pdffonts` run when they are not installed: `auto` (the Overfull image, when Docker already has it), `docker` or `local`. |
-| `--image name` | Docker image for veraPDF and `pdffonts`. Default: `$OVERFULL_IMAGE`, else `ghcr.io/amet13/overfull:3`. |
+| `--image name` | Docker image for veraPDF and `pdffonts`. Default: `$OVERFULL_IMAGE`, else `ghcr.io/amet13/overfull:3-slim`. |
 | `--config file` | Config file (default `overfull.yml`). |
 
 Use only one of `--json`, `--markdown`, `--annotations`, `--sarif` and `--html` for what is printed; combining them is a usage error (exit 2). `--write` adds files on top of any of them, so one run can print annotations and write the job summary: `overfull check --annotations --write markdown="$GITHUB_STEP_SUMMARY"`. The exit code is the same for every format.

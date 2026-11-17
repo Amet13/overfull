@@ -17253,7 +17253,7 @@ var init_config = __esm({
     init_io();
     init_project();
     init_safety();
-    DEFAULT_IMAGE = "ghcr.io/amet13/overfull:3";
+    DEFAULT_IMAGE = "ghcr.io/amet13/overfull:3-slim";
     CONFIG_FILE = "overfull.yml";
     TOP_KEYS = ["main", "jobname", "bib", "profile", "checks", "references", "venue", "build"];
     VENUE_KEYS = [
