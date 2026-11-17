@@ -34,7 +34,13 @@ export const venueProfileData: Record<string, VenueProfileData> = {
     textBlock: {
       widthMm: 177.8,
     },
-    notes: "The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for references. Acknowledgements are omitted from papers submitted for review. The author policy allows judicious use of generative AI tools; the pages read state no disclosure requirement. The hash is of aaai2027.sty (2027/10/21) from the AuthorKit27 archive downloaded on 2026-11-10. The AAAI-28 call page redirects to AAAI-26 content, so AAAI-27 is the latest published. Text block: 7 in wide, centred on US Letter (aaai2027.sty).",
+    anonymizedByClass: {
+      package: "aaai2027",
+      withOptions: [
+        "submission",
+      ],
+    },
+    notes: "The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for references. Acknowledgements are omitted from papers submitted for review. The author policy allows judicious use of generative AI tools; the pages read state no disclosure requirement. The hash is of aaai2027.sty (2027/10/21) from the AuthorKit27 archive downloaded on 2026-11-10. The AAAI-28 call page redirects to AAAI-26 content, so AAAI-27 is the latest published. Text block: 7 in wide, centred on US Letter (aaai2027.sty). aaai2027.sty prints \"Anonymous submission\" with the submission option.",
   },
   "acl-rolling-review": {
     id: "acl-rolling-review",
@@ -59,7 +65,13 @@ export const venueProfileData: Record<string, VenueProfileData> = {
     },
     anonymous: true,
     disclosure: "recommended",
-    notes: "Short papers have 4 pages of content. Final versions of long papers get one more page (9). Missing a Limitations section is a desk-rejection reason. Use of generative AI for writing or coding must be disclosed in the Responsible NLP Checklist, with details in the Acknowledgements; some uses (language polishing, short-form input assistance) need no disclosure. The official style files are at https://github.com/acl-org/acl-style-files (not reachable from this session, so no file name or hash is recorded).",
+    anonymizedByClass: {
+      package: "acl",
+      withOptions: [
+        "review",
+      ],
+    },
+    notes: "Short papers have 4 pages of content. Final versions of long papers get one more page (9). Missing a Limitations section is a desk-rejection reason. Use of generative AI for writing or coding must be disclosed in the Responsible NLP Checklist, with details in the Acknowledgements; some uses (language polishing, short-form input assistance) need no disclosure. The official style files are at https://github.com/acl-org/acl-style-files (not reachable from this session, so no file name or hash is recorded). acl.sty prints \"Anonymous ACL submission\" with the review option (https://github.com/acl-org/acl-style-files, read on 2026-11-17).",
   },
   "acm-sigconf": {
     id: "acm-sigconf",
@@ -80,7 +92,13 @@ export const venueProfileData: Record<string, VenueProfileData> = {
     textBlock: {
       widthMm: 177.9,
     },
-    notes: "Each ACM conference sets its own page limit and review rules; set them in overfull.yml (`venue:`) from the call for papers, and use the class option `anonymous` for double-blind review. Layout from acmart v2.21 (2026/11/01): the sigconf format is US Letter with 54 pt inner and outer margins, so the text block is 8.5 in minus 108 pt wide. acmart.cls is generated from acmart.dtx, so no hash is recorded. ACM's own pages (acm.org/publications) could not be read from the build machine.",
+    anonymizedByClass: {
+      package: "acmart",
+      withOptions: [
+        "anonymous",
+      ],
+    },
+    notes: "Each ACM conference sets its own page limit and review rules; set them in overfull.yml (`venue:`) from the call for papers, and use the class option `anonymous` for double-blind review. Layout from acmart v2.21 (2026/11/01): the sigconf format is US Letter with 54 pt inner and outer margins, so the text block is 8.5 in minus 108 pt wide. acmart.cls is generated from acmart.dtx, so no hash is recorded. ACM's own pages (acm.org/publications) could not be read from the build machine. acmart.cls hides the authors with the anonymous option (acmart.dtx v2.21).",
   },
   "aistats-2027": {
     id: "aistats-2027",
@@ -116,7 +134,14 @@ export const venueProfileData: Record<string, VenueProfileData> = {
       widthMm: 171.5,
       leftMm: 22.2,
     },
-    notes: "The call requires an AI Use Statement in every submission, in the ICLR format, and allows generative AI tools otherwise. Papers whose main text is over the limit are desk-rejected; the camera-ready limit is 9 pages. Submissions may use author-year or numeric citations; camera-ready papers must use author-year. Paper size is US Letter (the article class default, emitted by the style file). The hash is of aistats2027.sty (2026/09/02) from AISTATS2027PaperPack.zip downloaded on 2026-11-11. Text block: 6.75 in wide, 0.875 in from the left edge (aistats2027.sty).",
+    anonymizedByClass: {
+      package: "aistats2027",
+      unlessOptions: [
+        "accepted",
+        "preprint",
+      ],
+    },
+    notes: "The call requires an AI Use Statement in every submission, in the ICLR format, and allows generative AI tools otherwise. Papers whose main text is over the limit are desk-rejected; the camera-ready limit is 9 pages. Submissions may use author-year or numeric citations; camera-ready papers must use author-year. Paper size is US Letter (the article class default, emitted by the style file). The hash is of aistats2027.sty (2026/09/02) from AISTATS2027PaperPack.zip downloaded on 2026-11-11. Text block: 6.75 in wide, 0.875 in from the left edge (aistats2027.sty). aistats2027.sty prints \"Anonymous Author\" unless the accepted or preprint option is given.",
   },
   "cvpr-2027": {
     id: "cvpr-2027",
@@ -149,7 +174,14 @@ export const venueProfileData: Record<string, VenueProfileData> = {
     textBlock: {
       widthMm: 174.6,
     },
-    notes: "Every submission needs a section titled \"LLM Usage Statement\" after the main text and before the references; it states \"No LLMs or generative AI tools were used in this work\" if none were. The camera-ready version must disclose AI-generated content in the Acknowledgments. Paper size is from the check in the official cvpr.sty. The hash is of cvpr.sty from author-kit-CVPR2027-v1-latex.zip downloaded on 2026-11-10. Text block: 6.875 in wide, centred on US Letter (cvpr.sty).",
+    anonymizedByClass: {
+      package: "cvpr",
+      withOptions: [
+        "review",
+        "rebuttal",
+      ],
+    },
+    notes: "Every submission needs a section titled \"LLM Usage Statement\" after the main text and before the references; it states \"No LLMs or generative AI tools were used in this work\" if none were. The camera-ready version must disclose AI-generated content in the Acknowledgments. Paper size is from the check in the official cvpr.sty. The hash is of cvpr.sty from author-kit-CVPR2027-v1-latex.zip downloaded on 2026-11-10. Text block: 6.875 in wide, centred on US Letter (cvpr.sty). cvpr.sty hides the authors with the review or rebuttal option.",
   },
   "eccv-2026": {
     id: "eccv-2026",
@@ -188,7 +220,16 @@ export const venueProfileData: Record<string, VenueProfileData> = {
       leftMm: 12,
       topMm: 12,
     },
-    notes: "Papers over 14 pages (excluding references), not anonymized, or not in the ECCV 2026 template are desk-rejected, and so are submissions whose margins, formatting or font were changed (the 2026 template's font differs from CVPR's). The LLM policy allows any tools but makes authors responsible for the content; papers citing non-existent material are rejected. No AI-use statement is asked for. The kit is the one the submission policies link (github.com/paolo-favaro/paper-template, tag Latest, commit da8c09c of 2026-01-23); its own llncs.cls differs from Springer's current one. The review option crops the page to 146 x 217 mm around a 122 x 193 mm text block 12 mm from the left and top edges (eccv.sty), hence no standard paper size.",
+    anonymizedByClass: {
+      package: "eccv",
+      withOptions: [
+        "review",
+      ],
+      unlessOptions: [
+        "final",
+      ],
+    },
+    notes: "Papers over 14 pages (excluding references), not anonymized, or not in the ECCV 2026 template are desk-rejected, and so are submissions whose margins, formatting or font were changed (the 2026 template's font differs from CVPR's). The LLM policy allows any tools but makes authors responsible for the content; papers citing non-existent material are rejected. No AI-use statement is asked for. The kit is the one the submission policies link (github.com/paolo-favaro/paper-template, tag Latest, commit da8c09c of 2026-01-23); its own llncs.cls differs from Springer's current one. The review option crops the page to 146 x 217 mm around a 122 x 193 mm text block 12 mm from the left and top edges (eccv.sty), hence no standard paper size. eccv.sty prints \"Anonymous ECCV Submission\" with the review option.",
   },
   "emnlp-2026": {
     id: "emnlp-2026",
@@ -214,7 +255,13 @@ export const venueProfileData: Record<string, VenueProfileData> = {
     },
     anonymous: true,
     disclosure: "recommended",
-    notes: "Papers go through ACL Rolling Review and follow all ARR submission requirements; the EMNLP page lists long papers (8 pages) and short papers (4 pages). Final versions get one additional page (9 for long papers, 5 for short papers). Exclusions and the A4 size are from the ARR call and the ACL formatting guidelines it links. Writing-assistance disclosure follows the ARR policy. No style file name or hash is recorded because the official style repository was not reachable from this session.",
+    anonymizedByClass: {
+      package: "acl",
+      withOptions: [
+        "review",
+      ],
+    },
+    notes: "Papers go through ACL Rolling Review and follow all ARR submission requirements; the EMNLP page lists long papers (8 pages) and short papers (4 pages). Final versions get one additional page (9 for long papers, 5 for short papers). Exclusions and the A4 size are from the ARR call and the ACL formatting guidelines it links. Writing-assistance disclosure follows the ARR policy. No style file name or hash is recorded because the official style repository was not reachable from this session. acl.sty prints \"Anonymous ACL submission\" with the review option (https://github.com/acl-org/acl-style-files, read on 2026-11-17).",
   },
   "iclr-2027": {
     id: "iclr-2027",
@@ -248,7 +295,13 @@ export const venueProfileData: Record<string, VenueProfileData> = {
     textBlock: {
       widthMm: 139.7,
     },
-    notes: "The page limit is 10 for the discussion phase and the camera-ready version. A mandatory AI use statement section does not count toward the limit. Style files are from iclr-2027-style-files.zip (linked from the author guidelines), downloaded on 2026-11-10 (file dated 2026-07-28 in the archive). Text block: 5.5 in wide with 1.5 in side margins (iclr2027_conference.sty).",
+    anonymizedByClass: {
+      package: "iclr2027_conference",
+      unlessCommands: [
+        "iclrfinalcopy",
+      ],
+    },
+    notes: "The page limit is 10 for the discussion phase and the camera-ready version. A mandatory AI use statement section does not count toward the limit. Style files are from iclr-2027-style-files.zip (linked from the author guidelines), downloaded on 2026-11-10 (file dated 2026-07-28 in the archive). Text block: 5.5 in wide with 1.5 in side margins (iclr2027_conference.sty). iclr2027_conference.sty prints \"Anonymous authors\" until \\iclrfinalcopy is used.",
   },
   "icml-2026": {
     id: "icml-2026",
@@ -283,7 +336,14 @@ export const venueProfileData: Record<string, VenueProfileData> = {
       widthMm: 171.5,
       leftMm: 19.6,
     },
-    notes: "Final versions of accepted papers get one extra page for the main paper. The call allows generative AI tools and encourages authors to explain notable uses in their methodology; LLMs cannot be authors. The hash is of icml2026.sty (v2.0, 2025/10/29) from icml2026.zip downloaded on 2026-11-10. The ICML 2027 call page exists but has no content yet. Text block: 6.75 in wide, 0.77 in from the left edge (icml2026.sty).",
+    anonymizedByClass: {
+      package: "icml2026",
+      unlessOptions: [
+        "accepted",
+        "preprint",
+      ],
+    },
+    notes: "Final versions of accepted papers get one extra page for the main paper. The call allows generative AI tools and encourages authors to explain notable uses in their methodology; LLMs cannot be authors. The hash is of icml2026.sty (v2.0, 2025/10/29) from icml2026.zip downloaded on 2026-11-10. The ICML 2027 call page exists but has no content yet. Text block: 6.75 in wide, 0.77 in from the left edge (icml2026.sty). icml2026.sty prints \"Anonymous Authors\" unless the accepted or preprint option is given.",
   },
   "ieee-conference": {
     id: "ieee-conference",
@@ -342,7 +402,18 @@ export const venueProfileData: Record<string, VenueProfileData> = {
     textBlock: {
       widthMm: 139.7,
     },
-    notes: "The handbook asks authors to describe agent or LLM use in the experimental setup only when it is an important, original or non-standard part of the method. Accepted papers get one additional content page for the camera-ready version. Paper size is from the letterpaper option in the official style file (the handbook does not state it). The hash is of neurips_2026.sty (dated 2026-01-29) from the kit downloaded on 2026-11-10. Text block: 5.5 in wide, centred on US Letter (geometry in neurips_2026.sty).",
+    anonymizedByClass: {
+      package: "neurips_2026",
+      unlessOptions: [
+        "final",
+        "preprint",
+        "nonanonymous",
+        "creativeai",
+        "education",
+        "sglblindworkshop",
+      ],
+    },
+    notes: "The handbook asks authors to describe agent or LLM use in the experimental setup only when it is an important, original or non-standard part of the method. Accepted papers get one additional content page for the camera-ready version. Paper size is from the letterpaper option in the official style file (the handbook does not state it). The hash is of neurips_2026.sty (dated 2026-01-29) from the kit downloaded on 2026-11-10. Text block: 5.5 in wide, centred on US Letter (geometry in neurips_2026.sty). neurips_2026.sty prints \"Anonymous Author(s)\" unless one of the options final, preprint, nonanonymous, creativeai, education or sglblindworkshop is given.",
   },
   "springer-lncs": {
     id: "springer-lncs",

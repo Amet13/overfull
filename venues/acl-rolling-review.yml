@@ -14,6 +14,9 @@ pageLimit:
   excludes: [Limitations (required section), Ethical considerations, References]
 anonymous: true
 disclosure: recommended
+anonymizedByClass:
+  package: acl
+  withOptions: [review]
 notes: >-
   Short papers have 4 pages of content. Final versions of long papers get one more page
   (9). Missing a Limitations section is a desk-rejection reason. Use of generative AI for
@@ -21,3 +24,5 @@ notes: >-
   the Acknowledgements; some uses (language polishing, short-form input assistance) need
   no disclosure. The official style files are at https://github.com/acl-org/acl-style-files
   (not reachable from this session, so no file name or hash is recorded).
+  acl.sty prints "Anonymous ACL submission" with the review option
+  (https://github.com/acl-org/acl-style-files, read on 2026-11-17).

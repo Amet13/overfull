@@ -21,6 +21,9 @@ styleFiles:
     kit: https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip
 textBlock:
   widthMm: 139.7
+anonymizedByClass:
+  package: neurips_2026
+  unlessOptions: [final, preprint, nonanonymous, creativeai, education, sglblindworkshop]
 notes: >-
   The handbook asks authors to describe agent or LLM use in the experimental setup
   only when it is an important, original or non-standard part of the method. Accepted
@@ -29,3 +32,5 @@ notes: >-
   it). The hash is of neurips_2026.sty (dated 2026-01-29) from the kit downloaded on
   2026-11-10.
   Text block: 5.5 in wide, centred on US Letter (geometry in neurips_2026.sty).
+  neurips_2026.sty prints "Anonymous Author(s)" unless one of the options final,
+  preprint, nonanonymous, creativeai, education or sglblindworkshop is given.

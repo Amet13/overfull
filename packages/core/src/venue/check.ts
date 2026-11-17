@@ -23,7 +23,7 @@ export function venueCheck(profile: VenueProfile, ctx: VenueContext): CheckResul
   const problems = [
     ...pageLimitProblems(profile, ctx),
     ...paperSizeProblems(profile, ctx),
-    ...(profile.anonymous ? [...anonymityProblems(ctx), ...anonymityLinkProblems(ctx)] : []),
+    ...(profile.anonymous ? [...anonymityProblems(ctx, profile), ...anonymityLinkProblems(ctx)] : []),
     ...styleFileProblems(profile, ctx.texFiles ?? []),
     ...layoutProblems(profile, ctx),
     ...marginProblems(profile, ctx),

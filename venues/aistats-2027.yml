@@ -21,6 +21,9 @@ styleFiles:
 textBlock:
   widthMm: 171.5
   leftMm: 22.2
+anonymizedByClass:
+  package: aistats2027
+  unlessOptions: [accepted, preprint]
 notes: >-
   The call requires an AI Use Statement in every submission, in the ICLR format, and
   allows generative AI tools otherwise. Papers whose main text is over the limit are
@@ -29,3 +32,5 @@ notes: >-
   (the article class default, emitted by the style file). The hash is of aistats2027.sty
   (2026/09/02) from AISTATS2027PaperPack.zip downloaded on 2026-11-11.
   Text block: 6.75 in wide, 0.875 in from the left edge (aistats2027.sty).
+  aistats2027.sty prints "Anonymous Author" unless the accepted or preprint option is
+  given.

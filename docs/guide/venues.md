@@ -59,6 +59,7 @@ Each file records where its values came from, so you can check them:
 | `disclosure`, `accessibility` | `required`, `recommended` or `off`. |
 | `styleFiles` | Required style or class file names, each with an optional `sha256` of the official file. |
 | `textBlock` | The text block from the official style file, in millimetres: `widthMm`, and optionally `heightMm`, `leftMm`, `topMm`. Without `leftMm` the block is centred; without `topMm` and `heightMm` only the width is checked. |
+| `anonymizedByClass` | The class or style that prints "Anonymous" itself in review mode: `package`, and optionally `withOptions` (review mode needs one of them), `unlessOptions` and `unlessCommands` (these turn it off). While it is in review mode, names in `\author` are not reported. |
 | `notes` | Free text. |
 
 The files are checked and compiled into the generated module
@@ -195,7 +196,13 @@ profiles that set a page limit or name a style file, never for `generic` or
 With `anonymous: true` (or the `double-blind` profile), Overfull checks:
 
 - the PDF's Author metadata field (`anonymity-pdf-author`, error);
-- the content of `\author` (`anonymity-author-named`, error);
+- the content of `\author` (`anonymity-author-named`, error). Simple macros
+  defined in the project (`\newcommand\PaperAuthors{...}`, `\def`) are expanded
+  first, so `\author{\PaperAuthors}` is checked too. Many venue classes print
+  "Anonymous" themselves in review mode and ask you to keep the real names in
+  `\author`; for those profiles (NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, AISTATS,
+  ACL Rolling Review, EMNLP) the check is skipped while the class is loaded in
+  review mode, and its fix names the option to change when it is not;
 - an acknowledgments section, which often names people and grants
   (`anonymity-acknowledgments`, warning);
 - phrases such as "our previous work" (`anonymity-self-reference`, info).

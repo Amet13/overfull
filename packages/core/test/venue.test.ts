@@ -190,6 +190,90 @@ describe('anonymity', () => {
   });
 });
 
+describe('anonymity with a class that hides the authors', () => {
+  const body = '\\author{Ada Lovelace \\\\ University of London}\n\\begin{document}x\\end{document}\n';
+  const doc = (preamble: string) => tex(`\\documentclass{article}\n${preamble}\n${body}`);
+  const named = (id: string, preamble: string) =>
+    venueCheck(resolveProfile(id), { texFiles: [doc(preamble)] }).problems.filter(
+      (p) => p.rule === 'anonymity-author-named',
+    );
+
+  it.each([
+    ['neurips-2026', '\\usepackage{neurips_2026}'],
+    ['neurips-2026', '\\usepackage[main,nonatbib]{neurips_2026}'],
+    ['icml-2026', '\\usepackage{icml2026}'],
+    ['acl-rolling-review', '\\usepackage[review]{acl}'],
+    ['emnlp-2026', '\\usepackage[review]{acl}'],
+    ['iclr-2027', '\\usepackage{iclr2027_conference}\n%\\iclrfinalcopy'],
+    ['aaai-2027', '\\usepackage[submission]{aaai2027}'],
+    ['cvpr-2027', '\\usepackage[review]{cvpr}'],
+    ['eccv-2026', '\\usepackage[review,year=2026,ID=123]{eccv}'],
+  ])('%s accepts real names with %s', (id, preamble) => {
+    expect(named(id, preamble)).toEqual([]);
+  });
+
+  it.each([
+    ['neurips-2026', '\\usepackage[final]{neurips_2026}', /`final` option.*remove that option/],
+    ['icml-2026', '\\usepackage[accepted]{icml2026}', /`accepted` option/],
+    ['acl-rolling-review', '\\usepackage{acl}', /without the `review` option.*add the `review`/],
+    ['iclr-2027', '\\usepackage{iclr2027_conference}\n\\iclrfinalcopy', /uses `\\iclrfinalcopy`/],
+    ['eccv-2026', '\\usepackage[review=false]{eccv}', /without the `review` option/],
+  ])('%s flags names when review mode is off (%s)', (id, preamble, fix) => {
+    const problems = named(id, preamble);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.severity).toBe('error');
+    expect(problems[0]?.fix).toMatch(fix);
+  });
+
+  it('still flags names when the venue class is not loaded', () => {
+    const problems = named('neurips-2026', '');
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.fix).toMatch(/\\author\{Anonymous\}/);
+  });
+
+  it('ignores the venue style file itself when looking for the final-copy command', () => {
+    const sty = tex('\\def\\iclrfinalcopy{\\iclrfinaltrue}', 'iclr2027_conference.sty');
+    const r = venueCheck(resolveProfile('iclr-2027'), {
+      texFiles: [doc('\\usepackage{iclr2027_conference}'), sty],
+    });
+    expect(rules(r)).not.toContain('anonymity-author-named');
+  });
+});
+
+describe('anonymity and author macros', () => {
+  const profile = resolveProfile('double-blind');
+  const author = (texFiles: TexFile[]) =>
+    venueCheck(profile, { texFiles }).problems.filter((p) => p.rule === 'anonymity-author-named');
+
+  it.each([
+    '\\newcommand\\PaperAuthors{Ada Lovelace, Charles Babbage}',
+    '\\newcommand{\\PaperAuthors}{Ada Lovelace, Charles Babbage}',
+    '\\renewcommand*{\\PaperAuthors}{Ada Lovelace, Charles Babbage}',
+    '\\def\\PaperAuthors{Ada Lovelace, Charles Babbage}',
+    '\\newcommand\\First{Ada Lovelace}\\newcommand\\PaperAuthors{\\First{} and Charles Babbage}',
+  ])('expands %s from another file', (definition) => {
+    const problems = author([
+      tex(definition, 'metadata.tex'),
+      tex('\\input{metadata}\n\\author{\\PaperAuthors\\\\[2pt] \\small Somewhere}'),
+    ]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.message).toContain('Ada Lovelace');
+    expect(problems[0]?.location).toEqual({ file: 'main.tex', line: 2 });
+  });
+
+  it('accepts a macro that expands to Anonymous, and skips macros with arguments', () => {
+    expect(
+      author([tex('\\newcommand\\PaperAuthors{Anonymous Authors}\n\\author{\\PaperAuthors}')]),
+    ).toEqual([]);
+    expect(author([tex('\\newcommand\\Who[1]{Ada #1}\n\\author{\\Who{x}}')])).toEqual([]);
+  });
+
+  it('stops on recursive macros', () => {
+    const problems = author([tex('\\def\\A{\\A\\A x}\n\\author{\\A}')]);
+    expect(problems).toEqual([]);
+  });
+});
+
 describe('disclosure', () => {
   it('is an error when required and missing', () => {
     const p = resolveProfile({ disclosure: 'required' });

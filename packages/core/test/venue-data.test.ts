@@ -114,4 +114,26 @@ describe('scripts/build-venues.mjs', () => {
     writeFileSync(out, `${readFileSync(out, 'utf8')}// edited\n`);
     expect(run('--check', ...base).status).toBe(1);
   });
+
+  it('validates anonymizedByClass', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'venues-'));
+    const base =
+      'name: X\nyear: 2027\nsource: https://example.org\ncheckedOn: 2026-11-10\nanonymous: true\n';
+    writeFileSync(
+      join(dir, 'good-venue.yml'),
+      `id: good-venue\n${base}anonymizedByClass:\n  package: good_2027\n  unlessOptions: [final]\n`,
+    );
+    writeFileSync(
+      join(dir, 'bad-venue.yml'),
+      `id: bad-venue\n${base}anonymizedByClass:\n  package: bad\n  options: [x]\n  withOptions: []\n`,
+    );
+    const r = run('--print', '--dir', dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr + r.stdout).toContain('unknown anonymizedByClass field \\"options\\"');
+    expect(r.stdout).toContain('anonymizedByClass.withOptions');
+    expect(JSON.parse(r.stdout).profiles['good-venue'].anonymizedByClass).toEqual({
+      package: 'good_2027',
+      unlessOptions: ['final'],
+    });
+  });
 });

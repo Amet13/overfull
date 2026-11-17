@@ -20,9 +20,13 @@ styleFiles:
     kit: https://media.iclr.cc/Conferences/ICLR2027/iclr-2027-style-files.zip
 textBlock:
   widthMm: 139.7
+anonymizedByClass:
+  package: iclr2027_conference
+  unlessCommands: [iclrfinalcopy]
 notes: >-
   The page limit is 10 for the discussion phase and the camera-ready version. A
   mandatory AI use statement section does not count toward the limit. Style files
   are from iclr-2027-style-files.zip (linked from the author guidelines), downloaded
   on 2026-11-10 (file dated 2026-07-28 in the archive).
   Text block: 5.5 in wide with 1.5 in side margins (iclr2027_conference.sty).
+  iclr2027_conference.sty prints "Anonymous authors" until \iclrfinalcopy is used.
