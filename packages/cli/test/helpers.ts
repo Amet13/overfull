@@ -17,7 +17,15 @@ export function memIo(cwd: string, env: Record<string, string | undefined> = {})
     cwd,
     // Keep PATH so tool detection works, but no colors and no real network by default.
     // OVERFULL_TEST_NO_SPACING: no arXiv/CrossRef request spacing in tests (see testRefsTiming).
-    env: { PATH: process.env.PATH, NO_COLOR: '1', OVERFULL_TEST_NO_SPACING: '1', ...env },
+    // No Docker either, unless the test brings its own PATH (with a fake docker): a
+    // slow or hanging Docker daemon on the test machine must not time tests out.
+    env: {
+      PATH: process.env.PATH,
+      NO_COLOR: '1',
+      OVERFULL_TEST_NO_SPACING: '1',
+      ...('PATH' in env ? {} : { OVERFULL_NO_DOCKER: '1' }),
+      ...env,
+    },
     isTTY: false,
     out,
     err,

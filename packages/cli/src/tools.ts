@@ -151,10 +151,17 @@ export function run(cmd: string, args: string[], opts: RunOptions = {}): Promise
 
 /** True when the Docker daemon answers. */
 export async function dockerAvailable(env?: Record<string, string | undefined>): Promise<boolean> {
+  // OVERFULL_NO_DOCKER=1: act as if Docker were absent (no image checks, no fallbacks).
+  if (dockerDisabled(env)) return false;
   const docker = which('docker', env);
   if (!docker) return false;
   const r = await run(docker, ['info', '--format', '{{.ServerVersion}}'], { timeoutMs: 8000 });
   return r.code === 0;
+}
+
+/** True when `OVERFULL_NO_DOCKER=1` tells Overfull never to use Docker. */
+export function dockerDisabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.OVERFULL_NO_DOCKER === '1';
 }
 
 /** Quotes an argument for cmd.exe (used only with `shell: true` on Windows). */

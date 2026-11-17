@@ -18086,10 +18086,14 @@ function run(cmd, args, opts = {}) {
   });
 }
 async function dockerAvailable(env) {
+  if (dockerDisabled(env)) return false;
   const docker = which("docker", env);
   if (!docker) return false;
   const r = await run(docker, ["info", "--format", "{{.ServerVersion}}"], { timeoutMs: 8e3 });
   return r.code === 0;
+}
+function dockerDisabled(env = process.env) {
+  return env.OVERFULL_NO_DOCKER === "1";
 }
 function quoteWindowsArg(arg) {
   if (/["%!^&|<>\r\n]/.test(arg)) throw new Error(`Unsupported character in argument: ${arg}`);

@@ -125,6 +125,7 @@ in `.overfull/diff`. The templates add `.overfull/` to `.gitignore`.
 | `OVERFULL_MAILTO` | Contact address, used when `references.mailto` and `--mailto` are not set. |
 | `OVERFULL_IMAGE` | Docker image, overrides `build.image`; the image `overfull check` may use for veraPDF/pdffonts. |
 | `OVERFULL_REFS_CACHE` | Set to `project` to keep the reference cache in `.overfull/cache/refs.json` (like `check --project-cache`). Never used in CI. |
+| `OVERFULL_NO_DOCKER` | Set to `1` to never use Docker: no image checks, and no Docker fallback for building, pdffonts or veraPDF. `doctor` shows Docker as not used. |
 | `OPENALEX_API_KEY` | Enables OpenAlex title search for `check` and `cite`. |
 | `OVERFULL_DEBUG` | Set to `1` to print a stack trace on an internal error. |
 

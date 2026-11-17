@@ -4,6 +4,7 @@ import { DEFAULT_IMAGE, loadConfig, locateProject } from '../config.js';
 import type { Io } from '../io.js';
 import {
   dockerAvailable,
+  dockerDisabled,
   dockerImageStatus,
   imageUnavailableMessage,
   run,
@@ -172,14 +173,21 @@ export async function doctorCommand(args: string[], io: Io): Promise<number> {
   items.push(...checks);
   const docker = await dockerAvailable(env);
   items.push(
-    which('docker', env)
+    dockerDisabled(env)
       ? {
           name: 'docker',
-          ok: docker,
-          detail: docker ? 'running' : 'installed but not running',
+          ok: false,
+          detail: 'not used (OVERFULL_NO_DOCKER=1)',
           needFor: 'builds without TeX Live',
         }
-      : { name: 'docker', ok: false, detail: 'not found', needFor: 'builds without TeX Live' },
+      : which('docker', env)
+        ? {
+            name: 'docker',
+            ok: docker,
+            detail: docker ? 'running' : 'installed but not running',
+            needFor: 'builds without TeX Live',
+          }
+        : { name: 'docker', ok: false, detail: 'not found', needFor: 'builds without TeX Live' },
   );
   let imageOk = false;
   if (docker) {

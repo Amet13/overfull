@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ### Added
 
+- `OVERFULL_NO_DOCKER=1` makes Overfull act as if Docker were absent (no image checks or Docker fallbacks)
 - `overfull check --project-cache` and `OVERFULL_REFS_CACHE=project` keep the reference cache in `.overfull/cache/`
 - References: `overfull init` offers to set `references.mailto` from your git
   e-mail (only after you answer yes), for CrossRef's polite pool.
