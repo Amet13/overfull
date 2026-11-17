@@ -39,6 +39,12 @@ updates:
       # pnpm is pinned twice (packageManager and docker/pnpm) and must match;
       # maintenance.yml (update-pins) bumps both together.
       - dependency-name: "pnpm"
+    # Minor and patch updates in one pull request (merged automatically), majors in
+    # another that waits for a person, so one major never holds back the rest.
     groups:
       npm:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+      npm-major:
+        patterns: ["*"]
+        update-types: ["major"]
