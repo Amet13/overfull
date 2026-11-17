@@ -29,6 +29,7 @@ describe('1 MB crafted logs stay linear', () => {
     'spaced file token': `(./a${fill(' b')}\n`,
     'many spaced file tokens': `${fill('(./a b ')}\n`,
     'LaTeX error file': `! LaTeX Error: File \`${fill("x' ")}\n`,
+    'unmatched parentheses then warnings': `(./main.tex ${fill('(', MB / 2)}\n${fill('LaTeX Warning: Something on input line 1.\n\n', MB / 2)}`,
   };
   it.each(Object.keys(logs))('%s', (name) => {
     const text = logs[name] as string;

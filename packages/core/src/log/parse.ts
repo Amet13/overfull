@@ -96,8 +96,12 @@ function joinParts(parts: string[]): string {
 
 /** The stack of files TeX has open, as printed with `(` and `)`. */
 class FileStack {
-  /** `null` marks a parenthesis that did not open a file. */
-  private readonly entries: (string | null)[] = [];
+  /**
+   * One entry per open parenthesis: `path` is `null` for a parenthesis that did not open
+   * a file; `innermost` is the innermost file open at that depth, so `current()` is O(1)
+   * even under many unmatched `(`.
+   */
+  private readonly entries: { path: string | null; innermost: string | undefined }[] = [];
   lastClosed: string | undefined;
   readonly opened: string[] = [];
   /** Last page number shipped out (`[12]`). */
@@ -110,11 +114,7 @@ class FileStack {
   }
 
   current(): string | undefined {
-    for (let i = this.entries.length - 1; i >= 0; i--) {
-      const entry = this.entries[i];
-      if (entry) return entry;
-    }
-    return this.lastClosed;
+    return this.entries[this.entries.length - 1]?.innermost ?? this.lastClosed;
   }
 
   scan(text: string): void {
@@ -147,17 +147,17 @@ class FileStack {
     const unquoted = token.startsWith('"') ? token.slice(1, -1) : token;
     if (isFileToken(unquoted)) {
       const path = normalizePath(unquoted, this.root);
-      this.entries.push(path);
+      this.entries.push({ path, innermost: path });
       this.opened.push(path);
       return end;
     }
-    this.entries.push(null);
+    this.entries.push({ path: null, innermost: this.entries[this.entries.length - 1]?.innermost });
     return start;
   }
 
   private close(): void {
     const entry = this.entries.pop();
-    if (entry) this.lastClosed = entry;
+    if (entry?.path) this.lastClosed = entry.path;
   }
 
   private maybePage(text: string, i: number): void {
