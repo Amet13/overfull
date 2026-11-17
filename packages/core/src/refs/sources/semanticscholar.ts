@@ -16,7 +16,7 @@
  */
 
 import { parseNames } from '../../bib/names.js';
-import { getJson, type HttpClient } from '../http.js';
+import { getJson, type HttpClient, listIn, readAnswer } from '../http.js';
 import type { WorkRecord } from '../types.js';
 
 const FIELDS = 'title,authors,year,venue,externalIds,publicationTypes,journal,citationCount';
@@ -80,11 +80,18 @@ export async function semanticScholarSearch(
   title: string,
   apiKey?: string,
 ): Promise<WorkRecord[]> {
-  const { data } = await getJson<{ data?: S2Paper[] }>(
+  const { data } = await getJson<{ data?: unknown }>(
     client,
     semanticScholarSearchUrl(title),
     'application/json',
     apiKey ? { 'x-api-key': apiKey } : undefined,
   );
-  return (data?.data ?? []).map(fromSemanticScholar).filter((r): r is WorkRecord => r !== null);
+  if (!data) return [];
+  const host = 'api.semanticscholar.org';
+  // Semantic Scholar leaves `data` out when nothing matches.
+  return readAnswer(host, () =>
+    listIn(host, data.data, true)
+      .map((p) => fromSemanticScholar(p as S2Paper))
+      .filter((r): r is WorkRecord => r !== null),
+  );
 }

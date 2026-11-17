@@ -1,5 +1,5 @@
 import { parseNames } from '../../bib/names.js';
-import { getJson, type HttpClient } from '../http.js';
+import { getJson, type HttpClient, isObject, listIn, readAnswer, unexpectedData } from '../http.js';
 import type { WorkRecord } from '../types.js';
 
 interface DblpAuthor {
@@ -15,10 +15,6 @@ interface DblpInfo {
   doi?: string;
   ee?: string | string[];
   url?: string;
-}
-
-interface DblpResponse {
-  result?: { hits?: { hit?: { info?: DblpInfo }[] } };
 }
 
 function dblpSearchUrl(title: string): string {
@@ -58,8 +54,18 @@ function fromDblp(info: DblpInfo): WorkRecord | null {
 
 /** dblp publication search; up to 5 candidates. */
 export async function dblpSearch(client: HttpClient, title: string): Promise<WorkRecord[]> {
-  const { data } = await getJson<DblpResponse>(client, dblpSearchUrl(title));
-  return (data?.result?.hits?.hit ?? [])
-    .map((h) => (h.info ? fromDblp(h.info) : null))
-    .filter((r): r is WorkRecord => r !== null);
+  const { data } = await getJson<Record<string, unknown>>(client, dblpSearchUrl(title));
+  if (!data) return [];
+  const host = 'dblp.org';
+  return readAnswer(host, () => {
+    const hits = isObject(data.result) ? data.result.hits : undefined;
+    if (!isObject(hits)) throw unexpectedData(host);
+    // dblp leaves `hit` out when nothing matches.
+    return listIn(host, hits.hit, true)
+      .map((h) => {
+        const info = (h as { info?: DblpInfo }).info;
+        return info ? fromDblp(info) : null;
+      })
+      .filter((r): r is WorkRecord => r !== null);
+  });
 }

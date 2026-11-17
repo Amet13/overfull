@@ -69,7 +69,7 @@ function memory(): RefCache & { map: Map<string, unknown> } {
   return { map, get: (k) => map.get(k), set: (k, v) => void map.set(k, v) };
 }
 
-const fast = { arxivIntervalMs: 0, retryDelayMs: 0 };
+const fast = { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
 
 describe('cache lifetimes', () => {
   it('defaults to 30 days for records and 1 day for not-found answers', () => {

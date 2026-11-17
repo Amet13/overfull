@@ -1,5 +1,5 @@
 import { parseNames } from '../../bib/names.js';
-import { getJson, type HttpClient } from '../http.js';
+import { getJson, type HttpClient, listIn, readAnswer } from '../http.js';
 import type { WorkRecord } from '../types.js';
 
 interface OpenAlexWork {
@@ -13,11 +13,34 @@ interface OpenAlexWork {
   primary_location?: { source?: { display_name?: string } | null; landing_page_url?: string };
 }
 
+const HOST = 'api.openalex.org';
+
 function openalexSearchUrl(title: string, apiKey?: string, mailto?: string): string {
   const params = new URLSearchParams({ search: title, 'per-page': '5' });
   if (apiKey) params.set('api_key', apiKey);
   if (mailto) params.set('mailto', mailto);
-  return `https://api.openalex.org/works?${params}`;
+  return `https://${HOST}/works?${params}`;
+}
+
+/** Fields a record needs; `select` keeps a single-work answer small. */
+const SELECT = [
+  'display_name',
+  'title',
+  'publication_year',
+  'doi',
+  'type',
+  'cited_by_count',
+  'authorships',
+  'primary_location',
+].join(',');
+
+/** One work by DOI: `/works/doi:<doi>` (OpenAlex's documented DOI namespace). */
+function openalexDoiUrl(doi: string, apiKey?: string, mailto?: string): string {
+  const params = new URLSearchParams({ select: SELECT });
+  if (apiKey) params.set('api_key', apiKey);
+  if (mailto) params.set('mailto', mailto);
+  const path = encodeURIComponent(doi).replace(/%2F/gi, '/');
+  return `https://${HOST}/works/doi:${path}?${params}`;
 }
 
 function fromOpenAlex(w: OpenAlexWork): WorkRecord | null {
@@ -55,9 +78,30 @@ export async function openalexSearch(
   apiKey: string | undefined,
   mailto?: string,
 ): Promise<WorkRecord[]> {
-  const { data } = await getJson<{ results?: OpenAlexWork[] }>(
+  const { data } = await getJson<{ results?: unknown }>(
     client,
     openalexSearchUrl(title, apiKey, mailto),
   );
-  return (data?.results ?? []).map(fromOpenAlex).filter((r): r is WorkRecord => r !== null);
+  if (!data) return [];
+  return readAnswer(HOST, () =>
+    listIn(HOST, data.results)
+      .map((w) => fromOpenAlex(w as OpenAlexWork))
+      .filter((r): r is WorkRecord => r !== null),
+  );
+}
+
+/**
+ * The work with this DOI, or null when OpenAlex does not know it. A lookup of one work by
+ * id: without a key it does not count against OpenAlex's daily search budget, so it is
+ * the fallback when doi.org (or arXiv, for `10.48550/arXiv.<id>`) cannot answer.
+ */
+export async function openalexByDoi(
+  client: HttpClient,
+  doi: string,
+  apiKey: string | undefined,
+  mailto?: string,
+): Promise<WorkRecord | null> {
+  const { data } = await getJson<OpenAlexWork>(client, openalexDoiUrl(doi, apiKey, mailto));
+  if (!data) return null;
+  return readAnswer(HOST, () => fromOpenAlex(data));
 }

@@ -62,6 +62,29 @@ export function retractedProblems(results: RefResult[], byKey: Map<string, BibEn
   return problems;
 }
 
+/**
+ * `reference-retraction-unchecked`: one note for the run when CrossRef could not be asked
+ * about some works. Silence would read as "none of them is retracted".
+ */
+export function retractionUncheckedProblems(results: RefResult[]): Problem[] {
+  const missed = results.filter((r) => r.retractionUnchecked);
+  if (!missed.length) return [];
+  const reason = missed[missed.length - 1]?.retractionUnchecked as string;
+  const keys = missed.map((r) => r.key);
+  const n = keys.length;
+  return [
+    {
+      rule: 'reference-retraction-unchecked',
+      check: 'references',
+      severity: 'info',
+      message: `retraction check incomplete: ${reason}`,
+      detail: `${n} matched ${n === 1 ? 'work was' : 'works were'} not checked for a retraction or withdrawal: ${keys.map((k) => `\`${k}\``).join(', ')}.`,
+      fix: 'Run `overfull check` again later; only the works that were missed are asked about again.',
+      data: { keys, reason },
+    },
+  ];
+}
+
 /** `reference-published-version`: the entry's arXiv record names a published DOI. */
 export function publishedVersionProblems(
   results: RefResult[],

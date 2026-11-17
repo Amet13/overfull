@@ -1,5 +1,5 @@
-import { existsSync, readdirSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { applyPlan, detectProject, planAdopt } from '../adopt.js';
 import { parse, str } from '../args.js';
 import { type GitHookResult, installGitHook } from '../guard/settings.js';
@@ -49,6 +49,57 @@ async function initGit(
   return commit.code === 0
     ? 'Initialized a git repository (branch main) with an initial commit.'
     : `Initialized a git repository (branch main). Commit with:\n    ${commitCmd}`;
+}
+
+/** The commented-out `references.mailto` line the templates and `--here` write. */
+const MAILTO_LINE = /^([ \t]*)#[ \t]*mailto:.*$/m;
+/** A plain address: nothing YAML or a shell would read specially. */
+const PLAIN_EMAIL = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
+
+const MAILTO_HINT =
+  'Tip: set references.mailto in overfull.yml to your e-mail: CrossRef then answers from its faster "polite pool" (see the References guide).';
+
+/** `config` with its commented-out `mailto` line set to `email`, or undefined when it has none. */
+export function withMailto(config: string, email: string): string | undefined {
+  if (!MAILTO_LINE.test(config)) return undefined;
+  return config.replace(MAILTO_LINE, (_m, indent: string) => `${indent}mailto: ${email}`);
+}
+
+/**
+ * Offers to set `references.mailto` in the overfull.yml just written, from
+ * `git config user.email`. Asks on a terminal and writes only after an explicit yes;
+ * anywhere else nothing is written and a one-line hint is returned. Undefined when the
+ * file has no commented-out mailto line (no references check, or already set).
+ */
+export async function offerMailto(
+  configPath: string,
+  io: Io,
+  ask: (question: string) => Promise<boolean> = askYesNo,
+): Promise<string | undefined> {
+  let config: string;
+  try {
+    config = readFileSync(configPath, 'utf8');
+  } catch {
+    return undefined;
+  }
+  if (!MAILTO_LINE.test(config)) return undefined;
+  if (!io.isTTY) return MAILTO_HINT;
+  const email = await gitEmail(dirname(configPath), io.env);
+  if (!email) return MAILTO_HINT;
+  const yes = await ask(
+    `Set references.mailto to ${email} (your git user.email)? CrossRef and OpenAlex receive it with each lookup and answer faster.`,
+  );
+  if (!yes) return MAILTO_HINT;
+  writeFileSync(configPath, withMailto(config, email) as string);
+  return `Set references.mailto: ${email} in overfull.yml.`;
+}
+
+/** `git config user.email` when git is installed and it is a plain address. */
+async function gitEmail(cwd: string, env: Io['env']): Promise<string | undefined> {
+  if (!which('git', env)) return undefined;
+  const res = await run('git', ['config', 'user.email'], { cwd, env, timeoutMs: 5000 });
+  const email = res.code === 0 ? res.stdout.trim() : '';
+  return PLAIN_EMAIL.test(email) ? email : undefined;
 }
 
 const initHelp = `Usage: overfull init [thesis|paper|slides] [dir] [options]
@@ -165,10 +216,12 @@ export async function initCommand(args: string[], io: Io): Promise<number> {
     io.stdout(`${JSON.stringify({ template, dir: shown, git: gitNote ?? null }, null, 2)}\n`);
     return 0;
   }
+  const mailtoNote = await offerMailto(join(target, 'overfull.yml'), io);
   const cd = shown === '.' ? '' : `  cd ${shown}\n`;
   io.stdout(
     `Created a ${template} project in ${shown}/\n\n` +
       (gitNote ? `${gitNote}\n\n` : '') +
+      (mailtoNote ? `${mailtoNote}\n\n` : '') +
       'Next steps\n' +
       cd +
       '  With an AI agent: open the folder in your agent (Claude Code, Codex, Cursor, Copilot)\n' +
@@ -292,6 +345,10 @@ async function adoptHere(
       '',
       `  ${gitHook.line}`,
     );
+  if (!dryRun && result.written.some((w) => w.path === 'overfull.yml')) {
+    const mailtoNote = await offerMailto(join(root, 'overfull.yml'), io);
+    if (mailtoNote) lines.push('', mailtoNote);
+  }
   lines.push('', '.tex and .bib files were not touched.');
   if (!dryRun && result.written.length > 0)
     lines.push('Next: `overfull build` (or `latexmk`), then `overfull check`.');

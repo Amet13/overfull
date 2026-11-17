@@ -9,7 +9,7 @@
 
 import { parseNames } from '../bib/names.js';
 import type { BibEntry } from '../bib/parse.js';
-import { foldName, namesMatch, stripMarkup, titleSimilarity } from './normalize.js';
+import { foldName, namesMatch, normalizeTitle, stripMarkup, titleSimilarity } from './normalize.js';
 import type { RefDifference, WorkRecord } from './types.js';
 
 export const STRONG_TITLE = 0.9;
@@ -18,7 +18,10 @@ const SIMILAR_TITLE = 0.75;
 const DIFFERENT_WORK_TITLE = 0.6;
 
 export interface BibFacts {
+  /** The title as written (TeX); unset when it has no letter or digit to compare. */
   title?: string;
+  /** The entry has a title field, even one with nothing to compare (`title = {???}`). */
+  hasTitleField?: boolean;
   /** Folded surnames of personal authors (corporate authors excluded). */
   surnames: string[];
   /** First listed author is personal (not `{ATLAS Collaboration}`). */
@@ -51,10 +54,21 @@ export function bibYear(entry: BibEntry): number | undefined {
 export function bibFacts(entry: BibEntry): BibFacts {
   const people = parseNames(entry.fields.author ?? entry.fields.editor);
   const facts: BibFacts = {
-    surnames: people.filter((p) => !p.corporate).map((p) => foldName(p.family)),
-    firstIsPersonal: people.length > 0 && !people[0]?.corporate,
+    surnames: people
+      .filter((p) => !p.corporate)
+      .map((p) => foldName(p.family))
+      .filter(Boolean),
+    // A first author whose name has no letters (`{???}`) cannot be compared either.
+    firstIsPersonal:
+      people.length > 0 && !people[0]?.corporate && foldName(people[0]?.family ?? '') !== '',
   };
-  if (entry.fields.title) facts.title = entry.fields.title;
+  const title = entry.fields.title;
+  if (title) {
+    facts.hasTitleField = true;
+    // A title without any letter or digit cannot be compared or searched for: treating
+    // it as a title would make every record look unrelated.
+    if (normalizeTitle(title, true)) facts.title = title;
+  }
   const authorText = entry.fields.author ?? entry.fields.editor;
   if (authorText) facts.authorText = authorText;
   const year = bibYear(entry);

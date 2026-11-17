@@ -164,7 +164,7 @@ describe('network failures collapse into one problem', () => {
       (_, i) =>
         `@inproceedings{k${i}, author = {Smith, John}, title = {A Study of Thing Number ${i}}, booktitle = {SOSP}, year = {2020}}`,
     ).join('\n');
-  const fast = { arxivIntervalMs: 0, retryDelayMs: 0 };
+  const fast = { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
 
   it('many unreachable lookups become one reference-lookup-failed', async () => {
     const entries = parseBib(bib(5));

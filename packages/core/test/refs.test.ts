@@ -88,7 +88,7 @@ const allEmpty = {
   'export.arxiv.org': () => atom(emptyAtom),
 };
 
-const fast = { arxivIntervalMs: 0, retryDelayMs: 0 };
+const fast = { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
 const results = (r: RefResult | undefined): RefResult[] => (r ? [r] : []);
 
 describe('identifiers and query parsing', () => {
@@ -496,7 +496,8 @@ describe('verifyEntries', () => {
     expect(callsAfterFirst).toBeGreaterThan(0);
     expect([...map.keys()].sort()).toEqual([
       'doi:10.1145/359545.359563',
-      'title:in search of an understandable consensus algorithm|2014',
+      // CrossRef is asked with the first author, so the author is part of the key.
+      'title:in search of an understandable consensus algorithm|2014|author:ongaro',
     ]);
     const second = await verifyEntries(bib, { fetch: f.fetch, cache, ...fast });
     expect(f.calls.length).toBe(callsAfterFirst);
@@ -597,7 +598,8 @@ describe('verifyEntries', () => {
   it('passes mailto to CrossRef', async () => {
     const f = router(allEmpty);
     await verifyEntries(parseBib(RAFT), { fetch: f.fetch, mailto: 'me@example.org', ...fast });
-    expect(f.calls[0]).toContain('mailto=me%40example.org');
+    const crossref = f.calls.find((c) => c.startsWith('https://api.crossref.org/'));
+    expect(crossref).toContain('mailto=me%40example.org');
   });
 });
 

@@ -4,7 +4,7 @@ import { markCited, refsCheck, refsRules, verifyEntries } from '../src/refs/inde
 import { entryKind, identifiersOf, isStandard } from '../src/refs/kind.js';
 import { handlerFetch, json } from './fixtures/refs/fake-fetch.js';
 
-const fast = { arxivIntervalMs: 0, retryDelayMs: 0 };
+const fast = { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
 const atom = (body: string) =>
   new Response(body, { headers: { 'content-type': 'application/atom+xml' } });
 const one = (bib: string) => parseBib(bib)[0] as NonNullable<ReturnType<typeof parseBib>[0]>;

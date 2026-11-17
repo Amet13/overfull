@@ -1,6 +1,6 @@
 import { parseNames } from '../../bib/names.js';
 import { type HttpClient, SourceUnavailableError } from '../http.js';
-import { normalizeTitle } from '../normalize.js';
+import { decodeNumericEntities, normalizeTitle } from '../normalize.js';
 import type { WorkRecord } from '../types.js';
 
 const API = 'https://export.arxiv.org/api/query';
@@ -32,10 +32,7 @@ const XML_ENTITIES: Record<string, string> = {
 };
 
 function xmlText(s: string): string {
-  return s
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/&#x([0-9a-f]+);/gi, (_m, h: string) => String.fromCodePoint(Number.parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number(d)))
+  return decodeNumericEntities(s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1'))
     .replace(/&(amp|lt|gt|quot|apos);/g, (_m, e: string) => XML_ENTITIES[e] as string)
     .replace(/\s+/g, ' ')
     .trim();

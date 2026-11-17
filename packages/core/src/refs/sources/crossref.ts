@@ -1,4 +1,4 @@
-import { getJson, type HttpClient } from '../http.js';
+import { getJson, type HttpClient, isObject, listIn, readAnswer, unexpectedData } from '../http.js';
 import type { WorkRecord } from '../types.js';
 import { type CslLike, fromCsl } from './csl.js';
 
@@ -15,6 +15,8 @@ const SELECT = [
   'container-title',
   'is-referenced-by-count',
 ].join(',');
+
+const HOST = 'api.crossref.org';
 
 export interface TitleQuery {
   title: string;
@@ -35,11 +37,12 @@ export async function crossrefSearch(
   q: TitleQuery,
   mailto?: string,
 ): Promise<WorkRecord[]> {
-  const { data } = await getJson<{ message?: { items?: CslLike[] } }>(
-    client,
-    crossrefSearchUrl(q, mailto),
-  );
-  return (data?.message?.items ?? [])
-    .map((item) => fromCsl(item, 'crossref'))
-    .filter((r): r is WorkRecord => r !== null);
+  const { data } = await getJson<Record<string, unknown>>(client, crossrefSearchUrl(q, mailto));
+  if (!data) return [];
+  return readAnswer(HOST, () => {
+    if (!isObject(data.message)) throw unexpectedData(HOST);
+    return listIn(HOST, data.message.items)
+      .map((item) => fromCsl(item as CslLike, 'crossref'))
+      .filter((r): r is WorkRecord => r !== null);
+  });
 }

@@ -14,6 +14,7 @@ const run = async (extra = {}) => {
   const results = await verifyEntries(entries, {
     fetch: f.fetch,
     arxivIntervalMs: 0,
+    crossrefIntervalMs: 0,
     retryDelayMs: 0,
     checkRetractions: true,
     ...extra,
@@ -85,6 +86,7 @@ describe('reference-retracted', () => {
     const results = await verifyEntries(entries, {
       fetch: f.fetch,
       arxivIntervalMs: 0,
+      crossrefIntervalMs: 0,
       retryDelayMs: 0,
     });
     expect(f.calls.some((u) => u.includes('updated-by'))).toBe(false);
@@ -101,6 +103,7 @@ describe('reference-retracted', () => {
     const results = await verifyEntries(entries, {
       fetch: flaky,
       arxivIntervalMs: 0,
+      crossrefIntervalMs: 0,
       retryDelayMs: 0,
       checkRetractions: true,
     });

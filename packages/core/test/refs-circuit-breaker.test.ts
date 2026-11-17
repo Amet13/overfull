@@ -19,6 +19,8 @@ const entries = (n: number) =>
     ).join('\n'),
   );
 
+const fast = { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
+
 type Behaviour = 'ok' | 'hang' | '503';
 
 function fakeFetch(behaviour: Partial<Record<string, Behaviour>>) {
@@ -60,7 +62,7 @@ describe('per-host circuit breaker', () => {
     vi.useFakeTimers();
     const f = fakeFetch({ 'dblp.org': 'hang' });
     const { value, elapsed } = await settle(
-      verifyEntries(entries(30), { fetch: f.fetch, arxivIntervalMs: 0, retryDelayMs: 0 }),
+      verifyEntries(entries(30), { fetch: f.fetch, ...fast }),
       60_000,
     );
     expect(value).toHaveLength(30);
@@ -77,8 +79,7 @@ describe('per-host circuit breaker', () => {
     const f = fakeFetch({ 'dblp.org': '503' });
     const results = await verifyEntries(entries(30), {
       fetch: f.fetch,
-      arxivIntervalMs: 0,
-      retryDelayMs: 0,
+      ...fast,
     });
     expect(results.every((r) => r.status === 'error')).toBe(true);
     expect(f.calls.filter((h) => h === 'dblp.org').length).toBeLessThanOrEqual(2);
@@ -88,8 +89,7 @@ describe('per-host circuit breaker', () => {
     const f = fakeFetch({});
     const results = await verifyEntries(entries(10), {
       fetch: f.fetch,
-      arxivIntervalMs: 0,
-      retryDelayMs: 0,
+      ...fast,
     });
     expect(results.every((r) => r.status === 'not-found')).toBe(true);
     expect(f.calls.filter((h) => h === 'dblp.org')).toHaveLength(10);
@@ -99,7 +99,7 @@ describe('per-host circuit breaker', () => {
     vi.useFakeTimers();
     const f = fakeFetch({ 'api.crossref.org': 'hang' });
     const { elapsed } = await settle(
-      verifyEntries(entries(1), { fetch: f.fetch, arxivIntervalMs: 0, retryDelayMs: 0 }),
+      verifyEntries(entries(1), { fetch: f.fetch, ...fast }),
       60_000,
     );
     expect(elapsed).toBeLessThan(5000);
@@ -123,7 +123,7 @@ describe('concurrent sources and progress', () => {
           ? Response.json(emptyDblp)
           : new Response(emptyAtom);
     }) as typeof fetch;
-    const p = verifyEntries(entries(1), { fetch: f, arxivIntervalMs: 0, concurrency: 1 });
+    const p = verifyEntries(entries(1), { fetch: f, ...fast, concurrency: 1 });
     await new Promise((r) => setTimeout(r, 20));
     // The probe gate lets one request per unproven host through; two hosts in parallel.
     expect(started.sort()).toEqual(['api.crossref.org', 'dblp.org']);
@@ -136,7 +136,7 @@ describe('concurrent sources and progress', () => {
     const seen: [number, number][] = [];
     await verifyEntries(entries(5), {
       fetch: f.fetch,
-      arxivIntervalMs: 0,
+      ...fast,
       onProgress: (done, total) => seen.push([done, total]),
     });
     expect(seen).toEqual([1, 2, 3, 4, 5].map((n) => [n, 5]));

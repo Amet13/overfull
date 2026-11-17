@@ -10,6 +10,7 @@ import {
   parseDoi,
   type RefsOptions,
   titleSimilarity,
+  unescapeTexId,
 } from '@overfull/core';
 import { parse, str } from '../args.js';
 import { loadConfig } from '../config.js';
@@ -56,7 +57,8 @@ JSON (--json):
 export type LookupFn = (query: string, opts: RefsOptions) => Promise<LookupResult | null>;
 
 function doiOf(e: BibEntry): string | undefined {
-  const d = e.fields.doi;
+  // `10.1007/978-3-030-58452-8\_13` in a .bib file is the DOI `…-8_13`.
+  const d = e.fields.doi && unescapeTexId(e.fields.doi);
   return d ? (parseDoi(d) ?? d.toLowerCase()) : undefined;
 }
 

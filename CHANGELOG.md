@@ -9,10 +9,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 ### Added
 
 - `overfull check --project-cache` and `OVERFULL_REFS_CACHE=project` keep the reference cache in `.overfull/cache/`
+- References: `overfull init` offers to set `references.mailto` from your git
+  e-mail (only after you answer yes), for CrossRef's polite pool.
+- References: when doi.org or arXiv cannot answer, OpenAlex is asked for the
+  record of that one DOI or arXiv id (no search budget used).
+- References: a retraction check that fails part way keeps what it found and
+  says so (`reference-retraction-unchecked`, info).
 
 ### Changed
 
+- References: requests to CrossRef are spaced (one at a time, about 1.1 s apart
+  without `mailto`; three at a time, about 0.35 s apart with it).
+- References: the title-search cache key includes the first author sent to
+  CrossRef, so entries with the same title and other authors no longer share an
+  answer.
+
 ### Fixed
+
+- References: titles in Cyrillic, Chinese, Arabic and other non-Latin scripts
+  were always reported as not found; a title without letters or digits is now
+  "could not be checked", never "not found".
+- References: DOIs and eprints with TeX escapes (`\_`) were reported as
+  non-existent.
+- References: when doi.org failed, a wrong DOI could come out verified through
+  the title search.
+- References: an out-of-range numeric entity in an index answer, or any other
+  unexpected exception in one entry, stopped the whole check; it now affects
+  only that entry.
+- References: an index answer of an unexpected shape is reported as "returned
+  unexpected data" instead of a JavaScript TypeError.
+- References: the arXiv batch now also covers ids whose cached answer is empty
+  or too old.
 
 ### Security
 
