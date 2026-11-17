@@ -62,9 +62,10 @@ describe.skipIf(process.platform === 'win32')('automation-pr.sh', () => {
     expect(calls.some((c) => c.startsWith('pr create'))).toBe(false);
   });
 
-  it('opens a PR when there is none', () => {
+  it('opens a PR when there is none, and starts CodeQL and CI on its branch', () => {
     const calls = run([]);
     expect(calls.some((c) => c.startsWith('pr create'))).toBe(true);
+    expect(calls).toContain('workflow run codeql.yml --ref automation/regenerate');
     expect(calls.at(-1)).toMatch(/^workflow run ci\.yml --ref automation\/regenerate/);
   });
 });
