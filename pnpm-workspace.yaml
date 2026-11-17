@@ -2,6 +2,29 @@ packages:
   - packages/*
   - site
   - action
+# Install only versions published at least 7 days ago (in minutes): a hijacked
+# release is usually found and pulled within days, before it reaches this repository.
+minimumReleaseAge: 10080
+# Already in pnpm-lock.yaml when the rule was added (published 10-12 November 2026).
+# Exact versions only; delete this list after 19 November 2026, when all are 7 days old.
+minimumReleaseAgeExclude:
+  - "astro@7.4.11"
+  - "@astrojs/internal-helpers@0.13.2"
+  - "@astrojs/markdown-satteri@0.4.9"
+  - "@astrojs/runtime@0.1.1"
+  - "@astrojs/vite-plugin-astro@0.1.2"
+  - "@biomejs/biome@2.6.7"
+  - "@biomejs/cli-android-arm64@2.6.7"
+  - "@biomejs/cli-android-x64@2.6.7"
+  - "@biomejs/cli-darwin-arm64@2.6.7"
+  - "@biomejs/cli-darwin-x64@2.6.7"
+  - "@biomejs/cli-linux-arm64-musl@2.6.7"
+  - "@biomejs/cli-linux-arm64@2.6.7"
+  - "@biomejs/cli-linux-x64-musl@2.6.7"
+  - "@biomejs/cli-linux-x64@2.6.7"
+  - "@biomejs/cli-win32-arm64@2.6.7"
+  - "@biomejs/cli-win32-x64@2.6.7"
+  - "markdownlint-cli2@0.24.1"
 allowBuilds:
   esbuild: true
 # Security fixes for transitive dev dependencies of markdownlint-cli2
