@@ -81,7 +81,7 @@ printed as text, never run.
 - Dependencies locked with `pnpm-lock.yaml` and installed with
   `--frozen-lockfile`; only esbuild may run an install script. pnpm installs
   no version published less than 7 days ago (`minimumReleaseAge`), and
-  Dependabot waits 7 days before proposing a new version (30 for a major;
+  Dependabot waits 7 days before proposing a new version (30 for an npm major;
   security updates are not delayed).
 - The release job that creates the tag and moves `v3` runs in the `release`
   environment, so the maintainer can require an approval for every publish
