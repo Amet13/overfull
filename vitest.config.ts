@@ -1,6 +1,18 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
+const coreSrc = (file: string) =>
+  fileURLToPath(new URL(`packages/core/src/${file}`, import.meta.url));
+
 export default defineConfig({
+  // Tests import @overfull/core from its sources, so `pnpm test` never runs stale built code
+  // after a core edit. The more specific `/text` entry must come first.
+  resolve: {
+    alias: [
+      { find: /^@overfull\/core\/text$/, replacement: coreSrc('report/shared.ts') },
+      { find: /^@overfull\/core$/, replacement: coreSrc('index.ts') },
+    ],
+  },
   test: {
     include: [
       'packages/*/test/**/*.test.ts',
