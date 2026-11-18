@@ -57,7 +57,7 @@ const ACK_SOURCE =
  * numbered, e.g. `7 Acknowledgments`) or run in, followed by `.` or `:` and the text.
  */
 const ACK_HEADING =
-  /^\s*(?:(?:\d+(?:\.\d+)*|[A-Z])\.?\s+)?(?:[Aa]cknowledge?ments?|ACKNOWLEDGE?MENTS?)(?:\s*[.:]?\s*$|\s*[.:]\s+\S)/;
+  /^\s*(?:(?:\d+(?:\.\d+)*|[A-Z])\.?\s+)?(?:[Aa]cknowledge?ments?|ACKNOWLEDGE?MENTS?)(?:\s*(?:[.:]\s*)?$|\s*[.:]\s+\S)/;
 
 /**
  * `anonymity-acknowledgments`. With a PDF that has text, only an acknowledgments heading

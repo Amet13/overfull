@@ -192,6 +192,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 - Supply chain: Dependabot waits 7 days before proposing a new version (30 for an npm major), pnpm installs nothing published less than 7 days ago, and the release job runs in a `release` environment that can require the maintainer's approval
 - The installers also run `gh attestation verify` on the download when the GitHub CLI is installed and logged in (skipped without it)
 - A project's own `overfull.yml` can no longer turn on its in-repository reference cache (`references.cache: project` is ignored with a notice), so a planted cache cannot mark made-up references as verified
+- Action: outside GitHub Actions (no `RUNNER_TEMP`), the JSON report goes to a new private folder, never a fixed path in the shared temp folder that another user could create first
+- Venue check: the acknowledgments-heading pattern no longer slows to seconds on PDF text with a heading word followed by a long run of tabs or spaces
 
 ## [v3.1.2] - 2026-11-16
 

@@ -1,6 +1,7 @@
 /** The GitHub Action's run(): report on stdout, step summary, outputs, SARIF and exit code. */
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { run } from '../../../action/src/main.js';
 import { tempCopy, tempDir } from './helpers.js';
@@ -84,6 +85,23 @@ describe('Action run()', () => {
     expect(s.stdout()).toMatch(/^report=.*overfull-report\.json$/m);
     expect(s.stdout()).not.toMatch(/^::(error|warning|notice) /m);
     expect(readFileSync(s.summary, 'utf8')).toBe('');
+  });
+
+  it('writes the report to a new private folder when RUNNER_TEMP is not set', async () => {
+    const reports: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const s = setup({ RUNNER_TEMP: undefined, 'INPUT_FAIL-ON': 'never' });
+      await s.go();
+      const report = s.outputs().report as string;
+      expect(basename(report)).toBe('overfull-report.json');
+      expect(dirname(dirname(report))).toBe(tmpdir());
+      expect(basename(dirname(report))).toMatch(/^overfull-.+/);
+      expect(JSON.parse(readFileSync(report, 'utf8'))).toHaveProperty('status');
+      reports.push(report);
+      rmSync(dirname(report), { recursive: true, force: true });
+    }
+    // Never a fixed path in the shared temp folder another user could create first.
+    expect(reports[0]).not.toBe(reports[1]);
   });
 
   it('annotates problems after the report, and fails on errors', async () => {

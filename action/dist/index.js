@@ -8472,7 +8472,7 @@ var init_anonymity = __esm({
     MAX_BODY = 2e3;
     MAX_ROUNDS = 4;
     ACK_SOURCE = /\\(?:section|chapter|subsection|paragraph|subsubsection)\*?\s*\{\s*Acknowledg|\\begin\{acknowledg|\\acknowledg(?:e)?ments\b/i;
-    ACK_HEADING = /^\s*(?:(?:\d+(?:\.\d+)*|[A-Z])\.?\s+)?(?:[Aa]cknowledge?ments?|ACKNOWLEDGE?MENTS?)(?:\s*[.:]?\s*$|\s*[.:]\s+\S)/;
+    ACK_HEADING = /^\s*(?:(?:\d+(?:\.\d+)*|[A-Z])\.?\s+)?(?:[Aa]cknowledge?ments?|ACKNOWLEDGE?MENTS?)(?:\s*(?:[.:]\s*)?$|\s*[.:]\s+\S)/;
   }
 });
 
@@ -119900,7 +119900,7 @@ init_safety();
 init_version();
 
 // src/main.ts
-import { appendFileSync, writeFileSync as writeFileSync3 } from "node:fs";
+import { appendFileSync, mkdtempSync, writeFileSync as writeFileSync3 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as join6, relative as relative8, resolve as resolve4 } from "node:path";
 
@@ -119992,7 +119992,8 @@ async function run2(env, write) {
     appendFileSync(env.GITHUB_STEP_SUMMARY, `${renderReport(report, "markdown", render)}
 `);
   }
-  const reportPath = join6(env.RUNNER_TEMP ?? tmpdir(), "overfull-report.json");
+  const reportDir = env.RUNNER_TEMP ?? mkdtempSync(join6(tmpdir(), "overfull-"));
+  const reportPath = join6(reportDir, "overfull-report.json");
   writeFileSync3(reportPath, renderReport(report, "json", render));
   if (inputs.sarif) {
     const target = reportTarget(workspace, inputs.sarif, 'Input "sarif"');

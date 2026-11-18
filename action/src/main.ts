@@ -1,4 +1,4 @@
-import { appendFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import {
@@ -48,7 +48,10 @@ export async function run(env: Env, write: (text: string) => void): Promise<numb
   if (inputs.summary && env.GITHUB_STEP_SUMMARY) {
     appendFileSync(env.GITHUB_STEP_SUMMARY, `${renderReport(report, 'markdown', render)}\n`);
   }
-  const reportPath = join(env.RUNNER_TEMP ?? tmpdir(), 'overfull-report.json');
+  // RUNNER_TEMP is private to the job; outside Actions use a fresh private folder,
+  // never a predictable path in the shared temp directory.
+  const reportDir = env.RUNNER_TEMP ?? mkdtempSync(join(tmpdir(), 'overfull-'));
+  const reportPath = join(reportDir, 'overfull-report.json');
   writeFileSync(reportPath, renderReport(report, 'json', render));
   if (inputs.sarif) {
     // Inside the workspace the file must not be, or go through, a symlink: the

@@ -10,6 +10,7 @@ import {
   venueCheck,
   venueRules,
 } from '../src/venue/index.js';
+import { LINEAR_BUDGET_MS, timed } from './linear-time.js';
 
 const aux = readFileSync(new URL('./fixtures/venue/paper.aux', import.meta.url), 'utf8');
 
@@ -236,6 +237,15 @@ describe('anonymity', () => {
     it('falls back to the sources when the PDF has no text', () => {
       const r = venueCheck(profile, { facts: facts(2), texFiles: [ackSrc] });
       expect(ack(r)).toHaveLength(1);
+    });
+
+    it('stays linear on a heading followed by a long run of tabs', () => {
+      // PDF text is outside data: a heading word and 100 000 tabs with no end took
+      // seconds with a pattern that let two `\s*` share the run.
+      for (const tail of ['x', '.']) {
+        const f = withText(`Acknowledgment${'\t'.repeat(100_000)}${tail}`);
+        expect(timed(() => venueCheck(profile, { facts: f }))).toBeLessThan(LINEAR_BUDGET_MS);
+      }
     });
   });
 
