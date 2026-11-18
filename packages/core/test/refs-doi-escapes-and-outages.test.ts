@@ -170,6 +170,35 @@ describe('arXiv ids through OpenAlex', () => {
     expect(f.calls.some((c) => new URL(c).hostname === 'export.arxiv.org')).toBe(false);
   });
 
+  it('resolves the arXiv DOI through doi.org (DataCite) when arXiv may not be asked', async () => {
+    const f = handlerFetch((u) => {
+      if (u.host === 'doi.org' && u.pathname.toLowerCase() === `/${arxivDoi}`)
+        return json({ ...csl('10.48550/arXiv.2001.01234'), type: 'article' });
+      throw new TypeError(`fetch failed: ${u.host}`);
+    });
+    const [r] = await verifyEntries(arxivEntry, {
+      fetch: f.fetch,
+      ...fast,
+      sources: ['crossref', 'doi.org', 'openalex'],
+    });
+    expect(r).toMatchObject({ status: 'verified', source: 'doi.org' });
+    expect(f.calls.map((c) => new URL(c).hostname)).toEqual(['doi.org']);
+  });
+
+  it('asks OpenAlex when doi.org does not know the arXiv DOI', async () => {
+    const f = handlerFetch((u) => {
+      if (u.host === 'doi.org') return notFound();
+      if (u.host === 'api.openalex.org') return json(openalexWork(arxivDoi));
+      throw new TypeError(`fetch failed: ${u.host}`);
+    });
+    const [r] = await verifyEntries(arxivEntry, {
+      fetch: f.fetch,
+      ...fast,
+      sources: ['crossref', 'doi.org', 'openalex'],
+    });
+    expect(r).toMatchObject({ status: 'verified', source: 'openalex' });
+  });
+
   it('asks OpenAlex when arXiv is down', async () => {
     const f = handlerFetch((u) => {
       if (u.host === 'export.arxiv.org') return new Response('busy', { status: 503 });

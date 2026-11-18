@@ -216,6 +216,30 @@ async function checkArxiv(
   }
 }
 
+/**
+ * arXiv may not be asked (the browser check: arXiv sends no CORS headers). arXiv registers
+ * a DataCite DOI for every paper, so doi.org answers for it; OpenAlex is asked when doi.org
+ * cannot answer or does not know the DOI. Neither answer proves the id wrong.
+ */
+async function checkArxivDoi(
+  ctx: Ctx,
+  id: string,
+  facts: BibFacts,
+  ev: Evidence,
+): Promise<Assessment | null> {
+  const doi = arxivDoi(id);
+  if (sourceAllowed(ctx.opts, 'doi.org')) {
+    try {
+      const res = await resolveDoiCached(ctx, doi);
+      ev.searched.add('doi.org');
+      if (res.kind === 'found') return assessIdentified(facts, res.record, ev, 'eprint', id, 'is');
+    } catch (err) {
+      sourceFailed(ctx, ev, 'doi.org', err);
+    }
+  }
+  return checkOpenalexDoi(ctx, doi, facts, ev, 'eprint', id);
+}
+
 /** The DOI arXiv registers for a paper: `10.48550/arXiv.<id>`. */
 function arxivDoi(id: string): string {
   return `10.48550/arxiv.${id.toLowerCase()}`;
@@ -497,8 +521,7 @@ async function verifyEntry(entry: BibEntry, ctx: Ctx, ignore: Set<string>): Prom
     (ids.arxivId
       ? sourceAllowed(ctx.opts, 'arxiv')
         ? await checkArxiv(ctx, ids.arxivId, facts, ev)
-        : // arXiv may not be asked (the browser check): OpenAlex knows arXiv's DOIs.
-          await checkOpenalexDoi(ctx, arxivDoi(ids.arxivId), facts, ev, 'eprint', ids.arxivId)
+        : await checkArxivDoi(ctx, ids.arxivId, facts, ev)
       : null) ??
     (await checkOtherIds(ctx, ids, facts, ev));
   const withQuery = (r: RefResult): RefResult => ({ ...r, query: ev.queries[0] ?? '' });
