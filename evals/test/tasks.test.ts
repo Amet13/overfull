@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { allRules } from '@overfull/core';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { alterDoi, expandPlaceholders, parseSimpleBib } from '../lib/generate.mjs';
 import { applyVariant } from '../lib/prepare.mjs';
@@ -20,6 +21,14 @@ describe('tasks on disk', () => {
   it('has at least 12 tasks, all valid', () => {
     expect(tasks.length).toBeGreaterThanOrEqual(12);
     for (const t of tasks) expect(validateTask(root, t), t.id).toEqual([]);
+  });
+  it('names only rule ids the registry knows', () => {
+    const known = new Set(allRules().map((r) => r.id));
+    for (const t of tasks) {
+      const expectRules = (t.expect ?? {}) as { noRules?: string[]; rules?: string[] };
+      for (const id of [...(expectRules.noRules ?? []), ...(expectRules.rules ?? [])])
+        expect(known.has(id), `${t.id}: unknown rule ${id}`).toBe(true);
+    }
   });
   it('covers the required kinds of work', () => {
     const ids = tasks.map((t) => t.id);

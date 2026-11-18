@@ -22,19 +22,3 @@ export function profilesForStyleFile(
     .map((p) => p.id)
     .sort();
 }
-
-/** The whole mapping: lower-case style file name to the sorted profile ids that name it. */
-export function styleFileIndex(
-  profiles: Record<string, VenueProfileData> = venueProfileData,
-): Record<string, string[]> {
-  const out: Record<string, string[]> = {};
-  for (const p of Object.values(profiles)) {
-    for (const f of p.styleFiles ?? []) {
-      const key = baseName(f.name);
-      const ids = out[key] ?? [];
-      if (!ids.includes(p.id)) ids.push(p.id);
-      out[key] = ids.sort();
-    }
-  }
-  return out;
-}

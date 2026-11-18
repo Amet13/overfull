@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest';
 import {
   profilesForStyleFile,
   resolveProfile,
-  styleFileIndex,
   UnknownProfileError,
   type VenueProfileData,
   venueCheck,
@@ -62,7 +61,6 @@ describe('venue profiles from data', () => {
     expect(profilesForStyleFile('exampletest.sty', venues)).toEqual(['example-test-venue']);
     expect(profilesForStyleFile('sub/dir/ExampleTest.STY', venues)).toEqual(['example-test-venue']);
     expect(profilesForStyleFile('other.sty', venues)).toEqual([]);
-    expect(styleFileIndex(venues)).toEqual({ 'exampletest.sty': ['example-test-venue'] });
   });
 });
 

@@ -77,8 +77,3 @@ export function parseNames(field: string | undefined): PersonName[] {
     .filter((n) => n.toLowerCase() !== 'others')
     .map(parseOne);
 }
-
-/** True when the list ends with `and others` (the record may have more authors). */
-export function hasOthers(field: string | undefined): boolean {
-  return !!field && /(?:^|\s)and\s+others$/i.test(field.trimEnd());
-}

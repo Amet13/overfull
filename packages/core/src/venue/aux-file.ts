@@ -44,10 +44,3 @@ function clean(s: string): string {
     .replace(/[{}]/g, '')
     .trim();
 }
-
-/** Page number of a label as an integer, or undefined if not arabic (e.g. roman front matter). */
-export function labelPage(aux: string, label: string): number | undefined {
-  const entry = parseAuxLabels(aux).get(label);
-  if (!entry) return undefined;
-  return /^\d+$/.test(entry.page) ? Number(entry.page) : undefined;
-}
