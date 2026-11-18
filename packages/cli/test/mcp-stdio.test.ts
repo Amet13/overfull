@@ -43,7 +43,8 @@ function session(cwd: string, args: string[] = []) {
   const child = spawn(process.execPath, [bundle, 'mcp', ...args], {
     cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { PATH: process.env.PATH, NO_COLOR: '1' },
+    // No Docker: a slow or absent daemon on the test machine must not slow the check down.
+    env: { PATH: process.env.PATH, NO_COLOR: '1', OVERFULL_NO_DOCKER: '1' },
   });
   let out = '';
   let err = '';
