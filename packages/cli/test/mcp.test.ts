@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { main } from '../src/main.js';
 import { createMcpServer } from '../src/mcp/protocol.js';
 import { LineSplitter } from '../src/mcp/stdio.js';
-import { createTools } from '../src/mcp/tools.js';
+import { createTools, type InputSchema, validateArgs } from '../src/mcp/tools.js';
 import { tempCopy, tempDir } from './helpers.js';
 
 type Msg = Record<string, unknown>;
@@ -335,5 +335,61 @@ describe('line framing', () => {
   it('counts bytes, not characters', () => {
     const s = new LineSplitter(4);
     expect(s.push(Buffer.from('ééé\n'))).toEqual([{ tooLarge: true }]);
+  });
+});
+
+describe('validateArgs', () => {
+  const schema: InputSchema = {
+    type: 'object',
+    properties: {
+      query: { type: 'string', minLength: 1, maxLength: 5 },
+      key: { type: 'string', maxLength: 10, pattern: '^[a-z]+$' },
+      dryRun: { type: 'boolean' },
+      year: { type: 'integer', minimum: 1000, maximum: 2999 },
+      checks: { type: 'array', maxItems: 2, items: { type: 'string', enum: ['build', 'output'] } },
+    },
+    required: ['query'],
+    additionalProperties: false,
+  };
+  const v = (args: Msg) => validateArgs(schema, { query: 'q', ...args });
+
+  it('accepts valid arguments, and absent optional ones', () => {
+    expect(v({})).toBeUndefined();
+    expect(
+      v({ key: 'abc', dryRun: false, year: 2024, checks: ['build', 'output'] }),
+    ).toBeUndefined();
+  });
+
+  it('rejects missing and extra fields', () => {
+    expect(validateArgs(schema, {})).toBe('"query" is required');
+    expect(v({ extra: 1 })).toBe('unknown argument "extra"');
+    expect(v({ ['x'.repeat(80)]: 1 })).toBe(`unknown argument "${'x'.repeat(50)}"`);
+    expect(
+      validateArgs(
+        { type: 'object', properties: {}, additionalProperties: false },
+        {
+          a: 1,
+        },
+      ),
+    ).toBe('unknown argument "a"');
+  });
+
+  it('rejects wrong types', () => {
+    expect(v({ query: 5 })).toBe('"query" must be a string');
+    expect(v({ dryRun: 'yes' })).toBe('"dryRun" must be true or false');
+    expect(v({ year: '2024' })).toBe('"year" must be an integer');
+    expect(v({ year: 2024.5 })).toBe('"year" must be an integer');
+    expect(v({ checks: 'build' })).toBe('"checks" must be an array');
+  });
+
+  it('rejects values outside the limits', () => {
+    expect(v({ query: '' })).toBe('"query" is too short');
+    expect(v({ query: 'longer' })).toBe('"query" is too long');
+    expect(v({ key: 'ABC' })).toMatch(/^"key" has characters that are not allowed \(pattern/);
+    expect(v({ year: 999 })).toBe('"year" must be between 1000 and 2999');
+    expect(v({ year: 3000 })).toBe('"year" must be between 1000 and 2999');
+    expect(v({ checks: ['build', 'output', 'build'] })).toBe('"checks" has too many items');
+    expect(v({ checks: ['refs'] })).toBe('"checks" items must be one of: build, output');
+    expect(v({ checks: [1] })).toBe('"checks" items must be one of: build, output');
   });
 });
