@@ -1,0 +1,13 @@
+# pre-commit (https://pre-commit.com): run `pre-commit install` once.
+# Blocks commits of hand-written .bib entries; entries added with `overfull cite`,
+# entries the indexes confirm and entries with note = {overfull: author-provided} pass.
+# Needs the `overfull` command on PATH.
+repos:
+  - repo: local
+    hooks:
+      - id: overfull-guard
+        name: overfull guard
+        entry: overfull guard --staged
+        language: system
+        files: \.bib$
+        pass_filenames: false

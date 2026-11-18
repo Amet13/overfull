@@ -31,7 +31,7 @@ The rest of this page covers the Action and the template workflow.
 - **The Action** (`amet13/overfull@v3`) checks files your workflow already
   produced: the log, the PDF, the bibliography. Use it to add Overfull to an
   existing LaTeX workflow.
-- **The template workflow** (`.github/workflows/paper.yml` in each template)
+- **The template workflow** (`.github/workflows/preflight.yml` in each template)
   builds the PDF in the Overfull Docker image, runs every check including
   veraPDF, and builds a highlighted-changes PDF for pull requests. The slides
   template runs only the checks its `overfull.yml` lists.

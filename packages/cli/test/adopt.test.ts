@@ -142,6 +142,22 @@ describe('adopt: generated files', () => {
     expect(renderMakefile(pdf)).toMatch(/\n\t\$\(RUN_LATEXMK\) \$\(LATEXMK_FLAGS\)/);
   });
 
+  it('the workflow is called preflight, and the Makefile has the agent targets', () => {
+    const d = detectProject(tempCopy('adopt/thesis'));
+    const wf = renderWorkflow(d);
+    expect(wf).toContain('name: preflight');
+    expect(wf).toContain("if: github.event_name == 'pull_request' && (success() || failure())");
+    const mk = renderMakefile(d);
+    for (const line of [
+      '\t$(RUN_OVERFULL) check $(ARGS)',
+      '\t$(RUN_OVERFULL) cite $(ARGS)',
+      '\t$(RUN_OVERFULL) explain $(RULE)',
+      '\t$(RUN_OVERFULL) doctor',
+    ])
+      expect(mk).toContain(line);
+    expect(mk).not.toContain('overfull-tex:dev');
+  });
+
   it('the agent kit equals shared/agents and skills/ (one source, no drift)', () => {
     const kit = agentKit();
     expect(kit).toBeDefined();

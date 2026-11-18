@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { main } from '../src/main.js';
@@ -22,6 +22,32 @@ describe('templates', () => {
     ]) {
       expect(isTemplateFile(f), f).toBe(false);
     }
+  });
+});
+
+describe('template project files', () => {
+  const dir = templatesDir();
+  const read = (t: string, f: string) => readFileSync(join(dir as string, t, f), 'utf8');
+  it.skipIf(!dir)('ignore only root PDFs, ship the guard and the agent make targets', () => {
+    for (const t of ['paper', 'thesis', 'slides']) {
+      const ignore = read(t, '.gitignore').split('\n');
+      expect(ignore, t).toContain('/*.pdf');
+      expect(ignore, t).not.toContain('*.pdf');
+      expect(ignore, t).toContain('notes/reviews.md');
+      expect(read(t, '.pre-commit-config.yaml')).toContain('entry: overfull guard --staged');
+      const make = read(t, 'Makefile');
+      for (const target of ['build', 'check', 'cite', 'explain', 'doctor'])
+        expect(make, `${t}: ${target}`).toMatch(new RegExp(`\\n${target}: ##`));
+      expect(make).toContain('$(RUN_OVERFULL) build');
+      expect(make).not.toContain('overfull-tex:dev');
+      const wf = read(t, '.github/workflows/preflight.yml');
+      expect(wf).toContain('name: preflight');
+      expect(wf).toContain('(success() || failure())');
+      expect(read(t, 'overfull.yml')).toContain('ghcr.io/amet13/overfull:3-slim');
+    }
+    const paper = read('paper', '.github/workflows/preflight.yml');
+    expect(paper.indexOf('name: Preflight')).toBeLessThan(paper.indexOf('arXiv'));
+    expect(paper).toContain('overfull check --profile arxiv');
   });
 });
 

@@ -69,7 +69,7 @@ workflows do) need root to write to the checked-out workspace.
 ## How the templates use it
 
 The template `Makefile`s run `overfull` when it is installed and otherwise the image
-pinned in `overfull.yml`. The template CI workflow (`.github/workflows/paper.yml`)
+pinned in `overfull.yml`. The template CI workflow (`.github/workflows/preflight.yml`)
 runs its job inside the slim image, and `.devcontainer/devcontainer.json` opens VS
 Code in the full one.
 

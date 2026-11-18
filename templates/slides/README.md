@@ -23,6 +23,9 @@ make watch    # rebuild on every save
 make check    # checks: build log and PDF
 make pages PAGES=1-4   # render slides to PNG
 make diff     # PDF showing changes against origin/main
+make cite ARGS=10.1145/2890784   # add a verified reference
+make explain RULE=overfull-box  # what a check rule means
+make doctor   # what is installed
 make clean    # remove build files (keeps the PDF)
 make help     # all targets
 ```
@@ -30,8 +33,8 @@ make help     # all targets
 Only Docker is required; a local TeX Live 2026 works too.
 
 **New to Docker?** Install Docker Desktop (macOS, Windows) or Docker Engine
-(Linux) and start it. The first build downloads the image, about 3 GB
-compressed and 9–10 GB on disk, so allow a few minutes. After that, builds take
-seconds.
+(Linux) and start it. The first build downloads the slim image (under
+1 GB, about 3 GB on disk), so allow a few minutes. After that, builds take
+seconds. A package the image lacks is installed on the first build that needs it.
 
 Licensed MIT-0: use it without attribution.

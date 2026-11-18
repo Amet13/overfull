@@ -133,7 +133,7 @@ Options for --here (existing project, current folder):
   --agents        Also write AGENTS.md, the pointer files (CLAUDE.md, GEMINI.md,
                   .github/copilot-instructions.md, .cursor/rules/overfull.mdc),
                   .agents/skills/ and the .claude/skills link
-  --ci            Also write .github/workflows/overfull.yml
+  --ci            Also write .github/workflows/preflight.yml
   --make          Also write a Makefile; an existing Makefile is not touched and
                   the lines to add are printed
   --hooks         Also install a git pre-commit hook that blocks hand-written .bib
@@ -334,7 +334,7 @@ async function adoptHere(
       `Found ${detected.main} (${detected.engine}, ${detected.backend === 'none' ? 'no bibliography' : detected.backend}). overfull.yml will be written.\n`,
     );
     parts.agents = await ask('Add AGENTS.md and skills for AI agents?');
-    parts.ci = await ask('Add a GitHub Actions workflow (.github/workflows/overfull.yml)?');
+    parts.ci = await ask('Add a GitHub Actions workflow (.github/workflows/preflight.yml)?');
     parts.make = await ask('Add a Makefile with build and check targets?');
   }
   const dryRun = values['dry-run'] === true;

@@ -19,4 +19,4 @@ venue:
   anonymous: false
 build:
   engine: auto             # local latexmk if installed, otherwise Docker
-  image: ghcr.io/amet13/overfull:3
+  image: ghcr.io/amet13/overfull:3-slim  # the image CI builds with; :3 is all of TeX Live
