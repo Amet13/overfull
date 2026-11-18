@@ -1,18 +1,21 @@
 /** The MCP server as a real subprocess over stdio: bundles the CLI entry, spawns it, talks JSON-RPC. */
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { tempCopy } from './helpers.js';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 let bundle = '';
+let bundleDir = '';
 
+afterAll(() => rmSync(bundleDir, { recursive: true, force: true }));
 beforeAll(async () => {
   const out = mkdtempSync(join(tmpdir(), 'overfull-mcp-bundle-'));
+  bundleDir = out;
   bundle = join(out, 'overfull.cjs');
   await build({
     entryPoints: [join(root, 'packages/cli/src/bin.ts')],
@@ -44,20 +47,43 @@ function session(cwd: string, args: string[] = []) {
   });
   let out = '';
   let err = '';
+  let closed = false;
+  const lines = () => out.split('\n').filter(Boolean);
+  // Waiters wake on each stdout chunk (and on exit), so there is no polling budget:
+  // only the test timeout bounds a wait, and a loaded machine just waits longer.
+  const waiters = new Set<() => void>();
+  const wake = () => {
+    for (const w of [...waiters]) w();
+  };
   child.stdout.setEncoding('utf8').on('data', (d: string) => {
     out += d;
+    wake();
   });
   child.stderr.setEncoding('utf8').on('data', (d: string) => {
     err += d;
   });
   const exited = new Promise<number | null>((resolve) =>
-    child.on('close', (code) => resolve(code)),
+    child.on('close', (code) => {
+      closed = true;
+      wake();
+      resolve(code);
+    }),
   );
-  const lines = () => out.split('\n').filter(Boolean);
-  const waitFor = async (n: number) => {
-    for (let i = 0; i < 600 && lines().length < n; i++) await new Promise((r) => setTimeout(r, 25));
-    expect(lines().length).toBeGreaterThanOrEqual(n);
-  };
+  /** Resolves once stdout holds `n` lines; rejects if the server exits first. */
+  const waitFor = (n: number) =>
+    new Promise<void>((resolve, reject) => {
+      const check = () => {
+        if (lines().length >= n) {
+          waiters.delete(check);
+          resolve();
+        } else if (closed) {
+          waiters.delete(check);
+          reject(new Error(`server exited after ${lines().length} of ${n} lines\n${err}`));
+        }
+      };
+      waiters.add(check);
+      check();
+    });
   return {
     child,
     exited,
