@@ -17,8 +17,9 @@ answers questions that are tedious to check by hand and easy to get wrong:
 
 It comes as a command-line tool (`overfull`), a Docker image with TeX Live,
 templates for a thesis, a paper and slides, a GitHub Action, and a
-[browser check](https://amet13.github.io/overfull/check/) for a log, `.bib` or
-PDF you already have.
+[browser check](https://amet13.github.io/overfull/check/) for a project zip,
+log, `.bib` or PDF you already have (most of the checks, the venue profiles
+included; nothing is uploaded).
 
 ## Two ways in
 
