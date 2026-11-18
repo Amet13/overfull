@@ -142,7 +142,7 @@ describe('scripts/build-venues.mjs', () => {
   });
 
   it('validates deadline', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'venues-'));
+    const dir = tempDir();
     const base = 'name: X\nyear: 2027\nsource: https://example.org\ncheckedOn: 2026-11-10\n';
     writeFileSync(join(dir, 'good-venue.yml'), `id: good-venue\n${base}deadline: 2027-01-31\n`);
     writeFileSync(join(dir, 'bad-venue.yml'), `id: bad-venue\n${base}deadline: 2027-02-30\n`);
