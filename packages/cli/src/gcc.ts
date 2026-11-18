@@ -26,7 +26,7 @@ export function formatGcc(report: Report): string {
 }
 
 /** VS Code's own variable (not a JavaScript placeholder): the folder that is open. */
-const WORKSPACE = `\${workspaceFolder}`;
+const WORKSPACE = '$' + '{workspaceFolder}';
 
 /** The VS Code task `overfull init --here --vscode` writes: check, problems in the editor. */
 export const VSCODE_TASKS = `${JSON.stringify(
