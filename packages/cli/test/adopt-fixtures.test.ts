@@ -38,13 +38,13 @@ describe.each(FIXTURES)('init --here on the %s project', (name) => {
       'GEMINI.md',
       '.github/copilot-instructions.md',
       '.cursor/rules/overfull.mdc',
-      '.github/workflows/overfull.yml',
+      '.github/workflows/preflight.yml',
       'Makefile',
     ])
       expect(existsSync(join(dir, f)), f).toBe(true);
     expect(existsSync(join(dir, '.agents/skills/add-citation/SKILL.md'))).toBe(true);
     expect(existsSync(join(dir, '.claude/skills/add-citation/SKILL.md'))).toBe(true);
-    for (const f of ['overfull.yml', '.github/workflows/overfull.yml', 'Makefile'])
+    for (const f of ['overfull.yml', '.github/workflows/preflight.yml', 'Makefile'])
       expect(io.stdoutText()).toContain(f);
 
     const check = memIo(dir);

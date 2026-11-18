@@ -1,8 +1,8 @@
 # overfull.yml — configuration for the `overfull` CLI (build, check, diff ...).
 # Docs: https://github.com/amet13/overfull
 #
-# Default build: LuaLaTeX (`latexmk`). For arXiv, build with pdfLaTeX:
-# `latexmk -pdf` (arXiv does not support LuaLaTeX).
+# Default build: LuaLaTeX (`make build`). For arXiv, build with pdfLaTeX:
+# `make arxiv` (paper-arxiv.pdf; arXiv does not offer LuaLaTeX).
 main: main.tex
 jobname: paper             # output: paper.pdf / paper.log
 bib: [references.bib]
@@ -20,8 +20,8 @@ venue:
   # Main text (up to \label{overfull:main-end}) must fit in 8 pages.
   # Set max to your venue's limit.
   pageLimit: { max: 8, endLabel: overfull:main-end }
-  anonymous: false         # true for double-blind review
+  anonymous: false         # true for double-blind review, with \PaperAnonymoustrue in metadata.tex
   disclosure: recommended  # set to required if your venue asks for an AI-use statement
 build:
   engine: auto             # local latexmk if installed, otherwise Docker
-  image: ghcr.io/amet13/overfull:3
+  image: ghcr.io/amet13/overfull:3-slim  # the image CI builds with; :3 is all of TeX Live

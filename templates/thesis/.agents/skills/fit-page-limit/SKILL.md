@@ -18,6 +18,10 @@ how many pages count and what the limit is. The limit comes from
 pages up to `\label{overfull:main-end}` count; references and appendices after
 that label do not.
 
+Measure the version that will be submitted: in the paper template, anonymous
+mode (`\PaperAnonymoustrue`) has a shorter title block than the camera-ready
+version, and many venues allow one more page for the camera-ready.
+
 If check reports `page-limit-label-missing`, the label is not in the document
 or the `.aux`. Check the label is in the right place: directly before the bibliography or the
 appendix, as the venue's rules define the main text. Ask the author if unsure.

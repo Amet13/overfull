@@ -374,13 +374,16 @@ export function renderMakefile(d: Detected): string {
 # Written by \`overfull init --here\`. Uses the \`overfull\` CLI when it is installed;
 # otherwise everything runs in the Overfull Docker image, so the only requirement is Docker.
 #   make build                          build the PDF (${d.engine})
-#   make build IMAGE=overfull-tex:dev   use another image
+#   make build IMAGE=overfull:dev       use another image
+#   make cite ARGS=10.1145/3442188.3445922   add a verified reference
 # Run \`make help\` for all targets.
 
 JOB    ?= $(shell sed -n 's/^jobname: *\\([^ #]*\\).*/\\1/p' overfull.yml)
 IMAGE  ?= $(or $(OVERFULL_IMAGE),${LATEXMK_IMAGE})
 BASE   ?= origin/main
 PAGES  ?= 1-3
+ARGS   ?=
+RULE   ?=
 # Engine flags are left out when .latexmkrc names the engine.
 LATEXMK_FLAGS ?= ${[...(d.engineFromLatexmkrc ? [] : [ENGINE_FLAG[d.engine]]), '-interaction=nonstopmode', '-file-line-error'].join(' ')}
 MAIN   ?= ${d.main}
@@ -404,7 +407,7 @@ else
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help build watch check pages diff clean
+.PHONY: help build watch check cite explain doctor pages diff clean
 
 help: ## Show this help
 ${T}@awk 'BEGIN{FS=":.*## "} /^[a-z-]+:.*## /{printf "  make %-8s %s\\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -416,7 +419,16 @@ watch: ## Rebuild the PDF on every save
 ${T}$(RUN_LATEXMK) $(LATEXMK_FLAGS) -jobname=$(JOB) -pvc -view=none $(MAIN)
 
 check: ## Preflight: build log, PDF, references, accessibility
-${T}$(RUN_OVERFULL) check
+${T}$(RUN_OVERFULL) check $(ARGS)
+
+cite: ## Add a verified reference: make cite ARGS=<doi | arXiv:id | "title">
+${T}$(RUN_OVERFULL) cite $(ARGS)
+
+explain: ## Explain a check rule: make explain RULE=overfull-box
+${T}$(RUN_OVERFULL) explain $(RULE)
+
+doctor: ## Show what is installed and what can build
+${T}$(RUN_OVERFULL) doctor
 
 pages: ## Render pages to PNG for review, e.g. make pages PAGES=4-6
 ${T}$(RUN_OVERFULL) pages $(PAGES)
@@ -441,14 +453,14 @@ ${T}overfull check
 `;
 }
 
-/** The GitHub Actions workflow: modelled on templates/paper/.github/workflows/paper.yml. */
+/** The GitHub Actions workflow: modelled on templates/paper/.github/workflows/preflight.yml. */
 export function renderWorkflow(d: Detected): string {
   const build = latexmkCommand(d);
   return `# Build the PDF in the Overfull image, run the preflight and publish results.
 # Written by \`overfull init --here\`. Engine: ${d.engine} (${d.engineHow}).
 # Push: PDF artifact + job summary. Pull request: also a PDF of the changes.
 # Uses the image ${LATEXMK_IMAGE} (all of TeX Live), published with Overfull v3.0.0.
-name: overfull
+name: preflight
 
 on:
   push:
@@ -488,8 +500,9 @@ jobs:
       - name: Preflight
         run: overfull check --annotations --write markdown="$GITHUB_STEP_SUMMARY" --write html=overfull-report.html
 
+      # Also after a failed check: the PDF of the changes helps to review the fix.
       - name: Diff against base branch
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && (success() || failure())
         env:
           BASE_REF: \${{ github.base_ref }}
         run: overfull diff --base "origin/$BASE_REF"
@@ -563,7 +576,7 @@ export function planAdopt(d: Detected, parts: Parts, root: string): Plan {
   }
   if (parts.ci)
     files.push({
-      path: '.github/workflows/overfull.yml',
+      path: '.github/workflows/preflight.yml',
       content: renderWorkflow(d),
       note: 'CI workflow',
     });

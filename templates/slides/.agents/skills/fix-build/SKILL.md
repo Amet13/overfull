@@ -44,15 +44,17 @@ description: Diagnose and fix LaTeX build failures and problems that reach the P
 
 ## Missing packages
 
-If a package is missing locally, build in Docker:
+If a package is missing from the local TeX installation, build in Docker (the
+one case where you pass `--engine`; the image installs packages it lacks):
 
 ```sh
 overfull build --engine docker
 ```
 
-Never install TeX packages or fonts globally, and do not switch engines except
-via the documented arXiv path (`prepare-arxiv`). If the
-package is also missing in Docker, tell the author.
+Without `overfull` on PATH, `make build` already runs in Docker. Never install
+TeX packages or fonts globally, and do not switch engines except via the
+documented arXiv path (`prepare-arxiv`). If the package is also missing in
+Docker, tell the author.
 
 ## Done
 

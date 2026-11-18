@@ -4,8 +4,8 @@
 % Build:  make build        (or: latexmk)       -> thesis.pdf
 % Check:  make check        (or: overfull check)
 %
-% The first line turns on PDF tagging and declares PDF/UA-2 (accessible PDF)
-% conformance. Keep it as the very first command of the document.
+% \DocumentMetadata turns on PDF tagging and declares PDF/UA-2 (accessible PDF)
+% conformance. Keep it before \documentclass, as the first command.
 %   lang          document language, recorded in the PDF for screen readers.
 %                 It does not choose hyphenation patterns: LaTeX hyphenates
 %                 American English by default. For another language also
@@ -22,8 +22,12 @@
   tagging     = on,
   tagging-setup = {math/setup=mathml-SE},
 }
-% 14 pt body text: article + the fontsize package (extarticle is not yet
-% compatible with tagging).
+% The class is article, so the top level is \section (one per chapter, each
+% on a new page); there is no \chapter.
+% 14 pt body text, the 1.27 cm paragraph indent (preamble/layout.tex) and the
+% uppercase headings (preamble/headings.tex) follow one regional convention,
+% common in Eastern Europe. Many universities ask for 12 pt instead: change
+% fontsize=14pt to 12pt below, and follow your university's rules.
 \documentclass[a4paper]{article}
 \usepackage[fontsize=14pt]{fontsize}
 
@@ -38,11 +42,33 @@
 
 \begin{document}
 
+% ---- Front matter: roman page numbers (i, ii, ...) ------------------------
+% The title page is page i but shows no number.
+\pagenumbering{roman}
 \thesistitlepage
 
+\input{chapters/declaration}
 \input{chapters/abstract}
+\input{chapters/acknowledgments}
+\input{chapters/ai-disclosure}
 
 \tableofcontents
+
+\clearpage
+\phantomsection
+\addcontentsline{toc}{section}{\listfigurename}
+\listoffigures
+
+\clearpage
+\phantomsection
+\addcontentsline{toc}{section}{\listtablename}
+\listoftables
+
+\input{chapters/abbreviations}
+
+% ---- Main matter: arabic page numbers from 1 --------------------------------
+\clearpage
+\pagenumbering{arabic}
 
 \input{chapters/introduction}
 \input{chapters/01-problem}
@@ -58,23 +84,12 @@
 % when a page limit is configured in overfull.yml. Keep it here.
 \label{overfull:main-end}
 
-\input{chapters/abbreviations}
-
 \clearpage
 \phantomsection
 \addcontentsline{toc}{section}{Bibliography}
 \printbibliography[title=Bibliography]
 
-\clearpage
-\phantomsection
-\addcontentsline{toc}{section}{\listfigurename}
-\listoffigures
-
-\clearpage
-\phantomsection
-\addcontentsline{toc}{section}{\listtablename}
-\listoftables
-
+% ---- Appendices: \appendixsection{Title} letters itself (Appendix A, B, ...)
 \input{chapters/appendix-code}
 
 \end{document}

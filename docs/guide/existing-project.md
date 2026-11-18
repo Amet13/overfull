@@ -44,7 +44,7 @@ also writes a two-line `.latexmkrc` that keeps your engine. Without one,
 | Flag | Adds |
 | --- | --- |
 | `--agents` | `AGENTS.md`, the pointer files `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md` and `.cursor/rules/overfull.mdc`, the skills in `.agents/skills/`, and `.claude/skills` as a link to them (a copy where links are not allowed). These are the same files the templates carry. |
-| `--ci` | `.github/workflows/overfull.yml`: builds with `latexmk` and your engine in the Overfull image, then runs the checks. |
+| `--ci` | `.github/workflows/preflight.yml`: builds with `latexmk` and your engine in the Overfull image, then runs the checks. |
 | `--make` | A `Makefile` with `build`, `watch`, `check`, `pages`, `diff` and `clean`. If you already have one it is not touched; the lines to add are printed. |
 | `--hooks` | A git pre-commit hook that runs `overfull guard --staged`, only if `.git/hooks/pre-commit` does not exist. If it does, the line to add is printed. With `--agents`, the hook settings for Claude Code and Gemini CLI are written too. See [Guard](./with-an-agent.md#guard). |
 | `--all` | All four. |

@@ -281,7 +281,9 @@ from that page and arXiv's [TeX Live page](https://info.arxiv.org/help/faq/texli
 on 2026-11-17.
 
 The paper template handles this: it builds with LuaLaTeX by default and with
-pdfLaTeX for arXiv, using `make arxiv` or `latexmk -pdf`. The `.eps` rule reads
+pdfLaTeX for arXiv with `make arxiv` (`latexmk -pdf -jobname=paper-arxiv`, so
+`paper.pdf` stays). Upload `references.bib` and let arXiv run Biber. The template
+workflow builds and checks this version on every push. The `.eps` rule reads
 the log it is given, so to check the pdfLaTeX build, point `check` at its files:
 
 ```sh

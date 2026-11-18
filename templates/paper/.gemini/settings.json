@@ -7,7 +7,7 @@
           {
             "name": "overfull-guard",
             "type": "command",
-            "command": "command -v overfull >/dev/null 2>&1 && overfull guard --hook gemini || exit 0",
+            "command": "if command -v overfull >/dev/null 2>&1; then overfull guard --hook gemini; elif [ -f overfull.yml ] && grep -qi '\\.bib'; then echo '{\"systemMessage\":\"overfull is not on PATH, so the .bib guard did not run. Add references with `make cite ARGS=...` (Docker) or install overfull.\"}'; fi",
             "timeout": 5000
           }
         ]

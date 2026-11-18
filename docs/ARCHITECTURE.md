@@ -210,7 +210,7 @@ automation only reports changes (see `MAINTAINING.md`).
 main.tex  metadata.tex  overfull.yml  references.bib
 sections/ (or chapters/)  figures/  notes/
 AGENTS.md  CLAUDE.md  GEMINI.md  .agents/skills/  .claude/skills -> ../.agents/skills
-Makefile  .github/workflows/paper.yml  .devcontainer/  LICENSE (MIT-0)
+Makefile  .github/workflows/preflight.yml  .devcontainer/  LICENSE (MIT-0)
 ```
 
 Accessible by default: `\DocumentMetadata{… tagging=on}`, LuaLaTeX, alt text on

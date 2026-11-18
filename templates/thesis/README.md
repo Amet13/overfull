@@ -2,8 +2,16 @@
 
 An accessible LaTeX thesis made from the [Overfull](https://github.com/amet13/overfull)
 thesis template: A4, 14 pt Times New Roman, 1.5 spacing, numbered centred
-headings, IEEE references. It builds a tagged **PDF/UA-2** document (headings,
-lists, tables, figures with alt text and formulas as MathML) with LuaLaTeX.
+uppercase headings, IEEE references. It builds a tagged **PDF/UA-2** document
+(headings, lists, tables, figures with alt text and formulas as MathML) with
+LuaLaTeX.
+
+The front matter (declaration of originality, abstract, acknowledgments, AI-use
+statement, contents, lists of figures and tables, abbreviations) has roman page
+numbers; the main text starts at page 1. The class is `article`, so the top
+level is `\section`, one per chapter. 14 pt, the 1.27 cm indent and uppercase
+headings are one regional convention: many universities want 12 pt (change
+`fontsize=14pt` in `main.tex`). Follow your university's rules.
 
 ## Two ways to work
 
@@ -17,9 +25,9 @@ come back to you as a question.
 required; a local TeX Live 2026 works too.
 
 **New to Docker?** Install Docker Desktop (macOS, Windows) or Docker Engine
-(Linux) and start it. The first build downloads the image, about 3 GB
-compressed and 9–10 GB on disk, so allow a few minutes. After that, builds take
-seconds.
+(Linux) and start it. The first build downloads the slim image (under
+1 GB, about 3 GB on disk), so allow a few minutes. After that, builds take
+seconds. A package the image lacks is installed on the first build that needs it.
 
 ## Commands
 
@@ -29,6 +37,9 @@ make watch    # rebuild on every save
 make check    # checks: log, PDF, references, accessibility (veraPDF)
 make pages PAGES=4-6   # render pages to PNG to look at them
 make diff     # PDF showing changes against origin/main
+make cite ARGS=10.1145/2890784   # add a verified reference
+make explain RULE=overfull-box  # what a check rule means
+make doctor   # what is installed
 make clean    # remove build files (keeps the PDF)
 make help     # all targets
 ```
@@ -51,7 +62,7 @@ not use agents, set `requireCite: false`.
 | Path | What it is |
 | ------ | ------------ |
 | `metadata.tex` | Title, author, keywords: used on the title page and in PDF metadata |
-| `main.tex` | Document structure; first line declares PDF/UA-2 and tagging |
+| `main.tex` | Document structure: front matter, chapters, bibliography, appendices; `\DocumentMetadata` at the top declares PDF/UA-2 and tagging |
 | `preamble/` | Style, split by topic (fonts, layout, headings, floats, references) |
 | `chapters/` | One file per chapter |
 | `figures/`, `figures/data/` | Images and the CSV data behind every plot |
@@ -62,9 +73,11 @@ not use agents, set `requireCite: false`.
 ## Accessibility rules
 
 - Every `\includegraphics` gets `alt={...}`; every `tikzpicture` gets `[alt={...}]`.
-- Do not load `enumitem`, `caption`, `subcaption`, `listings`, `multirow` or
-  `todonotes`: they break PDF tagging in TeX Live 2026. Use the kernel list
-  keys, `verbatim` in a `codelisting` float, and `\multicolumn` instead.
+- Do not load `enumitem`, `caption`, `subcaption`, `multirow` or `todonotes`:
+  they break PDF tagging in TeX Live 2026. Use the kernel list keys and
+  `\multicolumn` instead. `listings` is only partly supported; the template
+  sets code with `verbatim` in a `codelisting` float.
+- Appendices: `\appendixsection{Title}` numbers itself (Appendix A, B, ...).
 - Keep `\label{overfull:main-end}` after the conclusion: page limits are
   counted up to it.
 
