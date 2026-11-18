@@ -1,10 +1,14 @@
 import { getEventListeners } from 'node:events';
 import { mkdirSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { changes, watchedState } from '../src/commands/check.js';
 import { main } from '../src/main.js';
 import { memIo, tempDir } from './helpers.js';
+
+/** Waits for an output condition; only the test timeout bounds the wait. */
+const until = (ok: () => boolean) =>
+  vi.waitFor(() => expect(ok()).toBe(true), { timeout: 15000, interval: 10 });
 
 const bib = '@article{a, title={A Title Long Enough To Search}, author={Doe, J.}, year={2020}}\n';
 
@@ -42,14 +46,15 @@ describe('check --watch', () => {
     const stop = new AbortController();
     io.signal = stop.signal;
     const run = main(['check', 'refs.bib', '--offline', '--watch'], io);
-    await new Promise((r) => setTimeout(r, 150));
+    const runs = () => io.stdoutText().split('overfull ').length - 1;
+    await until(() => io.stderrText().includes('Watching') && runs() >= 1);
     const later = new Date(Date.now() + 5000);
     utimesSync(join(dir, 'refs.bib'), later, later);
-    await new Promise((r) => setTimeout(r, 200));
+    await until(() => runs() >= 2);
     stop.abort();
     const code = await run;
     expect([0, 1]).toContain(code);
-    expect(io.stdoutText().split('overfull ').length - 1).toBeGreaterThanOrEqual(2);
+    expect(runs()).toBeGreaterThanOrEqual(2);
     expect(io.stderrText()).toContain('Watching');
   });
 
@@ -85,9 +90,6 @@ describe('check --watch', () => {
     const stop = new AbortController();
     io.signal = stop.signal;
     const run = main(['check', '--checks', 'references', '--bib', 'refs.bib', '--watch'], io);
-    const until = async (ok: () => boolean) => {
-      for (let i = 0; i < 300 && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
-    };
     await until(() => io.stderrText().includes('Watching'));
     const first = io.stdoutText();
     const callsAfterFirst = calls;
@@ -138,15 +140,17 @@ describe('check --watch', () => {
     const io = memIo(dir, { OVERFULL_WATCH_INTERVAL_MS: '5' });
     const stop = new AbortController();
     io.signal = stop.signal;
+    const ticks = vi.spyOn(stop.signal, 'addEventListener');
     const run = main(['check', '--checks', 'build', '--watch'], io);
     const runs = () => io.stdoutText().split('overfull ').length - 1;
-    for (let i = 0; i < 300 && runs() < 1; i++) await new Promise((r) => setTimeout(r, 10));
-    // Many ticks pass; each removes its listener again.
-    await new Promise((r) => setTimeout(r, 100));
+    await until(() => runs() >= 1);
+    // Many ticks pass (each adds an abort listener while it sleeps); each removes it again.
+    const seen = ticks.mock.calls.length;
+    await until(() => ticks.mock.calls.length >= seen + 10);
     expect(getEventListeners(stop.signal, 'abort').length).toBeLessThanOrEqual(1);
     const later = new Date(Date.now() + 5000);
     utimesSync(join(dir, '.build', 'main.log'), later, later);
-    for (let i = 0; i < 300 && runs() < 2; i++) await new Promise((r) => setTimeout(r, 10));
+    await until(() => runs() >= 2);
     stop.abort();
     await run;
     expect(runs()).toBeGreaterThanOrEqual(2);
