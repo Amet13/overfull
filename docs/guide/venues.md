@@ -209,7 +209,10 @@ With `anonymous: true` (or the `double-blind` profile), Overfull checks:
   ACL Rolling Review, EMNLP) the check is skipped while the class is loaded in
   review mode, and its fix names the option to change when it is not;
 - an acknowledgments section, which often names people and grants
-  (`anonymity-acknowledgments`, warning);
+  (`anonymity-acknowledgments`, warning). When there is a PDF, only an
+  acknowledgments heading printed in it counts, so a section that an `\if`
+  switch leaves out in anonymous mode (as in the paper template) is not
+  reported; without a PDF the sources are searched;
 - phrases such as "our previous work" (`anonymity-self-reference`, info).
 
 - links that can identify the authors (`anonymity-link`, warning): your own

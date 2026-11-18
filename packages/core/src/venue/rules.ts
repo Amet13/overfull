@@ -65,7 +65,8 @@ export const venueRules: RuleInfo[] = [
     check: 'venue',
     severity: 'warning',
     title: 'Acknowledgments in an anonymous submission',
-    summary: 'Acknowledgments often name people, grants or institutions and break anonymity.',
+    summary:
+      'Acknowledgments often name people, grants or institutions and break anonymity. With a PDF, only an acknowledgments heading printed in it counts; without one, the sources are searched.',
     fix: 'Remove the acknowledgments until the camera-ready version.',
   },
   {

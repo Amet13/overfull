@@ -176,6 +176,69 @@ describe('anonymity', () => {
     expect(r.problems[3]?.severity).toBe('info');
   });
 
+  describe('acknowledgments with a PDF', () => {
+    const ackSrc = tex(
+      [
+        '\\ifPaperAnonymous\\else',
+        '\\section*{Acknowledgments}',
+        'We thank the funders.',
+        '\\fi',
+      ].join('\n'),
+    );
+    const withText = (...texts: string[]) => {
+      const f = facts(texts.length);
+      texts.forEach((t, i) => {
+        if (f.pages[i]) f.pages[i].text = t;
+      });
+      return f;
+    };
+    const ack = (r: ReturnType<typeof venueCheck>) =>
+      r.problems.filter((p) => p.rule === 'anonymity-acknowledgments');
+
+    it('is silent when the PDF prints no acknowledgments heading', () => {
+      const r = venueCheck(profile, {
+        facts: withText('Title\nAnonymous Authors\n1 Introduction', 'References\n[1] A. B.'),
+        texFiles: [ackSrc],
+      });
+      expect(ack(r)).toEqual([]);
+    });
+
+    it('warns when the PDF prints one, at the source line and page', () => {
+      for (const line of [
+        'Acknowledgments',
+        '7 Acknowledgements',
+        'Acknowledgments. We thank X.',
+      ]) {
+        const r = venueCheck(profile, {
+          facts: withText('1 Introduction', `Results\n${line}\nReferences`),
+          texFiles: [ackSrc],
+        });
+        expect(ack(r)).toHaveLength(1);
+        expect(ack(r)[0]?.location).toEqual({ file: 'main.tex', line: 2, page: 2 });
+      }
+    });
+
+    it('does not take body text for a heading', () => {
+      const r = venueCheck(profile, {
+        facts: withText(
+          'Acknowledgments are omitted for review.\nThe acknowledgments follow later',
+        ),
+        texFiles: [],
+      });
+      expect(ack(r)).toEqual([]);
+    });
+
+    it('reports a PDF-only heading by page', () => {
+      const r = venueCheck(profile, { facts: withText('x', 'ACKNOWLEDGMENTS') });
+      expect(ack(r)[0]?.location).toEqual({ page: 2 });
+    });
+
+    it('falls back to the sources when the PDF has no text', () => {
+      const r = venueCheck(profile, { facts: facts(2), texFiles: [ackSrc] });
+      expect(ack(r)).toHaveLength(1);
+    });
+  });
+
   it('accepts Anonymous authors and macro-only \\author', () => {
     const r = venueCheck(profile, {
       facts: facts(1, { info: { author: 'Anonymous' } }),

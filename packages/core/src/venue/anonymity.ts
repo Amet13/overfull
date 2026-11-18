@@ -50,6 +50,44 @@ function expandMacros(text: string, macros: Map<string, string>): string {
   return out;
 }
 
+const ACK_SOURCE =
+  /\\(?:section|chapter|subsection|paragraph|subsubsection)\*?\s*\{\s*Acknowledg|\\begin\{acknowledg|\\acknowledg(?:e)?ments\b/i;
+/**
+ * A PDF line that starts with an acknowledgments heading: alone on its line (optionally
+ * numbered, e.g. `7 Acknowledgments`) or run in, followed by `.` or `:` and the text.
+ */
+const ACK_HEADING =
+  /^\s*(?:(?:\d+(?:\.\d+)*|[A-Z])\.?\s+)?(?:[Aa]cknowledge?ments?|ACKNOWLEDGE?MENTS?)(?:\s*[.:]?\s*$|\s*[.:]\s+\S)/;
+
+/**
+ * `anonymity-acknowledgments`. With a PDF that has text, only an acknowledgments heading
+ * printed in the PDF counts, so a section the document leaves out in anonymous mode (an
+ * `\if` switch the sources cannot evaluate) is not reported. Without one, the sources are
+ * searched for an acknowledgments heading or environment.
+ */
+function acknowledgmentProblems(ctx: VenueContext): Problem[] {
+  const files = ctx.texFiles ?? [];
+  const sourceHits = grepTex(files, ACK_SOURCE);
+  const pages = ctx.facts?.pages ?? [];
+  const problem = (location: Problem['location']): Problem => ({
+    rule: 'anonymity-acknowledgments',
+    check: 'venue',
+    severity: 'warning',
+    message: 'Acknowledgments section in an anonymous submission',
+    ...(location ? { location } : {}),
+    fix: 'Remove or comment out acknowledgments until the camera-ready version',
+  });
+  if (pages.some((p) => p.text.trim() !== '')) {
+    const page = pages.find((p) => p.text.split('\n').some((l) => ACK_HEADING.test(l)));
+    if (!page) return [];
+    const hit = sourceHits[0];
+    return [
+      problem(hit ? { file: hit.file, line: hit.line, page: page.number } : { page: page.number }),
+    ];
+  }
+  return sourceHits.map((hit) => problem({ file: hit.file, line: hit.line }));
+}
+
 /** Option names given to a package or class, without `=false` ones. */
 function optionNames(optional: string | undefined): string[] {
   if (!optional) return [];
@@ -168,18 +206,7 @@ export function anonymityProblems(ctx: VenueContext, profile?: VenueProfile): Pr
       fix: authorFix(profile, cls),
     });
   }
-  const ack =
-    /\\(?:section|chapter|subsection|paragraph|subsubsection)\*?\s*\{\s*Acknowledg|\\begin\{acknowledg|\\acknowledg(?:e)?ments\b/i;
-  for (const hit of grepTex(files, ack)) {
-    problems.push({
-      rule: 'anonymity-acknowledgments',
-      check: 'venue',
-      severity: 'warning',
-      message: 'Acknowledgments section in an anonymous submission',
-      location: { file: hit.file, line: hit.line },
-      fix: 'Remove or comment out acknowledgments until the camera-ready version',
-    });
-  }
+  problems.push(...acknowledgmentProblems(ctx));
   const self =
     /\b(?:our|my)\s+(?:previous|prior|earlier|own|recent)\s+(?:work|paper|papers|study|studies|publication|results?)\b/gi;
   for (const hit of grepTex(files, self)) {
