@@ -52,7 +52,7 @@
  * file but runs after the edit and cannot block it.
  */
 
-import { readFileSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readFileSync } from 'node:fs';
 import { dirname, extname, isAbsolute, resolve } from 'node:path';
 import { findConfigFile } from '../config.js';
 import { onlyRemovesEntries } from './entries.js';
@@ -309,15 +309,21 @@ export interface HookFs {
 
 export const nodeHookFs: HookFs = {
   read(path) {
-    let size: number;
+    // One open file: its size and its text come from the same file, even if the
+    // path is replaced in between.
+    let fd: number;
     try {
-      size = statSync(path).size;
+      fd = openSync(path, 'r');
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
       throw err;
     }
-    if (size > MAX_BIB_BYTES) throw new Error('too large');
-    return readFileSync(path, 'utf8');
+    try {
+      if (fstatSync(fd).size > MAX_BIB_BYTES) throw new Error('too large');
+      return readFileSync(fd, 'utf8');
+    } finally {
+      closeSync(fd);
+    }
   },
   inProject: (dir) => findConfigFile(dir) !== undefined,
 };
