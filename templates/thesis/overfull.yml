@@ -17,6 +17,9 @@ venue:
   # Page limit for the main matter (up to \label{overfull:main-end}).
   # pageLimit: { max: 80, endLabel: overfull:main-end }
   anonymous: false
+  # AI-use statement (chapters/ai-disclosure.tex): reported while missing or a
+  # placeholder. Set to required if your university asks for one, off if not.
+  disclosure: recommended
 build:
   engine: auto             # local latexmk if installed, otherwise Docker
   image: ghcr.io/amet13/overfull:3-slim  # the image CI builds with; :3 is all of TeX Live

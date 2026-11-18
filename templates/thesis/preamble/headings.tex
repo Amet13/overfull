@@ -26,8 +26,11 @@
 % Every top-level section starts on a new page.
 \AddToHook{cmd/section/before}{\clearpage}
 
+% The UPPERCASE, centred look is one regional convention: to drop it, remove
+% \centering and \addfontfeatures{Letters=Uppercase} from \section.
+
 % Unnumbered section that still appears in the table of contents and in
-% the PDF bookmarks: Introduction, Conclusion, Abbreviations, Appendix ...
+% the PDF bookmarks: Introduction, Conclusion, Abbreviations ...
 \NewDocumentCommand\unnumberedsection{m}{%
   \clearpage
   \phantomsection % link target for the TOC entry and bookmark
@@ -44,3 +47,15 @@
 \renewcommand{\cftsecpagefont}{\normalfont}
 \renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
 \setcounter{tocdepth}{2}
+
+% Appendix: \appendixsection{Title} gives "Appendix A. Title", then B, C ...
+% (unnumbered heading, listed in the table of contents). A \label after it
+% refers to the letter: \cref{app:code} gives "Appendix A".
+\newcounter{thesisappendix}
+\renewcommand\thethesisappendix{\Alph{thesisappendix}}
+\NewDocumentCommand\appendixsection{m}{%
+  \refstepcounter{thesisappendix}%
+  \edef\thesisappendixheading{%
+    \noexpand\unnumberedsection{\appendixname\space\thethesisappendix. \unexpanded{#1}}}%
+  \thesisappendixheading
+}
