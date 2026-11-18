@@ -1,7 +1,8 @@
 # latexmk configuration: LuaLaTeX + biber, output paper.pdf.
 # Run `latexmk` (build once) or `latexmk -pvc` (rebuild on every save).
-# For arXiv, build with pdfLaTeX instead: `latexmk -pdf` (arXiv does not
-# run LuaLaTeX or biber, so upload the generated paper.bbl as well).
+# For arXiv, build with pdfLaTeX under another job name, so paper.pdf stays:
+# `make arxiv` (= `latexmk -pdf -jobname=paper-arxiv`). arXiv does not offer
+# LuaLaTeX; it runs biber itself on the uploaded .bib (see README.md).
 @default_files = ('main.tex');
 $pdf_mode = 4;            # 4 = lualatex
 $postscript_mode = 0;

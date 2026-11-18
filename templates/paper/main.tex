@@ -1,9 +1,12 @@
 % Research paper template — Overfull (https://github.com/amet13/overfull)
 %
-% Builds with LuaLaTeX (default: `latexmk`) and with pdfLaTeX
-% (`latexmk -pdf`, needed for arXiv, which does not run LuaLaTeX).
+% Builds with LuaLaTeX (default: `make build` or `latexmk`) and with pdfLaTeX
+% for arXiv, which does not offer LuaLaTeX (`make arxiv`, which runs
+% `latexmk -pdf -jobname=paper-arxiv` and leaves paper.pdf alone).
 %
-% \DocumentMetadata turns on PDF tagging and declares PDF/UA-2 conformance:
+% \DocumentMetadata turns on PDF tagging and declares PDF/UA-2 conformance.
+% It must come before \documentclass; the \ifdefined test below only picks
+% the math setting for the engine, and is the one thing allowed before it.
 %   lang         document language
 %   pdfstandard  ua-2 = PDF/UA-2 (accessible PDF), checked by veraPDF
 %   pdfversion   PDF/UA-2 requires PDF 2.0
@@ -27,10 +30,19 @@
 \input{preamble}
 
 \title{\PaperTitle}
-\author{\PaperAuthors\\[2pt]
-  \small\PaperAffiliations\\
-  \small\texttt{\PaperEmail}}
-\date{} % no date on submissions
+% Anonymous mode and camera-ready: switches in metadata.tex.
+\ifPaperAnonymous
+  \author{Anonymous Author(s)}
+\else
+  \author{\PaperAuthors\\[2pt]
+    \small\PaperAffiliations\\
+    \small\texttt{\PaperEmail}}
+\fi
+\ifPaperCameraReady
+  \date{\PaperVenueNote}
+\else
+  \date{} % no date on submissions
+\fi
 % \maketitle tags the title as "Title" (PDF 2.0); keep using it rather than
 % hand-made title blocks.
 
@@ -54,6 +66,8 @@
 % counted up to this label; references and appendices usually do not count.
 \label{overfull:main-end}
 
+\input{sections/limitations}
+\input{sections/acknowledgments}
 \input{sections/ai-disclosure}
 
 \printbibliography

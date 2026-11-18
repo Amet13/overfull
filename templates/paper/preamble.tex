@@ -65,15 +65,40 @@
 
 % ---- Links, cross-references, bibliography --------------------------------
 \usepackage{hyperref}
+% Camera-ready ignores anonymous mode; anonymous mode hides the PDF author.
+\ifPaperCameraReady\PaperAnonymousfalse\fi
+\ifPaperAnonymous
+  \newcommand\PaperPDFAuthor{Anonymous}
+\else
+  \newcommand\PaperPDFAuthor{\PaperAuthors}
+\fi
 \hypersetup{
   colorlinks=true, linkcolor=blue!50!black, citecolor=blue!50!black,
   urlcolor=blue!50!black,
   pdftitle={\PaperTitle},
-  pdfauthor={\PaperAuthors},
+  pdfauthor={\PaperPDFAuthor},
   pdfkeywords={\PaperKeywords},
   pdfdisplaydoctitle=true,
 }
 \usepackage[capitalize,noabbrev]{cleveref}
+
+% ---- Theorems and algorithms ----------------------------------------------
+% amsthm environments are tagged by the LaTeX tagging code. Define them after
+% cleveref, so \cref names them ("Proposition 1").
+\usepackage{amsthm}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+% Pseudocode: algorithmicx (algpseudocode) in an algorithm float. Use [tbp],
+% not [H]. The float has no rules, caption on top (plaintop): the default
+% "ruled" lines are not marked as artifacts under pdfLaTeX (TeX Live 2026),
+% which veraPDF reports as PDF/UA rule 8.2.2 in the arXiv build.
+\usepackage{algorithm}
+\floatstyle{plaintop}
+\restylefloat{algorithm}
+\usepackage{algpseudocode}
 
 % Citation style: numeric-comp gives [1,2]; for author-year use
 %   style=authoryear, and \textcite / \parencite in the text.

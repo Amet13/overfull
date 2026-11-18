@@ -9,6 +9,33 @@ We minimize the regularized empirical risk
 where $\ell$ is the cross-entropy loss and $\lambda \ge 0$ controls regularization.
 Parameters are updated with Adam~\cite{kingma2014adam} at learning rate $\eta = \num{3e-4}$.
 
+For a convex loss the objective has a single minimizer.
+State results as theorems only when you prove them; this one is an example.
+
+\begin{proposition}\label{prop:unique}
+  If $\ell$ is convex in $\theta$ and $\lambda > 0$, then \cref{eq:objective} has at most one minimizer.
+\end{proposition}
+
+\begin{proof}
+  The regularizer $\lambda \lVert \theta \rVert_2^2$ is strictly convex for $\lambda > 0$, and a convex function plus a strictly convex one is strictly convex.
+  A strictly convex function has at most one minimizer.
+\end{proof}
+
+\Cref{alg:training} lists the training loop.
+
+\begin{algorithm}[tbp]
+  \caption{Training loop (example).}\label{alg:training}
+  \begin{algorithmic}[1]
+    \Require training set $\mathcal{D}$, learning rate $\eta$, epochs $E$
+    \For{$e = 1, \dots, E$}
+      \For{each mini-batch $B \subset \mathcal{D}$}
+        \State $\theta \gets \textsc{AdamStep}(\theta, \nabla_\theta L_B(\theta), \eta)$
+      \EndFor
+    \EndFor
+    \State \Return $\theta$
+  \end{algorithmic}
+\end{algorithm}
+
 \Cref{fig:overview} sketches the pipeline.
 
 \begin{figure}[htbp]
