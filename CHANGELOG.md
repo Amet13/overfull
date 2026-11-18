@@ -27,6 +27,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   in review mode (NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, AISTATS, ACL/ARR, EMNLP, acmart).
 - Corpus cases for no-line-to-end, hyperref-error, command-already-defined,
   unknown-package-option, bibliography-stale, float-too-large and font-feature-missing.
+- Paper template: `\PaperAnonymoustrue` in `metadata.tex` hides authors, affiliations, e-mail, the PDF author and the acknowledgments for double-blind review; `\PaperCameraReadytrue` for the final version; Limitations and Acknowledgments sections; theorem, proof and algorithm examples that pass veraPDF.
+- Thesis template: front matter with roman page numbers (declaration of originality, acknowledgments, AI-use statement, contents, lists of figures and tables), and `\appendixsection{Title}`, which letters itself.
+- Slides template: references (biblatex, `make cite`) and the basic accessibility rules (title, language, alt text) as warnings.
+- Templates: `make cite ARGS=...`, `make explain RULE=...`, `make doctor` and `make check ARGS=...`, so an agent with only Docker can follow the loop; a `.pre-commit-config.yaml` with the `overfull guard --staged` hook.
+- `start-paper` skill: the venue ids and how to move to a venue's style kit (official class unchanged, paper size, and building without tagging for IEEEtran and llncs).
+- A root `AGENTS.md` for agents working on this repository.
 
 ### Changed
 
@@ -50,6 +56,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   says arXiv compiles with pdfLaTeX or XeLaTeX.
 - Reports: every format lists problems in one order, and Markdown renders `code` in
   messages like HTML (only matched backtick pairs).
+- Guard hook: removing whole `.bib` entries is allowed (adding or changing one is still blocked), and the hook does nothing outside a project with `overfull.yml`. Without `overfull` on `PATH`, the hook and the git pre-commit hook say that they could not check.
+- Templates use `ghcr.io/amet13/overfull:3-slim` (the image their CI uses) in `overfull.yml`, the Makefile and the Dev Container; `make build` runs `overfull build`.
+- Template workflow renamed to `.github/workflows/preflight.yml` (also what `init --here --ci` writes): the preflight runs before the arXiv build, the arXiv build is checked with `--profile arxiv`, and the PR diff also runs after a failed check.
+- arXiv guidance in the templates and skills: arXiv runs Biber itself on the uploaded `.bib` (TeX Live 2025, no TeX Live 2026 yet); ship a `.bbl` only when `arxiv-bbl-version` accepts it; `make arxiv` keeps `paper.pdf`.
+- Agent instructions: `--engine docker` only for a missing package, `\DocumentMetadata` before `\documentclass`, the PDF standard stays, and the Beamer exception is written down.
 
 ### Fixed
 
@@ -92,6 +103,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   "overfull boxs" is "overfull boxes".
 - Log: an error raised inside a TeX Live package while it loads points at the project file
   that loaded it, not at the package's line.
+- Templates' `.gitignore` ignored PDF figures (`*.pdf`); it now ignores only PDFs in the project folder, and `notes/reviews.md`.
+- `sync-templates` deletes the template copies of files removed from `shared/agents/`.
 
 ### Security
 

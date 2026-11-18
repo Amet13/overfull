@@ -25,8 +25,8 @@ whether your class supports tagging.
 
 The checks read logs from LuaLaTeX, pdfLaTeX and XeLaTeX. The templates use
 LuaLaTeX because LaTeX's tagging support works best with it. The paper template
-also builds with pdfLaTeX (`make arxiv` or `latexmk -pdf`), because arXiv does
-not support LuaLaTeX. See [Venues](./venues.md#arxiv).
+also builds with pdfLaTeX (`make arxiv`, which writes `paper-arxiv.pdf`),
+because arXiv does not support LuaLaTeX. See [Venues](./venues.md#arxiv).
 
 ## A real reference is reported as not found. What now?
 

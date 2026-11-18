@@ -24,7 +24,8 @@ agent tools for those facts and a clear definition of done.
 | `.claude/settings.json`, `.gemini/settings.json` | The [guard](#guard) hook for Claude Code and Gemini CLI. |
 | `overfull.yml` | Project facts: main file, bibliography, profile, venue rules. |
 
-The skills cover starting a paper (`start-paper`), adding citations
+The skills cover starting a paper and moving to a venue's style kit
+(`start-paper`), adding citations
 (`add-citation`), fixing the build (`fix-build`), adding figures (`add-figure`),
 accessibility (`make-accessible`), page limits (`fit-page-limit`), arXiv
 (`prepare-arxiv`), AI disclosure (`write-disclosure`), preparing a PR
@@ -32,8 +33,12 @@ accessibility (`make-accessible`), page limits (`fit-page-limit`), arXiv
 
 ## Setting up each agent
 
-All of them need the `overfull` command: from the release download, the Docker
-image, or inside the Dev Container (see [Install](./install.md)). Building also needs Docker or a local TeX Live.
+All of them work best with the `overfull` command on `PATH`: from the release
+download, or inside the Dev Container (see [Install](./install.md)). Building
+also needs Docker or a local TeX Live. With Docker only, `AGENTS.md` tells the
+agent to use the Makefile instead (`make build`, `make check ARGS=--json`,
+`make cite ARGS=...`, `make explain RULE=...`, `make doctor`), which runs the
+same commands in the image; the guard hook then only shows a notice.
 
 **Claude Code** reads `CLAUDE.md`, which imports `AGENTS.md`, and loads skills
 from `.claude/skills/`. Start it in the project folder with `claude`.
