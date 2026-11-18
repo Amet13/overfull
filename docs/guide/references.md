@@ -20,9 +20,10 @@ neither exists, every entry is checked):
    (`10.1007/978-3-030-58452-8\_13`) are read as the plain DOI. When doi.org
    cannot be reached, OpenAlex is asked for the record of that one DOI.
 2. Else, if it has an arXiv id (`eprint` with `archivePrefix = {arXiv}`, or an
-   arXiv URL), query the arXiv API. When arXiv cannot be reached (or may not be
-   asked, as in the browser check), OpenAlex is asked for arXiv's DOI of the paper
-   (`10.48550/arXiv.<id>`).
+   arXiv URL), query the arXiv API. When arXiv may not be asked (the browser
+   check), arXiv's DOI of the paper (`10.48550/arXiv.<id>`) is resolved through
+   doi.org, which passes it to DataCite. When that or arXiv cannot answer,
+   OpenAlex is asked for the same DOI.
 3. Else, if it names an ACL Anthology id or URL (`2020.acl-main.1`,
    `aclanthology.org/P19-1001`), fetch the record from the ACL Anthology; if it
    has a PubMed or PubMed Central id (`pmid`, `pmcid`, or a PubMed URL), fetch it
@@ -117,7 +118,7 @@ that accept requests from web pages:
 
 | Service | Host | What it receives |
 | --- | --- | --- |
-| doi.org | `doi.org` | The DOI (passed on to its registration agency, as above). |
+| doi.org | `doi.org` | The DOI, or arXiv's DOI of a preprint. doi.org passes it on to the registration agency: CrossRef, or DataCite at `data.crosscite.org`. |
 | CrossRef | `api.crossref.org` | Title, first author's surname and year. |
 | OpenAlex | `api.openalex.org` | Title; a DOI or arXiv's DOI of a preprint. |
 
