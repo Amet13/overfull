@@ -1,16 +1,16 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
-const coreSrc = (file: string) =>
-  fileURLToPath(new URL(`packages/core/src/${file}`, import.meta.url));
+const src = (file: string) => fileURLToPath(new URL(file, import.meta.url));
 
 export default defineConfig({
-  // Tests import @overfull/core from its sources, so `pnpm test` never runs stale built code
-  // after a core edit. The more specific `/text` entry must come first.
+  // Tests import @overfull/core (and the Action imports overfull) from the sources, as the
+  // Action bundle does, so `pnpm test` never runs stale built code. `/text` must come first.
   resolve: {
     alias: [
-      { find: /^@overfull\/core\/text$/, replacement: coreSrc('report/shared.ts') },
-      { find: /^@overfull\/core$/, replacement: coreSrc('index.ts') },
+      { find: /^@overfull\/core\/text$/, replacement: src('packages/core/src/report/shared.ts') },
+      { find: /^@overfull\/core$/, replacement: src('packages/core/src/index.ts') },
+      { find: /^overfull$/, replacement: src('packages/cli/src/index.ts') },
     ],
   },
   test: {
@@ -27,8 +27,14 @@ export default defineConfig({
     // drops below these floors, set a little under the measured numbers.
     coverage: {
       provider: 'v8',
-      include: ['packages/*/src/**/*.ts'],
-      exclude: ['packages/*/src/**/*.generated.ts', 'packages/cli/src/bin.ts'],
+      include: ['packages/*/src/**/*.ts', 'action/src/**/*.ts'],
+      // Entry points that only call into tested code: bin.ts runs main(), the Action's
+      // index.ts runs run() from action/src/main.ts.
+      exclude: [
+        'packages/*/src/**/*.generated.ts',
+        'packages/cli/src/bin.ts',
+        'action/src/index.ts',
+      ],
       reporter: ['text-summary'],
       thresholds: { lines: 90, branches: 76, functions: 88, statements: 88 },
     },

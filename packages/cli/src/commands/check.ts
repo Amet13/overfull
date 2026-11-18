@@ -1,18 +1,11 @@
 import { type Dirent, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  formatHtml,
-  formatHuman,
-  formatJson,
-  formatMarkdown,
-  formatSarif,
-  githubAnnotations,
-  type RefResult,
-} from '@overfull/core';
+import { formatHuman, type RefResult } from '@overfull/core';
 import { list, type Parsed, parse, str } from '../args.js';
-import { exitCodeFor, runCheck, sarifFallbackFile } from '../check.js';
+import { exitCodeFor, runCheck } from '../check.js';
 import { loadConfig, locateProject, parseChecks } from '../config.js';
 import { type Io, noteProject, progressLine, UsageError, useColor } from '../io.js';
+import { REPORT_FORMATS, type ReportFormat, renderReport } from '../report.js';
 import { isCI, type ReportTarget, reportTarget, writeReport } from '../safety.js';
 
 const checkHelp = `Usage: overfull check [file...] [options]
@@ -126,9 +119,6 @@ function classifyFiles(
   return out;
 }
 
-const WRITE_FORMATS = ['json', 'markdown', 'annotations', 'sarif', 'html'] as const;
-type WriteFormat = (typeof WRITE_FORMATS)[number];
-
 /**
  * `--write format=file` (repeatable): the extra report files one run writes. A
  * file inside the project must not be, or go through, a symlink (`reportTarget`).
@@ -137,15 +127,15 @@ function writeTargets(
   value: unknown,
   cwd: string,
   rebase: (p: string) => string = (p) => p,
-): { format: WriteFormat; target: ReportTarget }[] {
+): { format: ReportFormat; target: ReportTarget }[] {
   const items = Array.isArray(value) ? value : [];
   return items.map((item) => {
     const at = item.indexOf('=');
-    const format = item.slice(0, at) as WriteFormat;
+    const format = item.slice(0, at) as ReportFormat;
     const file = item.slice(at + 1);
-    if (at < 1 || !file || !WRITE_FORMATS.includes(format)) {
+    if (at < 1 || !file || !REPORT_FORMATS.includes(format)) {
       throw new UsageError(
-        `--write takes format=file with format one of ${WRITE_FORMATS.join(', ')}; got "${item}"`,
+        `--write takes format=file with format one of ${REPORT_FORMATS.join(', ')}; got "${item}"`,
       );
     }
     return { format, target: reportTarget(cwd, rebase(file), '--write file') };
@@ -191,7 +181,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
   if (!['error', 'warning', 'never'].includes(failOn)) {
     throw new UsageError(`--fail-on must be error, warning or never, got "${failOn}"`);
   }
-  const formats = ['json', 'markdown', 'annotations', 'sarif', 'html'].filter((f) => values[f]);
+  const formats = REPORT_FORMATS.filter((f) => values[f]);
   if (formats.length > 1)
     throw new UsageError(
       `Choose one output format, not ${formats.map((f) => `--${f}`).join(' and ')}`,
@@ -247,19 +237,16 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
         `No overfull.yml: assuming main ${a.main}${a.mainSource === 'detected' ? ' (the only document here)' : ''}, profile ${a.profile}. Run \`overfull init --here\` to save these settings.\n`,
       );
     }
-    const render = (format: WriteFormat): string => {
-      if (format === 'json') return formatJson(report);
-      if (format === 'markdown') return formatMarkdown(report);
-      if (format === 'html') return formatHtml(report);
-      if (format === 'sarif') {
-        const fallbackFile = sarifFallbackFile(cwd, io.env, str(values.config), files.main);
-        return formatSarif(report, fallbackFile ? { fallbackFile } : {});
-      }
-      const lines = githubAnnotations(report);
-      return lines.length ? `${lines.join('\n')}\n` : '';
-    };
+    const configPath = str(values.config);
+    const render = (format: ReportFormat): string =>
+      renderReport(report, format, {
+        cwd,
+        env: io.env,
+        ...(configPath ? { configPath } : {}),
+        ...(files.main ? { main: files.main } : {}),
+      });
     for (const w of writes) writeReport(w.target, render(w.format));
-    const stdoutFormat = formats[0] as WriteFormat | undefined;
+    const stdoutFormat = formats[0];
     if (stdoutFormat) io.stdout(render(stdoutFormat));
     else io.stdout(formatHuman(report, { color: useColor(io), verbose: values.verbose === true }));
     return exitCodeFor(report, failOn as 'error' | 'warning' | 'never');
