@@ -7754,6 +7754,15 @@ function mergeDuplicateFindings(checks) {
   }
   return checks;
 }
+function mergeOutput(output, pdfProblems) {
+  const has = (re) => output.problems.some((p) => re.test(p.rule));
+  const extra = pdfProblems.filter(
+    (p) => p.rule === "pdf-unresolved-reference" ? !has(/undefined-reference|reference-undefined/) : !has(/undefined-citation|citation-undefined/)
+  );
+  if (extra.length === 0) return output;
+  const problems = [...output.problems, ...extra];
+  return { ...output, status: statusOf(problems), problems, summary: outputSummary(problems) };
+}
 var init_dedupe = __esm({
   "../packages/core/src/report/dedupe.ts"() {
     "use strict";
@@ -119348,15 +119357,6 @@ function missingReason(inp, path) {
 function missingPdfReason(inp) {
   if (inp.factsError) return `Could not read ${inp.pdfPath}: ${inp.factsError}`;
   return missingReason(inp, inp.pdfPath);
-}
-function mergeOutput(output, pdfProblems) {
-  const has = (re) => output.problems.some((p) => re.test(p.rule));
-  const extra = pdfProblems.filter(
-    (p) => p.rule === "pdf-unresolved-reference" ? !has(/undefined-reference|reference-undefined/) : !has(/undefined-citation|citation-undefined/)
-  );
-  if (extra.length === 0) return output;
-  const problems = [...output.problems, ...extra];
-  return { ...output, status: statusOf(problems), problems, summary: outputSummary(problems) };
 }
 function bibliographyAttribution(config, bib = config.bib, texFiles) {
   const root = config.root;

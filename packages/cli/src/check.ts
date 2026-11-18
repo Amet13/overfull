@@ -12,8 +12,8 @@ import {
   citedKeys,
   citesAll,
   mergeDuplicateFindings,
+  mergeOutput,
   missingKeys,
-  outputSummary,
   type PdfFacts,
   type Problem,
   parseBibWithIssues,
@@ -235,19 +235,8 @@ function missingPdfReason(inp: Inputs): string {
   return missingReason(inp, inp.pdfPath);
 }
 
-/** Drops PDF "??"/"[?]" findings the log already explains, to avoid double counting. */
-export function mergeOutput(output: CheckResult, pdfProblems: Problem[]): CheckResult {
-  const has = (re: RegExp) => output.problems.some((p) => re.test(p.rule));
-  const extra = pdfProblems.filter((p) =>
-    p.rule === 'pdf-unresolved-reference'
-      ? !has(/undefined-reference|reference-undefined/)
-      : !has(/undefined-citation|citation-undefined/),
-  );
-  if (extra.length === 0) return output;
-  const problems = [...output.problems, ...extra];
-  // The log's summary ("No problems found…") no longer describes the merged list.
-  return { ...output, status: statusOf(problems), problems, summary: outputSummary(problems) };
-}
+/** Shared with the browser check, which runs in core only. */
+export { mergeOutput };
 
 /**
  * Points errors from typeset bibliography entries at the .bib entry (see core's
