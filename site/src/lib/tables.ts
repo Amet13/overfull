@@ -22,6 +22,18 @@ const decode = (s: string) =>
 const attr = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+/** The text of an HTML fragment: everything from a `<` to the next `>` is dropped. */
+function withoutTags(html: string): string {
+  let out = '';
+  let inTag = false;
+  for (const ch of html) {
+    if (ch === '<') inTag = true;
+    else if (ch === '>' && inTag) inTag = false;
+    else if (!inTag) out += ch;
+  }
+  return out;
+}
+
 export function wrapTables(html: string): string {
   const seen = new Map<string, number>();
   let heading = '';
@@ -31,7 +43,7 @@ export function wrapTables(html: string): string {
       if (tag) {
         // Plain text for a label: tags out, entities decoded, and no angle brackets
         // left at all (a label never needs them; attr() escapes the rest anyway).
-        heading = decode((inner ?? '').replace(/<[^>]*>/g, ''))
+        heading = decode(withoutTags(inner ?? ''))
           .replace(/[<>]/g, '')
           .replace(/\s+/g, ' ')
           .trim();
