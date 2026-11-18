@@ -137,12 +137,14 @@ describe.skipIf(process.platform === 'win32')('automerge.sh', () => {
     );
   });
 
-  it("reads image.yml's own path filters: each one starts image", () => {
-    const paths: string[] = parse(readFileSync(imageYml, 'utf8')).on.push.paths;
-    expect(paths.length).toBeGreaterThan(5);
-    for (const p of paths) {
-      const file = p.replace('**', 'sub/dir/file.txt');
-      expect(started(automerge({ files: [file] }).calls), p).toContain('image.yml');
-    }
+  // One case per path filter of image.yml (each runs the script once; on macOS a run
+  // takes about 2 s, so all of them in one test would not fit its time limit).
+  const imagePaths: string[] = parse(readFileSync(imageYml, 'utf8')).on.push.paths;
+  it('image.yml has path filters to test', () => {
+    expect(imagePaths.length).toBeGreaterThan(5);
+  });
+  it.each(imagePaths)("image.yml's path filter %s starts image", (p) => {
+    const file = p.replace('**', 'sub/dir/file.txt');
+    expect(started(automerge({ files: [file] }).calls), p).toContain('image.yml');
   });
 });
