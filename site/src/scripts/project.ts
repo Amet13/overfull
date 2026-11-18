@@ -82,3 +82,21 @@ export function selectForMain(files: ProjectFile[], main: string | undefined): P
   }
   return out;
 }
+
+/** The project's settings file, as `overfull check` reads it (at the project root). */
+export const CONFIG_FILE = 'overfull.yml';
+
+/**
+ * The profile name from overfull.yml (`profile: neurips-2026`), without a YAML
+ * library: a top-level `profile:` line with a plain or quoted name. Undefined
+ * when there is none, or when `profile:` is a mapping (inline overrides).
+ */
+export function profileFromConfig(text: string): string | undefined {
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^profile:[ \t]*(?:"([^"\n]*)"|'([^'\n]*)'|([^\s#'"][^#]*?))?[ \t]*(?:#.*)?$/.exec(
+      line,
+    );
+    if (m) return (m[1] ?? m[2] ?? m[3])?.trim() || undefined;
+  }
+  return undefined;
+}

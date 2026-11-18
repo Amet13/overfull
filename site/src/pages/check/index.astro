@@ -1,4 +1,5 @@
 ---
+import { builtinProfiles, venueProfileData } from '@overfull/core';
 import Base from '../../layouts/Base.astro';
 import { url } from '../../lib/paths';
 import { readText } from '../../lib/repo';
@@ -30,17 +31,23 @@ const samples = [
     ],
   },
 ].filter((s) => s.files.every((f) => f.text));
+// The same profiles `overfull check --profile` takes: the built-in ones, then the venues.
+const general = Object.values(builtinProfiles).map((p) => ({ id: p.id, name: p.name }));
+const venues = Object.entries(venueProfileData)
+  .map(([id, v]) => ({ id, name: v.name }))
+  .sort((a, b) => a.name.localeCompare(b.name));
 ---
-<Base title="Check a LaTeX project, log, .bib or PDF in your browser" description="Drop a project .zip or folder, or a LaTeX build log, bibliography or PDF, and get a plain-language report: TeX errors, undefined references, unverifiable citations, PDF accessibility. Files never leave your computer." section="check">
+<Base title="Check a LaTeX project, log, .bib or PDF in your browser" description="Check a LaTeX project in your browser, nothing uploaded: drop a .zip, log, .bib or PDF for TeX errors, unverified citations, accessibility and venue rules." section="check">
   <div class="check-page">
     <p class="runhead"><span>Browser check</span></p>
     <div class="galley">
       <aside class="marginal">
-        <p><span class="mark">Privacy.</span> Files are read by this page and never uploaded. With “Verify references online”, each reference’s DOI or title goes to CrossRef, OpenAlex and doi.org, and nothing else.</p>
-        <p>The browser cannot ask arXiv or DBLP, or run veraPDF: <code>overfull check</code> does all three.</p>
+        <p><span class="mark">Privacy.</span> Files are read by this page and never uploaded. With “Verify references online”, your browser sends each reference’s DOI to doi.org, which passes it to the DOI’s registrar (CrossRef, or DataCite at data.crosscite.org); its title, first author’s surname and year to CrossRef; and a DOI or title the others could not settle to OpenAlex. Nothing else is sent.</p>
+        <p>Only <code>overfull check</code> builds the document, runs veraPDF, and asks arXiv and DBLP, which do not answer web pages.</p>
       </aside>
       <h1>Check your files</h1>
-      <p class="lede">Drop a project <code>.zip</code> or folder (from Overleaf: the source download), a build log, a <code>.bib</code> or a PDF. The same checks as <code>overfull check</code>, run on this page.</p>
+      <p class="lede">Drop a project <code>.zip</code> or folder, a build log, a <code>.bib</code> or a PDF. Most of the checks of <code>overfull check</code>, run on this page.</p>
+      <p class="overleaf"><strong>From Overleaf:</strong> the source zip (Menu, Download, Source) has no build log or PDF. Drop it together with the PDF and the log from “Logs and output files” (the log is under “Other logs and files”), so the build, output and accessibility checks can run.</p>
     </div>
 
     <div class="bench">
@@ -84,18 +91,20 @@ const samples = [
           <legend>Options</legend>
           <label class="opt">
             <input type="checkbox" id="online" checked />
-            <span>Verify references online <span class="opt-note">CrossRef, OpenAlex and doi.org, asked from your browser.</span></span>
+            <span>Verify references online <span class="opt-note">doi.org, CrossRef, DataCite and OpenAlex, asked from your browser.</span></span>
           </label>
           <label class="opt-select" for="profile">
             <span>Venue profile</span>
-            <select id="profile" class="field">
-              <option value="generic">Generic</option>
-              <option value="thesis">Thesis</option>
-              <option value="paper">Paper</option>
-              <option value="arxiv">arXiv</option>
-              <option value="double-blind">Double-blind review</option>
+            <select id="profile" class="field" aria-describedby="profile-note">
+              <optgroup label="General">
+                {general.map((p) => <option value={p.id}>{p.name}</option>)}
+              </optgroup>
+              <optgroup label="Venues">
+                {venues.map((v) => <option value={v.id}>{v.name}</option>)}
+              </optgroup>
             </select>
           </label>
+          <p class="opt-note profile-note" id="profile-note" hidden>Profile from overfull.yml.</p>
         </fieldset>
 
         <div class="run-row">
@@ -105,7 +114,7 @@ const samples = [
       </form>
 
       <section class="result" aria-labelledby="result-title">
-        <h2 id="result-title" class="sr-only">Result</h2>
+        <h2 id="result-title" class="result-title" tabindex="-1">Report</h2>
         <p id="progress" class="progress" role="status" aria-live="polite" aria-atomic="true">Add files or pick a sample to see a report.</p>
         <div class="progress-bar" id="progress-bar" hidden><span></span></div>
         <div class="result-tools" id="result-tools" hidden>
@@ -323,6 +332,25 @@ const samples = [
     gap: 0.25rem;
     margin-top: 0.75rem;
     font-size: var(--s-1);
+  }
+  .profile-note {
+    margin: 0.3rem 0 0;
+  }
+  .overleaf {
+    font-size: var(--s-1);
+    color: var(--ink-2);
+    max-width: var(--measure);
+  }
+  .result-title {
+    font-size: var(--s-1);
+    font-weight: 400;
+    font-variant-caps: all-small-caps;
+    letter-spacing: 0.09em;
+    color: var(--ink-3);
+    border-bottom: 1px solid var(--hair);
+    padding-bottom: 0.3rem;
+    margin-bottom: 0.75rem;
+    scroll-margin-top: 1rem;
   }
   .run-row {
     display: flex;
