@@ -11,7 +11,7 @@ them run the same checks.
 | You have | Use |
 | --- | --- |
 | Docker only | The Docker image and the template Makefile |
-| No Docker, no Node | The [one-line installer](#one-line-install) or the single-file download from GitHub Releases; builds then need a local TeX Live |
+| No Docker, no Node | The [one-line installer](#one-line-install), [Homebrew, Scoop or Nix](#homebrew-scoop-and-nix), or the single-file download from GitHub Releases; builds then need a local TeX Live |
 | Git, Node.js 22+, pnpm and Docker | [From source](#from-source), to work on Overfull itself |
 | VS Code + Docker | The Dev Container |
 | Overleaf | Git sync to a local or GitHub copy |
@@ -110,6 +110,36 @@ Since 3.1.1 every release also has a gzip copy (`overfull-linux-x64.gz` and so o
 about 50 MB, also listed in `SHA256SUMS`); the installers download that one and
 check both the compressed file and the unpacked executable. By hand:
 `gzip -d overfull-linux-x64.gz`.
+
+## Homebrew, Scoop and Nix
+
+This repository is also a Homebrew tap, a Scoop bucket and a Nix flake. They
+install the same executables from GitHub Releases, checked against the release's
+`SHA256SUMS`, and are updated by a pull request after each release.
+
+Homebrew (macOS Apple silicon and Intel, Linux x64 and arm64):
+
+```sh
+brew tap amet13/overfull https://github.com/Amet13/overfull
+brew install amet13/overfull/overfull
+```
+
+Scoop (Windows x64):
+
+```powershell
+scoop bucket add overfull https://github.com/Amet13/overfull
+scoop install overfull/overfull
+```
+
+Nix (Linux x64 and arm64, macOS):
+
+```sh
+nix run github:Amet13/overfull -- --version
+nix profile install github:Amet13/overfull
+```
+
+`brew upgrade` and `scoop update` pick up a new release once its pull request is
+merged. Adding the tap or the bucket clones this repository.
 
 ## Release download
 

@@ -46,7 +46,15 @@ overfull check
 
 On Windows: `irm https://amet13.github.io/overfull/install.ps1 | iex`. The
 installer verifies the download against the release's `SHA256SUMS` and needs no
-administrator rights. Other ways to install, including Docker and single-file
+administrator rights. Or use a package manager:
+
+```bash
+brew tap amet13/overfull https://github.com/Amet13/overfull && brew install amet13/overfull/overfull
+scoop bucket add overfull https://github.com/Amet13/overfull; scoop install overfull/overfull
+nix run github:Amet13/overfull -- check
+```
+
+Other ways to install, including Docker and single-file
 downloads: [Install](https://amet13.github.io/overfull/docs/install/).
 
 `overfull check` finds the main file, reads the build log, the PDF and the

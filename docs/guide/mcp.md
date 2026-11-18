@@ -54,6 +54,37 @@ the nearest folder above that has `overfull.yml`.
 `overfull` must be on the client's `PATH` (see [Install](./install.md)); otherwise
 give the full path to the executable as `command`.
 
+### In Docker, without installing anything
+
+The check-only image (`ghcr.io/amet13/overfull:3-check`, no TeX Live) runs the
+server too. Mount the project folder at `/work`:
+
+```json
+{
+  "mcpServers": {
+    "overfull": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "--mount", "type=bind,src=/path/to/your/thesis,dst=/work",
+               "ghcr.io/amet13/overfull:3-check", "overfull", "mcp"]
+    }
+  }
+}
+```
+
+The image has veraPDF and poppler but no TeX Live, so it checks a document built
+elsewhere; it has no `build` tool.
+
+### MCP Registry
+
+`server.json` at the top of the repository describes the server for the official
+[MCP Registry](https://registry.modelcontextprotocol.io/) as
+`io.github.Amet13/overfull`: the check-only image of each release, started as
+above. Clients that read the registry can then offer to install it. The check
+image carries the label `io.modelcontextprotocol.server.name` with that name,
+which is how the registry checks that the image belongs to the entry. Publishing
+to the registry is a manual step for the maintainer (see `MAINTAINING.md`); until
+it is done, configure the client by hand as shown here.
+
 ## Tools
 
 | Tool | What it does | Arguments |

@@ -8,6 +8,10 @@ name: release
 #   - SHA256SUMS                        checksums, plus build provenance attestations
 #   - overfull.intoto.sigstore.json     the signed provenance (Sigstore bundle) for every file
 #   - overfull.intoto.jsonl             the same provenance as an in-toto DSSE envelope (SLSA)
+#   - overfull.rb, overfull.json        Homebrew formula and Scoop manifest
+# After the release, a pull request updates Formula/, bucket/, flake.nix and server.json
+# (package-manifests). Listing in the MCP Registry is a separate, manual workflow
+# (mcp-registry.yml).
 #
 # Two ways to release the version in package.json (bump it first with
 # scripts/bump-version.mjs):
@@ -352,3 +356,46 @@ jobs:
             gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$major" -f sha="$GITHUB_SHA" > /dev/null
           fi
           echo "$major → $GITHUB_SHA"
+
+  # This repository is also the Homebrew tap, the Scoop bucket and the Nix flake. Once the
+  # release exists, its SHA256SUMS gives the new Formula/overfull.rb, bucket/overfull.json,
+  # flake.nix and server.json, which go to main through an automation pull request
+  # (merged by ci when it passes, like the other automation pull requests).
+  package-manifests:
+    name: Package manifests pull request
+    needs: [version, github-release]
+    if: >-
+      !cancelled() && needs.github-release.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') || inputs.publish)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: main
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Write the manifests from the release's SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir "$RUNNER_TEMP"
+          node packaging/generate.mjs --version "$VERSION" --sums "$RUNNER_TEMP/SHA256SUMS" --repo .
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          {
+            echo "Package manifests for v$VERSION, written by packaging/generate.mjs from the"
+            echo "release's SHA256SUMS: Homebrew (Formula/overfull.rb), Scoop (bucket/overfull.json),"
+            echo "Nix (flake.nix) and the MCP Registry entry (server.json)."
+          } > "$RUNNER_TEMP/body.md"
+          bash .github/scripts/automation-pr.sh packaging "Package manifests for v$VERSION" "$RUNNER_TEMP/body.md"
