@@ -221,6 +221,22 @@ describe('accessibilityCheck', () => {
     expect(req.problems[0]?.fix).toMatch(/--engine docker/);
   });
 
+  it('reports verapdf-error, as a warning, when veraPDF could not validate the file', () => {
+    const r = accessibilityCheck(facts(), {
+      verapdf: { compliant: false, failures: [], error: 'PDF parse error' },
+      level: 'required',
+    });
+    expect(r.status).toBe('warn');
+    expect(r.problems).toEqual([
+      expect.objectContaining({
+        rule: 'verapdf-error',
+        severity: 'warning',
+        message: 'veraPDF could not validate the PDF: PDF parse error',
+      }),
+    ]);
+    expect(r.problems[0]?.fix).toContain('verapdf --flavour ua2');
+  });
+
   it('does not call a non-compliant veraPDF report with no failures valid', () => {
     const r = accessibilityCheck(facts(), {
       verapdf: { compliant: false, failures: [] },
