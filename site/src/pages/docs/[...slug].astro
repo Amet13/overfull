@@ -2,6 +2,7 @@
 import Docs from '../../layouts/Docs.astro';
 import { docHeadings, docSlug, rewriteDocLinks, sortedDocs } from '../../lib/docs';
 import { benchResultsHtml, evalResultsHtml } from '../../lib/results';
+import { wrapTables } from '../../lib/tables';
 
 export async function getStaticPaths() {
   const docs = await sortedDocs();
@@ -13,7 +14,9 @@ export async function getStaticPaths() {
 const docs = await sortedDocs();
 const current = docs.find((d) => d.id === Astro.props.id);
 if (!current) throw new Error(`Unknown doc ${Astro.props.id}`);
-const html = rewriteDocLinks(current.rendered?.html ?? '', current, import.meta.env.BASE_URL);
+const html = wrapTables(
+  rewriteDocLinks(current.rendered?.html ?? '', current, import.meta.env.BASE_URL),
+);
 const headings = docHeadings(current);
 // Measured results, rendered from the committed result files (empty until one exists).
 const slug = docSlug(current);

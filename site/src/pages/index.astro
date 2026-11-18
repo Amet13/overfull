@@ -21,8 +21,11 @@ const lineKind = (l: string) =>
       : /^\s+✓/.test(l)
         ? 'ok'
         : '';
+// Long lines wrap on wide screens (no sideways scrolling to reach the rule id):
+// a wrapped line continues under the text after the status column or location.
+const hang = (l: string) => /^(\s+[✕!✓]\s+\S+\s{2,})\S/.exec(l)?.[1]?.length ?? 0;
 ---
-<Base title="Preflight for LaTeX papers and theses" description="Overfull checks the LaTeX paper or thesis you already have before you submit: every reference against the scholarly indexes, the PDF, accessibility and the venue's rules. In the terminal, in CI, with an AI agent, or on Overleaf." section="home">
+<Base title="Preflight for LaTeX papers and theses" description="Check your LaTeX paper or thesis before you submit: every reference against the scholarly indexes, the PDF, accessibility and the venue's rules. Free." section="home">
   <section class="hero" aria-labelledby="hero-title">
     <p class="runhead"><span>Preflight for LaTeX papers and theses</span></p>
     <div class="hero-grid">
@@ -34,13 +37,14 @@ const lineKind = (l: string) =>
         <p class="hero-links">
           <a class="cta" href={url('check/')}>Check a project in your browser</a>
           <a class="caret-link" href={url('docs/')}>Read the guide</a>
+          <a class="caret-link" href="#start-title">Install the command</a>
         </p>
         <p class="hero-note">Drop a .zip (Overleaf's source download works), a folder, a log, a .bib or a PDF. It runs on this page; your files are not uploaded.</p>
       </div>
       <figure class="term" aria-label="Example: what overfull check prints for a draft with problems">
         <div class="term-bar" aria-hidden="true"><span></span><span></span><span></span><em>~/paper</em></div>
         <pre class="term-body" tabindex="0"><code><span class="term-cmd"><span class="term-ps" aria-hidden="true">$ </span>overfull check</span>
-{terminal.map((l, i) => <span class={`term-line ${lineKind(l)}`} style={`--i:${i}`}>{l}{'\n'}</span>)}</code></pre>
+{terminal.map((l, i) => <span class={`term-line ${lineKind(l)}`} style={`--i:${i};--hang:${hang(l)}ch`}>{l}{'\n'}</span>)}</code></pre>
         <figcaption class="sr-only">Sample output for a ten-page draft: an undefined reference, an invented citation, a figure without alt text and one page over the limit.</figcaption>
       </figure>
       <dl class="hero-facts" aria-label="At a glance">
@@ -426,6 +430,15 @@ venue          pass   main text 9 pages, limit 9 (11 in total)</span></pre>
     }
   }
   @media (min-width: 1000px) {
+    .term-body {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .term-line {
+      display: block;
+      padding-left: var(--hang);
+      text-indent: calc(-1 * var(--hang));
+    }
     .hero-grid {
       grid-template-columns: minmax(0, 30rem) minmax(0, 1fr);
       align-items: start;

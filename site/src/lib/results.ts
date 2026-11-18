@@ -76,9 +76,11 @@ export function benchResultsHtml(): string {
     .map((s) => s.host ?? '?');
   return `<h2 id="measured">Measured</h2>
 <p>Run of ${esc(String(r.date).slice(0, 10))} with Overfull ${esc(r.overfullVersion)}: ${esc(r.datasets?.real?.entries ?? '?')} real and ${esc(r.datasets?.fabricated?.entries ?? '?')} fabricated entries, live indexes.</p>
+<div class="table-scroll" role="region" tabindex="0" aria-label="Table: Measured">
 <table><thead><tr><th>Measure</th><th>Result</th></tr></thead><tbody>
 ${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('\n')}
 </tbody></table>
+</div>
 <p>Seconds per entry: median ${num(m.secondsPerEntry?.median)}, 95th percentile ${num(m.secondsPerEntry?.p95)}.${unreachable.length ? ` Unreachable during the run: ${esc(unreachable.join(', '))}.` : ''}</p>`;
 }
 
@@ -95,9 +97,11 @@ export function evalResultsHtml(): string {
     .map(
       (r) => `<h3>${esc(r.label)}, ${esc(String(r.date).slice(0, 10))}</h3>
 <p>Model: ${esc(r.model ?? 'not stated')}. ${esc(r.runsPerCell)} runs per task and variant, ${esc(r.tasks?.length ?? '?')} tasks.</p>
+<div class="table-scroll" role="region" tabindex="0" aria-label="Table: ${esc(r.label)}, ${esc(String(r.date).slice(0, 10))}">
 <table><thead><tr><th>Variant</th><th>Passed</th><th>Passed with no fabricated or unverified citation</th></tr></thead><tbody>
 ${r.byVariant.map((b) => `<tr><td>${esc(b.variant)}</td><td>${esc(prop(b.pass))}</td><td>${esc(prop(b.clean))}</td></tr>`).join('\n')}
-</tbody></table>`,
+</tbody></table>
+</div>`,
     )
     .join('\n');
   return `<h2 id="measured">Measured</h2>\n${body}`;
