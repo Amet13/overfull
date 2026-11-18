@@ -15,12 +15,10 @@ import {
 } from '../src/refs/index.js';
 import { stripMarkup } from '../src/refs/normalize.js';
 import { handlerFetch, json } from './fixtures/refs/fake-fetch.js';
+import { atom, fast } from './helpers.js';
 
-const fast = { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
 const emptyDblp = { result: { hits: { '@total': '0' } } };
 const emptyAtom = '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>';
-const atom = (body: string) =>
-  new Response(body, { headers: { 'content-type': 'application/atom+xml' } });
 
 const PAPER = (key: string, title: string, extra = '') =>
   `@article{${key}, author = {Writer, Ann}, title = {${title}}, journal = {J}, year = {2020}${extra}}`;

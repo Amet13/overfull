@@ -1,12 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Report } from '@overfull/core';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -29,35 +22,10 @@ import {
 } from '../src/safety.js';
 import { imageUnavailable, quoteWindowsArg } from '../src/tools.js';
 import { runVeraPdf, verapdfFlavour } from '../src/verapdf.js';
-import { memIo, tempCopy, tempDir } from './helpers.js';
+import { fakeBin, git, memIo, tempCopy, tempDir } from './helpers.js';
 
 /** Shell-script fakes on PATH and FIFOs do not exist on Windows; these tests run on Linux and macOS. */
 const POSIX_ONLY = process.platform === 'win32';
-
-const git = (cwd: string, ...args: string[]) =>
-  execFileSync('git', args, {
-    cwd,
-    env: {
-      ...process.env,
-      GIT_AUTHOR_NAME: 't',
-      GIT_AUTHOR_EMAIL: 't@example.org',
-      GIT_COMMITTER_NAME: 't',
-      GIT_COMMITTER_EMAIL: 't@example.org',
-    },
-  })
-    .toString()
-    .trim();
-
-/** A directory with fake executables, put first on PATH for the test. */
-function fakeBin(scripts: Record<string, string>): string {
-  const dir = tempDir();
-  for (const [name, body] of Object.entries(scripts)) {
-    const p = join(dir, name);
-    writeFileSync(p, `#!/bin/sh\n${body}\n`);
-    chmodSync(p, 0o755);
-  }
-  return dir;
-}
 
 const savedPath = process.env.PATH;
 afterEach(() => {

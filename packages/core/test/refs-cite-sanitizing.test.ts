@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBibEntry, parseBib } from '../src/bib/index.js';
+import { formatBibEntry } from '../src/bib/index.js';
 import {
   entryFromPublisherBibtex,
   escapeLooseTex,
@@ -9,11 +9,7 @@ import {
 } from '../src/refs/entry.js';
 import { lookup } from '../src/refs/index.js';
 import { handlerFetch, readFixture } from './fixtures/refs/fake-fetch.js';
-
-const fast = { arxivIntervalMs: 0, retryDelayMs: 0 };
-const _atom = (body: string) =>
-  new Response(body, { headers: { 'content-type': 'application/atom+xml' } });
-const _one = (bib: string) => parseBib(bib)[0] as NonNullable<ReturnType<typeof parseBib>[0]>;
+import { fast } from './helpers.js';
 
 describe('R11: publisher BibTeX is sanitized', () => {
   it('neutralizes \\input and friends in a DataCite-like title, keeps accents', () => {

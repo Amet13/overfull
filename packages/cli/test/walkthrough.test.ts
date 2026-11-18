@@ -1,14 +1,14 @@
 /** Regressions from the round-4 persona walkthroughs (CLI and Action side). */
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { formatHuman, type Problem, type Report } from '@overfull/core';
+import { formatHuman, type Problem } from '@overfull/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readInputs } from '../../../action/src/inputs.js';
 import { mergeOutput, runCheck } from '../src/check.js';
 import { loadConfig } from '../src/config.js';
 import { main } from '../src/main.js';
-import { memIo, tempCopy, tempDir } from './helpers.js';
+import { fakeBin, memIo, problems, tempCopy, tempDir } from './helpers.js';
 
 /** Shell-script fakes on PATH do not exist on Windows. */
 const POSIX_ONLY = process.platform === 'win32';
@@ -16,18 +16,6 @@ const savedPath = process.env.PATH;
 afterEach(() => {
   process.env.PATH = savedPath;
 });
-
-function fakeBin(scripts: Record<string, string>): string {
-  const dir = tempDir();
-  for (const [name, body] of Object.entries(scripts)) {
-    const p = join(dir, name);
-    writeFileSync(p, `#!/bin/sh\n${body}\n`);
-    chmodSync(p, 0o755);
-  }
-  return dir;
-}
-
-const problems = (r: Report) => r.checks.flatMap((c) => c.problems);
 
 describe('explicit inputs that do not exist fail with exit 2', () => {
   it('--pdf names the path and the jobname from overfull.yml', async () => {

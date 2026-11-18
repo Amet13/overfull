@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { parseBib } from '../src/bib/index.js';
 import { cacheMaxAge } from '../src/refs/cache.js';
 import { type RefCache, verifyEntries } from '../src/refs/index.js';
+import { fast } from './helpers.js';
 
 const BIB = `@article{lamport1978time,
   author = {Lamport, Leslie},
@@ -68,8 +69,6 @@ function memory(): RefCache & { map: Map<string, unknown> } {
   const map = new Map<string, unknown>();
   return { map, get: (k) => map.get(k), set: (k, v) => void map.set(k, v) };
 }
-
-const fast = { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
 
 describe('cache lifetimes', () => {
   it('defaults to 30 days for records and 1 day for not-found answers', () => {

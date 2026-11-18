@@ -14,10 +14,7 @@ import { formatBibEntry, markCited, parseBib } from '@overfull/core';
 import { describe, expect, it } from 'vitest';
 import { adoptCommand } from '../src/commands/init.js';
 import { main } from '../src/main.js';
-import { memIo, tempDir } from './helpers.js';
-
-const git = (cwd: string, ...args: string[]) =>
-  execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+import { git, memIo, tempDir } from './helpers.js';
 
 function repoWith(files: Record<string, string> = {}, commit = false): string {
   const dir = tempDir();

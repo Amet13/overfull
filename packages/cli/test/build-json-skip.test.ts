@@ -1,12 +1,12 @@
 /** --json on every command; a no-change build does not run LaTeX. */
-import { chmodSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Report } from '@overfull/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { upToDate } from '../src/commands/build.js';
 import { loadConfig } from '../src/config.js';
 import { main } from '../src/main.js';
-import { memIo, tempCopy, tempDir } from './helpers.js';
+import { fakeBin, memIo, tempCopy, tempDir } from './helpers.js';
 
 /** Shell-script fakes on PATH and FIFOs do not exist on Windows; these tests run on Linux and macOS. */
 const POSIX_ONLY = process.platform === 'win32';
@@ -15,18 +15,6 @@ const savedPath = process.env.PATH;
 afterEach(() => {
   process.env.PATH = savedPath;
 });
-
-function fakeBin(scripts: Record<string, string>): string {
-  const dir = tempDir();
-  for (const [name, body] of Object.entries(scripts)) {
-    const p = join(dir, name);
-    writeFileSync(p, `#!/bin/sh\n${body}\n`);
-    chmodSync(p, 0o755);
-  }
-  return dir;
-}
-
-const _problems = (r: Report) => r.checks.flatMap((c) => c.problems);
 
 describe('A8: --json on every command', () => {
   it('usage errors are JSON with exit 2', async () => {

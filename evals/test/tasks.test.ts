@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { alterDoi, expandPlaceholders, parseSimpleBib } from '../lib/generate.mjs';
 import { applyVariant } from '../lib/prepare.mjs';
 import { checkExpectations, parseNumstat, refProblems, scoreScope } from '../lib/score.mjs';
@@ -82,6 +82,7 @@ describe('variants', () => {
 
   const project = (hooks?: boolean) => {
     const dir = mkdtempSync(join(tmpdir(), 'variant-test-'));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
     writeFileSync(join(dir, 'AGENTS.md'), '# agents\n');
     mkdirSync(join(dir, '.claude'));
     if (hooks !== undefined)
