@@ -83,8 +83,9 @@
 \usepackage[capitalize,noabbrev]{cleveref}
 
 % ---- Theorems and algorithms ----------------------------------------------
-% amsthm environments are tagged by the LaTeX tagging code. Define them after
-% cleveref, so \cref names them ("Proposition 1").
+% amsthm is listed as partially compatible with tagging; the proposition and
+% proof in sections/method.tex pass veraPDF. Define theorems after cleveref,
+% so \cref names them ("Proposition 1").
 \usepackage{amsthm}
 \newtheorem{theorem}{Theorem}
 \newtheorem{proposition}{Proposition}

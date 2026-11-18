@@ -5,10 +5,15 @@ A Beamer deck (16:9, LuaLaTeX) for a thesis defense, made from the
 defined in the local theme `beamerthemeThesisSlides.sty`; title and author
 come from `metadata.tex`; frames live in `sections/slides.tex`.
 
-**Accessibility:** Beamer slides cannot be tagged yet (no PDF/UA), so
-`overfull.yml` leaves the accessibility check out. Images still carry alt
-text and the PDF has a title and language. Share the thesis PDF (PDF/UA-2)
-together with the slides; for a fully tagged deck look at the `ltx-talk` class.
+**Accessibility:** Beamer slides cannot be tagged yet (no PDF/UA). The
+accessibility check still runs the basic rules (title, language, alt text on
+every image) as warnings, and reports `pdf-not-tagged`, which is expected for
+Beamer. Share the thesis PDF (PDF/UA-2) together with the slides; for a fully
+tagged deck look at the `ltx-talk` class.
+
+**References:** biblatex with short author-year citations (`\parencite{key}`);
+the cited works are listed on the last frame. Add entries with
+`make cite ARGS=<doi>` (or `overfull cite`), not by hand.
 
 ## Two ways to work
 
@@ -20,7 +25,7 @@ to build and check the deck. Keep your speaker notes and numbers in `notes/`.
 ```sh
 make build    # slides.pdf
 make watch    # rebuild on every save
-make check    # checks: build log and PDF
+make check    # checks: build log, PDF, references, basic accessibility
 make pages PAGES=1-4   # render slides to PNG
 make diff     # PDF showing changes against origin/main
 make cite ARGS=10.1145/2890784   # add a verified reference
