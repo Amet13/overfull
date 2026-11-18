@@ -30,14 +30,15 @@
 \input{preamble}
 
 \title{\PaperTitle}
-% Anonymous mode and camera-ready: switches in metadata.tex.
+% Anonymous mode and camera-ready: switches in metadata.tex. Keep one
+% \author and change the block it prints, as here.
+\newcommand\PaperAuthorBlock{\PaperAuthors\\[2pt]
+  \small\PaperAffiliations\\
+  \small\texttt{\PaperEmail}}
 \ifPaperAnonymous
-  \author{Anonymous Author(s)}
-\else
-  \author{\PaperAuthors\\[2pt]
-    \small\PaperAffiliations\\
-    \small\texttt{\PaperEmail}}
+  \renewcommand\PaperAuthorBlock{Anonymous Author(s)}
 \fi
+\author{\PaperAuthorBlock}
 \ifPaperCameraReady
   \date{\PaperVenueNote}
 \else
