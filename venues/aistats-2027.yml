@@ -5,6 +5,7 @@ source:
   - https://virtual.aistats.org/Conferences/2027/CallForPapers
   - https://aistats.org/aistats2027/AISTATS2027PaperPack.zip
 checkedOn: 2026-11-11
+deadline: 2026-10-06
 extends: double-blind
 paper: letter
 pageLimit:

@@ -169,7 +169,7 @@ export const venueRules: RuleInfo[] = [
     severity: 'info',
     title: 'Venue profile may be out of date',
     summary:
-      'The profile was last compared with the venue’s official pages more than 14 months ago. Page limits, style files and policies change between years.',
+      'The profile is for an edition whose submission deadline passed more than 30 days ago, or it was last compared with the venue’s official pages more than 14 months ago. Page limits, style files and policies change between years.',
     fix: 'Read the venue’s current author instructions (the profile lists its sources) and compare them with what Overfull reports.',
   },
   {

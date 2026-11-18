@@ -5,6 +5,7 @@ source:
   - https://eccv.ecva.net/Conferences/2026/SubmissionPolicies
   - https://eccv.ecva.net/Conferences/2026/CallForPapers
 checkedOn: 2026-11-11
+deadline: 2026-03-05
 extends: double-blind
 paper: any
 pageLimit:

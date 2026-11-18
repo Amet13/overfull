@@ -25,6 +25,12 @@ export interface VenueProfile {
   source?: string[];
   /** Date (YYYY-MM-DD) the rules were last compared with the official pages. */
   checkedOn?: string;
+  /**
+   * Submission deadline (YYYY-MM-DD) of the edition the profile describes, when its sources
+   * state one. Some 30 days after it, `venue-profile-stale` says the profile is for a past
+   * edition.
+   */
+  deadline?: string;
   /** Style or class files the venue requires, with the SHA-256 of the official copy when known. */
   styleFiles?: StyleFile[];
   /**

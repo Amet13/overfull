@@ -15,6 +15,7 @@ export const venueProfileData: Record<string, VenueProfileData> = {
       "https://aaai.org/authorkit27/",
     ],
     checkedOn: "2026-11-10",
+    deadline: "2026-07-28",
     paper: "letter",
     pageLimit: {
       max: 7,
@@ -40,7 +41,7 @@ export const venueProfileData: Record<string, VenueProfileData> = {
         "submission",
       ],
     },
-    notes: "The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for references. Acknowledgements are omitted from papers submitted for review. The author policy allows judicious use of generative AI tools; the pages read state no disclosure requirement. The hash is of aaai2027.sty (2027/10/21) from the AuthorKit27 archive downloaded on 2026-11-10. The AAAI-28 call page redirects to AAAI-26 content, so AAAI-27 is the latest published. Text block: 7 in wide, centred on US Letter (aaai2027.sty). aaai2027.sty prints \"Anonymous submission\" with the submission option.",
+    notes: "The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for references. Acknowledgements are omitted from papers submitted for review. The author policy allows judicious use of generative AI tools; the pages read state no disclosure requirement. The hash is of aaai2027.sty from the AuthorKit27 archive downloaded on 2026-11-10; its \\ProvidesPackage line gives the date 2027/10/21 (sic, in the official file). The AAAI-28 call page redirects to AAAI-26 content, so AAAI-27 is the latest published. Text block: 7 in wide, centred on US Letter (aaai2027.sty). aaai2027.sty prints \"Anonymous submission\" with the submission option.",
   },
   "acl-rolling-review": {
     id: "acl-rolling-review",
@@ -110,6 +111,7 @@ export const venueProfileData: Record<string, VenueProfileData> = {
       "https://aistats.org/aistats2027/AISTATS2027PaperPack.zip",
     ],
     checkedOn: "2026-11-11",
+    deadline: "2026-10-06",
     paper: "letter",
     pageLimit: {
       max: 8,
@@ -153,6 +155,7 @@ export const venueProfileData: Record<string, VenueProfileData> = {
       "https://media.eventhosts.cc/Conferences/CVPR2027/author-kit-CVPR2027-v1-latex.zip",
     ],
     checkedOn: "2026-11-10",
+    deadline: "2026-11-16",
     paper: "letter",
     pageLimit: {
       max: 8,
@@ -193,6 +196,7 @@ export const venueProfileData: Record<string, VenueProfileData> = {
       "https://eccv.ecva.net/Conferences/2026/CallForPapers",
     ],
     checkedOn: "2026-11-11",
+    deadline: "2026-03-05",
     paper: "any",
     pageLimit: {
       max: 14,
@@ -242,6 +246,7 @@ export const venueProfileData: Record<string, VenueProfileData> = {
       "https://acl-org.github.io/ACLPUB/formatting.html",
     ],
     checkedOn: "2026-11-10",
+    deadline: "2026-05-25",
     paper: "a4",
     pageLimit: {
       max: 8,
@@ -274,6 +279,7 @@ export const venueProfileData: Record<string, VenueProfileData> = {
       "https://iclr.cc/Conferences/2027/AIPolicyForAuthors",
     ],
     checkedOn: "2026-11-10",
+    deadline: "2026-09-25",
     pageLimit: {
       max: 9,
       endLabel: "overfull:main-end",
@@ -313,6 +319,7 @@ export const venueProfileData: Record<string, VenueProfileData> = {
       "https://icml.cc/Conferences/2026/AuthorInstructions",
     ],
     checkedOn: "2026-11-10",
+    deadline: "2026-01-28",
     paper: "letter",
     pageLimit: {
       max: 8,
@@ -380,6 +387,7 @@ export const venueProfileData: Record<string, VenueProfileData> = {
       "https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip",
     ],
     checkedOn: "2026-11-10",
+    deadline: "2026-05-06",
     paper: "letter",
     pageLimit: {
       max: 9,

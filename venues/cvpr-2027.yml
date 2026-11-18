@@ -5,6 +5,7 @@ source:
   - https://cvpr.thecvf.com/Conferences/2027/AuthorGuidelines
   - https://media.eventhosts.cc/Conferences/CVPR2027/author-kit-CVPR2027-v1-latex.zip
 checkedOn: 2026-11-10
+deadline: 2026-11-16
 extends: double-blind
 paper: letter
 pageLimit:

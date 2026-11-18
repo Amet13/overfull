@@ -19,6 +19,7 @@ year: 2027                  # or: rolling
 source:                     # required: official pages the values were read from
   - https://example.org/cfp
 checkedOn: 2026-11-10       # required: the day you read those pages (YYYY-MM-DD)
+deadline: 2027-01-31        # optional: full-paper submission deadline, only if a source states it
 extends: paper              # optional built-in profile: generic (default), thesis, paper, arxiv, double-blind
 paper: letter               # a4 | letter | any
 pageLimit:
@@ -45,4 +46,6 @@ notes: Free text.
 ```
 
 Required: `id`, `name`, `year`, `source`, `checkedOn`. A profile whose `checkedOn`
-is more than 14 months old gets an info note that it may be out of date.
+is more than 14 months old gets an info note that it may be out of date, and so
+does one whose `deadline` passed more than 30 days ago. Leave `deadline` out when
+the sources do not state it.

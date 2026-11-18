@@ -6,6 +6,7 @@ source:
   - https://aclrollingreview.org/cfp
   - https://acl-org.github.io/ACLPUB/formatting.html
 checkedOn: 2026-11-10
+deadline: 2026-05-25
 extends: double-blind
 paper: a4
 pageLimit:
