@@ -37,6 +37,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 - Thesis template: front matter with roman page numbers (declaration of originality, acknowledgments, AI-use statement, contents, lists of figures and tables), and `\appendixsection{Title}`, which letters itself.
 - Slides template: references (biblatex, `make cite`) and the basic accessibility rules (title, language, alt text) as warnings.
 - Templates: `make cite ARGS=...`, `make explain RULE=...`, `make doctor` and `make check ARGS=...`, so an agent with only Docker can follow the loop; a `.pre-commit-config.yaml` with the `overfull guard --staged` hook.
+- Install with Homebrew (`brew tap amet13/overfull https://github.com/Amet13/overfull`), Scoop (`scoop bucket add overfull https://github.com/Amet13/overfull`) or Nix (`nix run github:Amet13/overfull`): this repository is the tap, the bucket and the flake, updated by a pull request after each release.
+- `server.json` for the official MCP Registry (`io.github.Amet13/overfull`, the check-only image running `overfull mcp`), the matching label on the check image, and a manual `mcp-registry` workflow that publishes it with GitHub OIDC (no account, no secret).
+- A monthly `usage` maintenance task records public counts (release downloads, stars, forks, code-search counts of `amet13/overfull@` workflows and `x-overfull` .bib files) in `metrics/usage.json`. No telemetry.
 - `overfull check --gcc` (and `--write gcc=file`) prints `file:line:col: error|warning|note: message [rule]`, which editors read without an extension.
 - `overfull init --here --vscode` writes `.vscode/tasks.json`: an `overfull check` task whose problems show in VS Code's Problems panel. Opt-in, not part of `--all`.
 - `start-paper` skill: the venue ids and how to move to a venue's style kit (official class unchanged, paper size, and building without tagging for IEEEtran and llncs).
