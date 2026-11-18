@@ -177,6 +177,12 @@ jobs:
   # Three images, built in parallel (each reuses the layer cache of image.yml's builds
   # on main, so an unchanged TeX layer is never rebuilt). The CLI is a separate, small
   # layer: a code change rebuilds only that.
+  #
+  # The image jobs here only read the layer cache (cache-from, no cache-to). image.yml
+  # writes the same scopes from main, which every branch can read; were ci to write them
+  # too, ci and image.yml would overwrite each other's entries on main, and every pull
+  # request would add multi-GB entries of its own that nothing else can read, pushing
+  # main's entries out of the repository's 10 GB cache.
   image-full:
     name: Full image, corpus
     needs: changes
@@ -197,7 +203,6 @@ jobs:
           load: true
           tags: overfull:ci
           cache-from: type=gha,scope=overfull-linux-amd64
-          cache-to: type=gha,scope=overfull-linux-amd64,mode=max
       # Every built-in path runs the image as a non-root user; a font list readable only
       # by root costs about a minute per LaTeX start.
       - name: LaTeX starts fast for a non-root user
@@ -226,7 +231,6 @@ jobs:
           load: true
           tags: overfull:ci-slim
           cache-from: type=gha,scope=slim-linux-amd64
-          cache-to: type=gha,scope=slim-linux-amd64,mode=max
       - name: LaTeX starts fast for a non-root user, also on a read-only root filesystem
         run: |
           bash docker/smoke/start-time.sh overfull:ci-slim 20
@@ -296,7 +300,6 @@ jobs:
           load: true
           tags: overfull:ci-check
           cache-from: type=gha,scope=check-linux-amd64
-          cache-to: type=gha,scope=check-linux-amd64,mode=max
       - name: The check-only image checks a built project and has no TeX
         run: |
           docker run --rm overfull:ci-check sh -c 'overfull --version && verapdf --version && ! command -v lualatex'
@@ -343,7 +346,6 @@ jobs:
           build-args: TEX_FLAVOR=${{ matrix.flavor }}
           outputs: ${{ matrix.output }}
           cache-from: type=gha,scope=${{ matrix.scope }}
-          cache-to: type=gha,scope=${{ matrix.scope }},mode=max
       - name: The CLI and its tools run
         if: matrix.target == 'overfull'
         run: |

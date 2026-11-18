@@ -129,8 +129,12 @@ jobs:
             VERSION=${{ inputs.version && format('{0}{1}', inputs.version, matrix.suffix) || steps.meta.outputs.version }}
             TEX_FLAVOR=${{ matrix.flavor }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          # The only writer of these cache scopes (ci.yml reads them). The full image
+          # caches only its own layers (mode=min): its TeX layers are several GB, and the
+          # intermediate stages (builder, verapdf) are quick to rebuild. Slim and check
+          # are small enough to keep every stage (mode=max).
           cache-from: type=gha,scope=${{ matrix.pair }}
-          cache-to: type=gha,scope=${{ matrix.pair }},mode=max
+          cache-to: type=gha,scope=${{ matrix.pair }},mode=${{ matrix.target == 'overfull' && matrix.flavor == 'full' && 'min' || 'max' }}
       - name: The image runs the CLI
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
