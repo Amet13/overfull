@@ -1,31 +1,15 @@
 /** Bibliography errors and source-derived problems carry .bib and file:line locations. */
-import { chmodSync, cpSync, writeFileSync } from 'node:fs';
+import { cpSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Report } from '@overfull/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runCheck } from '../src/check.js';
 import { loadConfig } from '../src/config.js';
-import { tempCopy, tempDir } from './helpers.js';
-
-/** Shell-script fakes on PATH and FIFOs do not exist on Windows; these tests run on Linux and macOS. */
-const _POSIX_ONLY = process.platform === 'win32';
+import { problems, tempCopy, tempDir } from './helpers.js';
 
 const savedPath = process.env.PATH;
 afterEach(() => {
   process.env.PATH = savedPath;
 });
-
-function _fakeBin(scripts: Record<string, string>): string {
-  const dir = tempDir();
-  for (const [name, body] of Object.entries(scripts)) {
-    const p = join(dir, name);
-    writeFileSync(p, `#!/bin/sh\n${body}\n`);
-    chmodSync(p, 0o755);
-  }
-  return dir;
-}
-
-const problems = (r: Report) => r.checks.flatMap((c) => c.problems);
 
 describe('A3: errors from typeset bibliography entries point at the .bib entry', () => {
   for (const [name, engine] of [

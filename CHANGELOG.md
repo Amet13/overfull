@@ -99,6 +99,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ### Fixed
 
+- Browser check: a "??" in the PDF that the build log already reports (an undefined reference or citation) is no longer counted twice, as in `overfull check`.
 - Docs: the privacy notes in the FAQ, SECURITY.md and the guide listed only some
   of the services that receive data. One list in
   [References](docs/guide/references.md#what-leaves-your-machine) now says which

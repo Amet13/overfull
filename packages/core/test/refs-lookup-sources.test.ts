@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parseBib } from '../src/bib/index.js';
 import { lookup } from '../src/refs/index.js';
 import { handlerFetch, json } from './fixtures/refs/fake-fetch.js';
-
-const fast = { arxivIntervalMs: 0, retryDelayMs: 0 };
-const atom = (body: string) =>
-  new Response(body, { headers: { 'content-type': 'application/atom+xml' } });
-const _one = (bib: string) => parseBib(bib)[0] as NonNullable<ReturnType<typeof parseBib>[0]>;
+import { atom, fast } from './helpers.js';
 
 describe('A6: title lookups are fast and honest', () => {
   const empty = (u: URL): Response => {

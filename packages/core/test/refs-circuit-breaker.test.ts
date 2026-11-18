@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseBib } from '../src/bib/index.js';
 import { verifyEntries } from '../src/refs/index.js';
+import { fast } from './helpers.js';
 
 const emptyCrossref = { message: { items: [] } };
 const emptyDblp = { result: { hits: { '@total': '0' } } };
@@ -18,8 +19,6 @@ const entries = (n: number) =>
         `@article{k${i}, author = {Nobody, Ann}, title = {Unique Title Number ${i} About Gardens}, journal = {J}, year = {2020}}`,
     ).join('\n'),
   );
-
-const fast = { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
 
 type Behaviour = 'ok' | 'hang' | '503';
 

@@ -7,12 +7,10 @@ import { describe, expect, it } from 'vitest';
 import { parseBib } from '../src/bib/index.js';
 import { identifiersOf, unescapeTexId, verifyEntries } from '../src/refs/index.js';
 import { handlerFetch, json } from './fixtures/refs/fake-fetch.js';
+import { atom, fast } from './helpers.js';
 
-const fast = { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
 const emptyDblp = { result: { hits: { '@total': '0' } } };
 const emptyAtom = '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>';
-const atom = (body: string) =>
-  new Response(body, { headers: { 'content-type': 'application/atom+xml' } });
 
 const TITLE = 'Learning to Segment Moving Objects in Crowded Street Scenes';
 const DOI = '10.1007/978-3-030-58452-8_13';

@@ -8,6 +8,7 @@ import { parseBib } from '../src/bib/index.js';
 import { HttpClient } from '../src/refs/http.js';
 import { arxivCacheKey, type RefCache, verifyEntries } from '../src/refs/index.js';
 import { handlerFetch, json } from './fixtures/refs/fake-fetch.js';
+import { atom, fast } from './helpers.js';
 
 afterEach(() => vi.useRealTimers());
 
@@ -76,11 +77,8 @@ describe('CrossRef request spacing', () => {
   });
 });
 
-const fast = { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
 const emptyDblp = { result: { hits: { '@total': '0' } } };
 const emptyAtom = '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>';
-const atom = (body: string) =>
-  new Response(body, { headers: { 'content-type': 'application/atom+xml' } });
 
 function memoryCache(): RefCache & { map: Map<string, unknown> } {
   const map = new Map<string, unknown>();

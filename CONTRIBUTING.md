@@ -99,6 +99,15 @@ OVERFULL_E2E=1 pnpm test packages/cli/test/e2e.test.ts
 
 It uses `$OVERFULL_IMAGE` when set, else `overfull:dev`.
 
+The live reference test asks the real indexes (CrossRef, arXiv and others), so it is
+skipped too. Run it with network access:
+
+```bash
+OVERFULL_LIVE=1 pnpm test packages/core/test/refs.live.test.ts
+```
+
+The weekly `sources-health` maintenance job runs it and reports a failure in its issue.
+
 ## Cutting a release (maintainers)
 
 Overfull ships as a Docker image, GitHub Release downloads and the Action. It is

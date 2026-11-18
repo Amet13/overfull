@@ -1,17 +1,16 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   profilesForStyleFile,
   resolveProfile,
-  styleFileIndex,
   UnknownProfileError,
   type VenueProfileData,
   venueCheck,
 } from '../src/venue/index.js';
+import { tempDir } from './helpers.js';
 
 const script = fileURLToPath(new URL('../../../scripts/build-venues.mjs', import.meta.url));
 const fixtures = fileURLToPath(new URL('./fixtures/venue/', import.meta.url));
@@ -62,7 +61,6 @@ describe('venue profiles from data', () => {
     expect(profilesForStyleFile('exampletest.sty', venues)).toEqual(['example-test-venue']);
     expect(profilesForStyleFile('sub/dir/ExampleTest.STY', venues)).toEqual(['example-test-venue']);
     expect(profilesForStyleFile('other.sty', venues)).toEqual([]);
-    expect(styleFileIndex(venues)).toEqual({ 'exampletest.sty': ['example-test-venue'] });
   });
 });
 
@@ -104,7 +102,7 @@ describe('scripts/build-venues.mjs', () => {
   });
 
   it('--check fails when the generated file is stale, and a write fixes it', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'venues-'));
+    const dir = tempDir();
     const out = join(dir, 'gen.ts');
     const base = ['--dir', `${fixtures}venues`, '--out', out];
     expect(run('--check', ...base).status).toBe(1);
@@ -116,7 +114,7 @@ describe('scripts/build-venues.mjs', () => {
   });
 
   it('validates anonymizedByClass', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'venues-'));
+    const dir = tempDir();
     const base =
       'name: X\nyear: 2027\nsource: https://example.org\ncheckedOn: 2026-11-10\nanonymous: true\n';
     writeFileSync(

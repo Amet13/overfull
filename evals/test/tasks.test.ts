@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { allRules } from '@overfull/core';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { alterDoi, expandPlaceholders, parseSimpleBib } from '../lib/generate.mjs';
 import { applyVariant } from '../lib/prepare.mjs';
 import { checkExpectations, parseNumstat, refProblems, scoreScope } from '../lib/score.mjs';
@@ -20,6 +21,14 @@ describe('tasks on disk', () => {
   it('has at least 12 tasks, all valid', () => {
     expect(tasks.length).toBeGreaterThanOrEqual(12);
     for (const t of tasks) expect(validateTask(root, t), t.id).toEqual([]);
+  });
+  it('names only rule ids the registry knows', () => {
+    const known = new Set(allRules().map((r) => r.id));
+    for (const t of tasks) {
+      const expectRules = (t.expect ?? {}) as { noRules?: string[]; rules?: string[] };
+      for (const id of [...(expectRules.noRules ?? []), ...(expectRules.rules ?? [])])
+        expect(known.has(id), `${t.id}: unknown rule ${id}`).toBe(true);
+    }
   });
   it('covers the required kinds of work', () => {
     const ids = tasks.map((t) => t.id);
@@ -82,6 +91,7 @@ describe('variants', () => {
 
   const project = (hooks?: boolean) => {
     const dir = mkdtempSync(join(tmpdir(), 'variant-test-'));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
     writeFileSync(join(dir, 'AGENTS.md'), '# agents\n');
     mkdirSync(join(dir, '.claude'));
     if (hooks !== undefined)

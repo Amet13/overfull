@@ -5477,10 +5477,10 @@ function yearOf(d) {
   return Number.isInteger(y) && y > 0 ? y : void 0;
 }
 function fromCsl(item, source) {
-  const main3 = first(item.title);
-  if (!main3) return null;
+  const main2 = first(item.title);
+  if (!main2) return null;
   const sub = first(item.subtitle);
-  const title = sub && !main3.toLowerCase().includes(sub.toLowerCase()) ? `${main3}: ${sub}` : main3;
+  const title = sub && !main2.toLowerCase().includes(sub.toLowerCase()) ? `${main2}: ${sub}` : main2;
   const years = [item.issued, item["published-print"], item["published-online"], item.published].map(yearOf).filter((y) => y !== void 0);
   const authors = (item.author ?? []).map((a) => ({
     family: (a.family ?? a.name ?? a.literal ?? "").trim(),
@@ -6419,7 +6419,7 @@ function titleSources(ctx, q) {
   if (key) list2.push(["openalex", () => openalexSearch(client, plain2, key, opts.mailto)]);
   return list2.filter(([source]) => sourceAllowed(opts, source));
 }
-async function searchOne(ctx, cacheKey, source, run2) {
+async function searchOne(ctx, cacheKey, source, run3) {
   const cache2 = ctx.opts.cache;
   const hit = cache2 && !ctx.opts.refresh ? await cache2.get(cacheKey) : void 0;
   const cachedRecords = hit?.[source];
@@ -6430,7 +6430,7 @@ async function searchOne(ctx, cacheKey, source, run2) {
   )) {
     return cachedRecords;
   }
-  const records = await run2();
+  const records = await run3();
   if (cache2) {
     const write = (writes.get(cache2) ?? Promise.resolve()).then(async () => {
       const latest = await cache2.get(cacheKey) ?? {};
@@ -6458,12 +6458,12 @@ async function titleSearch(ctx, q, visit) {
   const first2 = sources.filter(([s]) => s === "crossref" || s === "dblp");
   const waves = [first2, sources.filter((entry) => !first2.includes(entry))];
   for (const wave of waves) {
-    const pending = wave.map(([source, run2]) => {
+    const pending = wave.map(([source, run3]) => {
       if (ctx.deadline !== void 0 && Date.now() > ctx.deadline) {
         const reason = `${source} not asked: lookup time budget used up`;
         return Promise.resolve({ source, reason });
       }
-      return searchOne(ctx, cacheKey, source, run2).then(
+      return searchOne(ctx, cacheKey, source, run3).then(
         (records) => ({ source, records }),
         (err) => ({ source, err })
       );
@@ -6505,12 +6505,12 @@ async function titleSearch(ctx, q, visit) {
     ],
     ["europepmc", () => europepmcSearch(ctx.client, plainTitle)]
   ];
-  for (const [source, run2] of fallbacks) {
+  for (const [source, run3] of fallbacks) {
     if (outcome.searched.length >= MAX_TITLE_ANSWERS) break;
     if (ctx.deadline !== void 0 && Date.now() > ctx.deadline) break;
     if (!sourceAllowed(ctx.opts, source)) continue;
     try {
-      const records = await searchOne(ctx, cacheKey, source, run2);
+      const records = await searchOne(ctx, cacheKey, source, run3);
       outcome.searched.push(source);
       if (visit(records, source)) return outcome;
     } catch (err) {
@@ -7671,6 +7671,9 @@ function tallyLine(t) {
 function oneLine(s) {
   return s.replace(/[\r\n\u0085\u2028\u2029]+/g, " ").replace(UNSAFE_CHARS, "");
 }
+function stripUnsafe(s) {
+  return s.replace(UNSAFE_CHARS, "");
+}
 function safeLines(s) {
   return s.split(/\r\n|[\r\n\u0085\u2028\u2029]/).map(oneLine);
 }
@@ -7751,11 +7754,113 @@ function mergeDuplicateFindings(checks) {
   }
   return checks;
 }
+function mergeOutput(output, pdfProblems) {
+  const has = (re) => output.problems.some((p) => re.test(p.rule));
+  const extra = pdfProblems.filter(
+    (p) => p.rule === "pdf-unresolved-reference" ? !has(/undefined-reference|reference-undefined/) : !has(/undefined-citation|citation-undefined/)
+  );
+  if (extra.length === 0) return output;
+  const problems = [...output.problems, ...extra];
+  return { ...output, status: statusOf(problems), problems, summary: outputSummary(problems) };
+}
 var init_dedupe = __esm({
   "../packages/core/src/report/dedupe.ts"() {
     "use strict";
     init_analyze();
     init_types();
+  }
+});
+
+// ../packages/core/src/report/html.ts
+function problemHtml(p) {
+  const where = formatLocation(p.location);
+  const parts = [
+    `<h3><span class="tag">${SEVERITY_WORD[p.severity]}</span>${inline(p.message)}</h3>`,
+    `<div class="where">${where ? `${esc(where)} \xB7 ` : ""}${esc(p.rule)}</div>`
+  ];
+  if (p.detail) parts.push(`<p>${inline(p.detail)}</p>`);
+  if (p.fix) parts.push(`<p><strong>Fix:</strong> ${inline(p.fix)}</p>`);
+  if (p.evidence) {
+    parts.push(`<details><summary>Evidence</summary><pre>${esc(p.evidence)}</pre></details>`);
+  }
+  return `<article class="p ${p.severity}">${parts.join("")}</article>`;
+}
+function formatHtml(report) {
+  const target = report.target ?? "LaTeX project";
+  const rows = report.checks.map(
+    (c) => `<tr><th scope="row">${esc(c.check)}</th><td class="st s-${c.status}">${CHECK_WORD[c.status]}</td><td>${inline(checkLine(c))}</td></tr>`
+  ).join("");
+  const sections = report.checks.filter((c) => c.problems.length > 0).map((c) => `<h2>${esc(c.check)}</h2>${sortProblems(c.problems).map(problemHtml).join("")}`).join("");
+  const why2 = nothingCheckedLine(report);
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Overfull report: ${esc(target)}</title>
+<style>${CSS2}</style></head>
+<body><main>
+<header><h1>${esc(target)}</h1><div class="stamp s-${report.status}">${STATUS_WORD[report.status]}</div></header>
+${why2 ? `<p class="meta">${inline(why2)}</p>` : ""}
+<p class="tally">${esc(tallyLine(tally(report)))}</p>
+<table><thead><tr><th scope="col">Check</th><th scope="col">Result</th><th scope="col">Summary</th></tr></thead><tbody>${rows}</tbody></table>
+${sections}
+<footer>Overfull ${esc(report.version)} \xB7 <code>overfull explain &lt;rule&gt;</code> explains a rule.</footer>
+</main></body></html>
+`;
+}
+var esc, inline, STATUS_WORD, CHECK_WORD, SEVERITY_WORD, CSS2;
+var init_html = __esm({
+  "../packages/core/src/report/html.ts"() {
+    "use strict";
+    init_shared();
+    esc = (s) => stripUnsafe(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    inline = (s) => codeSpans(stripUnsafe(s)).map((span) => span.code ? `<code>${esc(span.text)}</code>` : esc(span.text)).join("");
+    STATUS_WORD = {
+      pass: "Pass",
+      warn: "To review",
+      fail: "To fix",
+      skipped: "Nothing checked"
+    };
+    CHECK_WORD = {
+      pass: "pass",
+      warn: "review",
+      fail: "fix",
+      skipped: "skipped"
+    };
+    SEVERITY_WORD = { error: "Fix", warning: "Review", info: "Note" };
+    CSS2 = `
+:root{color-scheme:light dark;--bg:#f6f5f1;--ink:#161a2b;--dim:#5b6274;--line:#d9d6cc;--card:#fff;
+--fail:#b3261e;--warn:#8a5a00;--pass:#1e6b3a;--info:#2f5d8a;--code:#ecebe4}
+@media (prefers-color-scheme:dark){:root{--bg:#12141c;--ink:#e8e6df;--dim:#9aa1b2;--line:#2b2f3d;
+--card:#191c27;--fail:#ff8a80;--warn:#f2c267;--pass:#7fd49b;--info:#8fbfe8;--code:#232735}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.55 ui-serif,Georgia,"Times New Roman",serif}
+main{max-width:920px;margin:0 auto;padding:40px 20px 64px}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:baseline;justify-content:space-between;
+border-bottom:2px solid var(--ink);padding-bottom:16px}
+h1{font-size:28px;line-height:1.2;margin:0;overflow-wrap:anywhere}
+.stamp{font:600 13px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;
+border:2px solid currentColor;padding:8px 12px;transform:rotate(-2deg)}
+.s-fail{color:var(--fail)}.s-warn{color:var(--warn)}.s-pass{color:var(--pass)}.s-skipped{color:var(--dim)}
+.meta,.tally{color:var(--dim);font:14px/1.5 ui-sans-serif,system-ui,sans-serif;margin:12px 0 0}
+table{width:100%;border-collapse:collapse;margin:28px 0 8px;font:15px/1.4 ui-sans-serif,system-ui,sans-serif}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;white-space:nowrap}td.st{white-space:nowrap;font-weight:600}
+h2{font-size:20px;margin:36px 0 8px}
+.p{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--dim);
+border-radius:4px;padding:12px 14px;margin:10px 0}
+.p.error{border-left-color:var(--fail)}.p.warning{border-left-color:var(--warn)}.p.info{border-left-color:var(--info)}
+.p h3{font-size:16px;margin:0;font-weight:600;overflow-wrap:anywhere}
+.tag{font:600 11px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;margin-right:8px}
+.error .tag{color:var(--fail)}.warning .tag{color:var(--warn)}.info .tag{color:var(--info)}
+.where{color:var(--dim);font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:4px;overflow-wrap:anywhere}
+.p p{margin:8px 0 0}code{font:.9em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);
+padding:1px 4px;border-radius:3px;overflow-wrap:anywhere}
+pre{margin:8px 0 0;padding:10px;background:var(--code);border-radius:4px;overflow:auto;
+font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}
+summary{cursor:pointer;color:var(--dim);font:13px/1.4 ui-sans-serif,system-ui,sans-serif;margin-top:8px}
+footer{margin-top:48px;color:var(--dim);font:13px/1.5 ui-sans-serif,system-ui,sans-serif}
+@media print{body{background:#fff}.p{break-inside:avoid}}
+`;
   }
 });
 
@@ -7900,17 +8005,17 @@ function escapeHtml(s) {
 function escapeMarkdown(s) {
   return escapeHtml(oneLine(s)).replace(/([\\`*_{}[\]|~#])/g, "\\$1");
 }
-function inline(s) {
+function inline2(s) {
   return codeSpans(oneLine(s)).map(
     (span) => span.code ? `<code>${escapeHtml(span.text).replace(/\|/g, "&#124;")}</code>` : escapeMarkdown(span.text)
   ).join("");
 }
 function problemItem(p) {
   const loc = formatLocation(p.location);
-  const head = `- **${p.severity}**${loc ? ` <code>${escapeHtml(oneLine(loc))}</code>` : ""} ${inline(p.message)} <sub>${escapeHtml(oneLine(p.rule))}</sub>`;
+  const head = `- **${p.severity}**${loc ? ` <code>${escapeHtml(oneLine(loc))}</code>` : ""} ${inline2(p.message)} <sub>${escapeHtml(oneLine(p.rule))}</sub>`;
   const sub = [];
-  if (p.detail) sub.push(`  - Why: ${inline(p.detail)}`);
-  if (p.fix) sub.push(`  - Fix: ${inline(p.fix)}`);
+  if (p.detail) sub.push(`  - Why: ${inline2(p.detail)}`);
+  if (p.fix) sub.push(`  - Fix: ${inline2(p.fix)}`);
   return [head, ...sub].join("\n");
 }
 function formatMarkdown(report) {
@@ -7919,10 +8024,10 @@ function formatMarkdown(report) {
   const word = report.status === "skipped" ? "NOTHING CHECKED" : report.status.toUpperCase();
   out.push(`## Overfull preflight: ${word}${target}`, "");
   const why2 = nothingCheckedLine(report);
-  if (why2) out.push(inline(why2), "");
+  if (why2) out.push(inline2(why2), "");
   out.push("| Check | Status | Summary |", "| --- | --- | --- |");
   for (const c of report.checks) {
-    out.push(`| ${c.check} | ${STATUS_TEXT[c.status]} | ${inline(checkLine(c))} |`);
+    out.push(`| ${c.check} | ${STATUS_TEXT[c.status]} | ${inline2(checkLine(c))} |`);
   }
   out.push("", tallyLine(tally(report)), "");
   const problems = sortedProblems(report);
@@ -8000,18 +8105,18 @@ function joinPath2(dir, rel2) {
   }
   return out.join("/");
 }
-function bibFiles(uses, main3) {
+function bibFiles(uses, main2) {
   const out = [];
   for (const use of uses) {
     if (use.name === "addbibresource") {
       const arg = use.arg.trim();
       if (/location\s*=\s*remote/.test(use.optional ?? "") || /^[a-z]+:\/\//i.test(arg)) continue;
-      if (arg && !isAbsolute(arg)) out.push(joinPath2(dirname(main3), arg));
+      if (arg && !isAbsolute(arg)) out.push(joinPath2(dirname(main2), arg));
     } else if (use.name === "bibliography") {
       for (const raw of use.arg.split(",")) {
         const name = raw.trim();
         if (!name || isAbsolute(name)) continue;
-        out.push(joinPath2(dirname(main3), /\.bib$/i.test(name) ? name : `${name}.bib`));
+        out.push(joinPath2(dirname(main2), /\.bib$/i.test(name) ? name : `${name}.bib`));
       }
     }
   }
@@ -8735,9 +8840,9 @@ function pageLimitText(profile, ctx) {
   const max = profile.pageLimit?.max;
   if (max === void 0) return void 0;
   const total = ctx.facts?.pageCount;
-  const main3 = mainTextPages(profile, ctx);
-  if (main3 !== void 0)
-    return `main text ${pages(main3)}, limit ${max}${total !== void 0 ? ` (${total} in total)` : ""}`;
+  const main2 = mainTextPages(profile, ctx);
+  if (main2 !== void 0)
+    return `main text ${pages(main2)}, limit ${max}${total !== void 0 ? ` (${total} in total)` : ""}`;
   return total !== void 0 ? `${pages(total)}, limit ${max}` : void 0;
 }
 function pageLimitProblems(profile, ctx) {
@@ -9422,13 +9527,13 @@ var init_venues_generated = __esm({
 });
 
 // ../packages/core/src/venue/profiles.ts
-function merge(parent, inline2) {
+function merge(parent, inline3) {
   const merged = { ...parent };
-  for (const [k, v] of Object.entries(inline2)) {
+  for (const [k, v] of Object.entries(inline3)) {
     if (v !== void 0) merged[k] = v;
   }
-  if (inline2.pageLimit) merged.pageLimit = { ...parent.pageLimit, ...inline2.pageLimit };
-  if (!inline2.id) merged.id = parent.id;
+  if (inline3.pageLimit) merged.pageLimit = { ...parent.pageLimit, ...inline3.pageLimit };
+  if (!inline3.id) merged.id = parent.id;
   return merged;
 }
 function known(name, venues) {
@@ -9449,9 +9554,9 @@ function lookup(name, venues) {
 }
 function resolveProfile(nameOrInline, venues = venueProfileData) {
   if (typeof nameOrInline === "string") return lookup(nameOrInline, venues);
-  const { extends: base, ...inline2 } = nameOrInline;
-  const baseName3 = base ?? (inline2.id && known(inline2.id, venues) ? inline2.id : "generic");
-  return merge(lookup(baseName3, venues), inline2);
+  const { extends: base, ...inline3 } = nameOrInline;
+  const baseName3 = base ?? (inline3.id && known(inline3.id, venues) ? inline3.id : "generic");
+  return merge(lookup(baseName3, venues), inline3);
 }
 var ALL_CHECKS, builtinProfiles, UnknownProfileError;
 var init_profiles = __esm({
@@ -9873,6 +9978,7 @@ var init_report = __esm({
     "use strict";
     init_annotations();
     init_dedupe();
+    init_html();
     init_human();
     init_json();
     init_markdown();
@@ -17630,10 +17736,10 @@ function requireRegularFile(path) {
 function readAux(root, jobname, auxDir = ".") {
   const dir = join2(root, auxDir);
   const mainPath = insideRootOrUndefined(root, join2(dir, `${jobname}.aux`));
-  const main3 = mainPath ? readIfExists(mainPath) : void 0;
-  if (main3 === void 0) return void 0;
-  const parts = [main3];
-  for (const m of main3.matchAll(/\\@input\{([^}]+\.aux)\}/g)) {
+  const main2 = mainPath ? readIfExists(mainPath) : void 0;
+  if (main2 === void 0) return void 0;
+  const parts = [main2];
+  for (const m of main2.matchAll(/\\@input\{([^}]+\.aux)\}/g)) {
     const p = insideRootOrUndefined(root, join2(dir, m[1]));
     const extra = p ? readIfExists(p) : void 0;
     if (extra) parts.push(extra);
@@ -17827,8 +17933,8 @@ function parseChecks(v, file, field = "checks") {
   }
   return list2;
 }
-function discoverBib(root, main3) {
-  const mainPath = join3(root, main3);
+function discoverBib(root, main2) {
+  const mainPath = join3(root, main2);
   if (existsSync3(mainPath)) {
     const src = readFileSync3(mainPath, "utf8").replace(/(^|[^\\])%.*$/gm, "$1");
     const found = [];
@@ -17840,7 +17946,7 @@ function discoverBib(root, main3) {
         if (name) found.push(name.endsWith(".bib") ? name : `${name}.bib`);
       }
     }
-    const rel2 = dirname4(main3);
+    const rel2 = dirname4(main2);
     const resolved = found.map((f) => rel2 === "." || isAbsolute3(f) ? f : join3(rel2, f));
     if (resolved.length) return [...new Set(resolved)];
   }
@@ -17885,43 +17991,43 @@ function loadConfig(cwd, explicit, env = {}, opts = {}) {
   if (raw.jobname !== void 0 && typeof raw.jobname !== "string")
     throw new ConfigError(f, "`jobname` must be a string");
   const rc = latexmkrcDirs(root);
-  let main3;
+  let main2;
   let mainSource;
   let mainCandidates;
   if (opts.main !== void 0) {
-    main3 = safeRelPath(opts.main);
+    main2 = safeRelPath(opts.main);
     mainSource = "--main";
-    if (!existsSync3(join3(root, main3))) throw new UsageError(`Main file not found: ${opts.main}`);
+    if (!existsSync3(join3(root, main2))) throw new UsageError(`Main file not found: ${opts.main}`);
   } else if (raw.main !== void 0) {
-    main3 = safeRelPath(raw.main);
+    main2 = safeRelPath(raw.main);
     mainSource = "overfull.yml";
   } else {
     const found = detectMain(root, [
       .../* @__PURE__ */ new Set([".", rc.outDir ?? ".", rc.auxDir ?? rc.outDir ?? "."])
     ]);
     if (found.main) {
-      main3 = found.main;
+      main2 = found.main;
       mainSource = found.how === "main.tex" ? "main.tex" : "detected";
     } else {
-      main3 = "main.tex";
+      main2 = "main.tex";
       mainSource = "default";
       if (found.candidates.length > 1) mainCandidates = found.candidates;
     }
   }
   const jobnameSource = raw.jobname !== void 0 ? "overfull.yml" : rc.jobname ? ".latexmkrc" : "main file";
   const jobname = safeJobname(
-    raw.jobname ?? rc.jobname ?? basename2(main3).replace(/\.tex$/i, "")
+    raw.jobname ?? rc.jobname ?? basename2(main2).replace(/\.tex$/i, "")
   );
-  const bib = raw.bib !== void 0 ? stringList(raw.bib, "bib", f) : discoverBib(root, main3);
-  let inline2 = {};
+  const bib = raw.bib !== void 0 ? stringList(raw.bib, "bib", f) : discoverBib(root, main2);
+  let inline3 = {};
   let profileName = "generic";
   if (typeof raw.profile === "string") profileName = raw.profile;
-  else if (isObj2(raw.profile)) inline2 = validateVenue(raw.profile, f);
+  else if (isObj2(raw.profile)) inline3 = validateVenue(raw.profile, f);
   else if (raw.profile !== void 0) throw new ConfigError(f, "`profile` must be a profile name");
-  if (raw.venue !== void 0) inline2 = { ...inline2, ...validateVenue(raw.venue, f) };
+  if (raw.venue !== void 0) inline3 = { ...inline3, ...validateVenue(raw.venue, f) };
   let profile;
   try {
-    profile = resolveProfile({ extends: inline2.extends ?? profileName, ...inline2 });
+    profile = resolveProfile({ extends: inline3.extends ?? profileName, ...inline3 });
   } catch (err) {
     if (err instanceof UnknownProfileError) throw new ConfigError(f, err.message);
     throw err;
@@ -17959,7 +18065,7 @@ function loadConfig(cwd, explicit, env = {}, opts = {}) {
   const auxDir = build2.outDir !== void 0 ? outDir : norm(safeRelPath(rc.auxDir ?? outDir, "aux directory"));
   const config = {
     root,
-    main: main3,
+    main: main2,
     mainSource,
     ...mainCandidates ? { mainCandidates } : {},
     jobname,
@@ -17968,7 +18074,7 @@ function loadConfig(cwd, explicit, env = {}, opts = {}) {
     jobnameFromConfig: jobnameSource !== "main file",
     jobnameSource,
     profile,
-    venue: inline2,
+    venue: inline3,
     checks,
     references: { ...mailto ? { mailto } : {}, ignore, cache: cache2, requireCite, reportUncited },
     build: { engine, image, outDir, auxDir, outDirFromConfig: build2.outDir !== void 0 }
@@ -20074,7 +20180,7 @@ async function JBig2(moduleArg = {}) {
     h: _setImageData,
     f: _setLineData
   };
-  async function run2() {
+  async function run3() {
     preRun();
     var setStatus = Module["setStatus"];
     if (setStatus) {
@@ -20089,7 +20195,7 @@ async function JBig2(moduleArg = {}) {
   }
   var wasmExports;
   wasmExports = await createWasm();
-  await run2();
+  await run3();
   return Module;
 }
 async function OpenJPEG(moduleArg = {}) {
@@ -20357,7 +20463,7 @@ async function OpenJPEG(moduleArg = {}) {
     f: _setImageData,
     a: _storeErrorMessage
   };
-  async function run2() {
+  async function run3() {
     preRun();
     var setStatus = Module["setStatus"];
     if (setStatus) {
@@ -20372,7 +20478,7 @@ async function OpenJPEG(moduleArg = {}) {
   }
   var wasmExports;
   wasmExports = await createWasm();
-  await run2();
+  await run3();
   return Module;
 }
 function getInlineImageCacheKey(bytes) {
@@ -52986,13 +53092,13 @@ var init_pdf_worker = __esm({
         for (let i = 2; i < NUMBER_OF_SAMPLES; i++) {
           const rgbOffset = i * 3;
           const r = rgb[rgbOffset], g = rgb[rgbOffset + 1], b = rgb[rgbOffset + 2];
-          const run2 = i - iBase;
-          maxSlopeR = Math.min(maxSlopeR, (r - rBase + 1) / run2);
-          maxSlopeG = Math.min(maxSlopeG, (g - gBase + 1) / run2);
-          maxSlopeB = Math.min(maxSlopeB, (b - bBase + 1) / run2);
-          minSlopeR = Math.max(minSlopeR, (r - rBase - 1) / run2);
-          minSlopeG = Math.max(minSlopeG, (g - gBase - 1) / run2);
-          minSlopeB = Math.max(minSlopeB, (b - bBase - 1) / run2);
+          const run3 = i - iBase;
+          maxSlopeR = Math.min(maxSlopeR, (r - rBase + 1) / run3);
+          maxSlopeG = Math.min(maxSlopeG, (g - gBase + 1) / run3);
+          maxSlopeB = Math.min(maxSlopeB, (b - bBase + 1) / run3);
+          minSlopeR = Math.max(minSlopeR, (r - rBase - 1) / run3);
+          minSlopeG = Math.max(minSlopeG, (g - gBase - 1) / run3);
+          minSlopeB = Math.max(minSlopeB, (b - bBase - 1) / run3);
           const slopesExist = minSlopeR <= maxSlopeR && minSlopeG <= maxSlopeG && minSlopeB <= maxSlopeB;
           if (!slopesExist) {
             const cssColor = Util.makeHexColor(rPrev, gPrev, bPrev);
@@ -119252,15 +119358,6 @@ function missingPdfReason(inp) {
   if (inp.factsError) return `Could not read ${inp.pdfPath}: ${inp.factsError}`;
   return missingReason(inp, inp.pdfPath);
 }
-function mergeOutput(output, pdfProblems) {
-  const has = (re) => output.problems.some((p) => re.test(p.rule));
-  const extra = pdfProblems.filter(
-    (p) => p.rule === "pdf-unresolved-reference" ? !has(/undefined-reference|reference-undefined/) : !has(/undefined-citation|citation-undefined/)
-  );
-  if (extra.length === 0) return output;
-  const problems = [...output.problems, ...extra];
-  return { ...output, status: statusOf(problems), problems, summary: outputSummary(problems) };
-}
 function bibliographyAttribution(config, bib = config.bib, texFiles) {
   const root = config.root;
   const bblRel = join5(config.build.auxDir, `${config.jobname}.bbl`).split("\\").join("/");
@@ -119589,9 +119686,9 @@ async function runCheck(opts = {}) {
     checks: results
   };
 }
-function sarifFallbackFile(cwd, env, configPath, main3) {
+function sarifFallbackFile(cwd, env, configPath, main2) {
   try {
-    const cfg = loadConfig(cwd, configPath, env, main3 ? { main: main3 } : {});
+    const cfg = loadConfig(cwd, configPath, env, main2 ? { main: main2 } : {});
     return existsSync4(join5(cfg.root, cfg.main)) ? cfg.main : void 0;
   } catch {
     return void 0;
@@ -119629,10 +119726,97 @@ var init_check3 = __esm({
   }
 });
 
-// src/index.ts
-import { appendFileSync, writeFileSync as writeFileSync3 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join as join6, relative as relative8, resolve as resolve4 } from "node:path";
+// ../packages/cli/src/gcc.ts
+function gccLine(p) {
+  const severity = SEVERITY[p.severity];
+  const page = p.location?.page && !p.location.file ? `page ${p.location.page}: ` : "";
+  const message = `${page}${oneLine(p.message)} [${p.rule}]`;
+  const file = p.location?.file;
+  if (!file) return `overfull: ${severity}: ${message}`;
+  return `${oneLine(file)}:${p.location?.line ?? 1}:1: ${severity}: ${message}`;
+}
+function formatGcc(report) {
+  const lines = sortedProblems(report).map(gccLine);
+  return lines.length ? `${lines.join("\n")}
+` : "";
+}
+var SEVERITY, WORKSPACE, VSCODE_TASKS;
+var init_gcc = __esm({
+  "../packages/cli/src/gcc.ts"() {
+    "use strict";
+    init_src();
+    SEVERITY = { error: "error", warning: "warning", info: "note" };
+    WORKSPACE = "${workspaceFolder}";
+    VSCODE_TASKS = `${JSON.stringify(
+      {
+        version: "2.0.0",
+        tasks: [
+          {
+            label: "overfull check",
+            type: "shell",
+            command: "overfull",
+            args: ["check", "--gcc"],
+            options: { cwd: WORKSPACE },
+            group: "test",
+            presentation: { reveal: "silent", clear: true },
+            problemMatcher: {
+              owner: "overfull",
+              source: "overfull",
+              fileLocation: ["relative", WORKSPACE],
+              pattern: {
+                regexp: "^(.+?):(\\d+):(\\d+): (error|warning|note): (.*) \\[([a-z0-9-]+)\\]$",
+                file: 1,
+                line: 2,
+                column: 3,
+                severity: 4,
+                message: 5,
+                code: 6
+              }
+            }
+          }
+        ]
+      },
+      null,
+      2
+    )}
+`;
+  }
+});
+
+// ../packages/cli/src/report.ts
+function renderReport(report, format, opts) {
+  const root = opts.root ? { root: opts.root } : {};
+  switch (format) {
+    case "json":
+      return formatJson(report);
+    case "markdown":
+      return formatMarkdown(report);
+    case "html":
+      return formatHtml(report);
+    case "gcc":
+      return formatGcc(report);
+    case "sarif": {
+      const fallbackFile = sarifFallbackFile(opts.cwd, opts.env, opts.configPath, opts.main);
+      return formatSarif(report, { ...root, ...fallbackFile ? { fallbackFile } : {} });
+    }
+    case "annotations": {
+      const lines = githubAnnotations(report, {
+        ...root,
+        ...opts.annotationLimit ? { limit: opts.annotationLimit } : {}
+      });
+      return lines.length ? `${lines.join("\n")}
+` : "";
+    }
+  }
+}
+var init_report2 = __esm({
+  "../packages/cli/src/report.ts"() {
+    "use strict";
+    init_src();
+    init_check3();
+    init_gcc();
+  }
+});
 
 // ../packages/cli/src/index.ts
 init_src();
@@ -119667,8 +119851,14 @@ Run \`overfull <command> --help\` for options. Docs: https://amet13.github.io/ov
 
 // ../packages/cli/src/index.ts
 init_pdf3();
+init_report2();
 init_safety();
 init_version();
+
+// src/main.ts
+import { appendFileSync, writeFileSync as writeFileSync3 } from "node:fs";
+import { tmpdir } from "node:os";
+import { join as join6, relative as relative8, resolve as resolve4 } from "node:path";
 
 // src/inputs.ts
 import { isAbsolute as isAbsolute5, resolve as resolve3 } from "node:path";
@@ -119730,15 +119920,14 @@ ${delimiter2}
 `;
 }
 
-// src/index.ts
-function setOutput(name, value) {
-  const file = process.env.GITHUB_OUTPUT;
-  if (file) appendFileSync(file, outputRecord(name, value));
-  else process.stdout.write(`${name}=${escapeData2(value)}
+// src/main.ts
+async function run2(env, write) {
+  const setOutput = (name, value) => {
+    const file = env.GITHUB_OUTPUT;
+    if (file) appendFileSync(file, outputRecord(name, value));
+    else write(`${name}=${escapeData2(value)}
 `);
-}
-async function main2() {
-  const env = process.env;
+  };
   const workspace = env.GITHUB_WORKSPACE ?? process.cwd();
   const inputs = readInputs(env, workspace);
   for (const c of inputs.check.checks ?? []) {
@@ -119748,39 +119937,31 @@ async function main2() {
   }
   const report = await runCheck(inputs.check);
   const guard = stopCommands();
-  process.stdout.write(
+  write(
     `${guard.start}${neutralizeWorkflowCommands(formatHuman(report, { color: true, verbose: true }))}${guard.end}`
   );
-  if (inputs.annotations) {
-    const root = relative8(workspace, resolve4(inputs.check.cwd ?? workspace)) || ".";
-    for (const line of githubAnnotations(report, { root, limit: 50 }))
-      process.stdout.write(`${line}
-`);
-  }
+  const cwd = resolve4(inputs.check.cwd ?? workspace);
+  const render = { cwd, env, root: relative8(workspace, cwd) || "." };
+  if (inputs.annotations)
+    write(renderReport(report, "annotations", { ...render, annotationLimit: 50 }));
   if (inputs.summary && env.GITHUB_STEP_SUMMARY) {
-    appendFileSync(env.GITHUB_STEP_SUMMARY, `${formatMarkdown(report)}
+    appendFileSync(env.GITHUB_STEP_SUMMARY, `${renderReport(report, "markdown", render)}
 `);
   }
   const reportPath = join6(env.RUNNER_TEMP ?? tmpdir(), "overfull-report.json");
-  writeFileSync3(reportPath, formatJson(report));
+  writeFileSync3(reportPath, renderReport(report, "json", render));
   if (inputs.sarif) {
-    const cwd = resolve4(inputs.check.cwd ?? workspace);
-    const fallbackFile = sarifFallbackFile(cwd, env);
     const target = reportTarget(workspace, inputs.sarif, 'Input "sarif"');
-    writeReport(
-      target,
-      formatSarif(report, {
-        root: relative8(workspace, cwd) || ".",
-        ...fallbackFile ? { fallbackFile } : {}
-      })
-    );
+    writeReport(target, renderReport(report, "sarif", render));
     setOutput("sarif", target.path);
   }
   setOutput("status", report.status);
   setOutput("report", reportPath);
   return exitCodeFor(report, inputs.failOn);
 }
-main2().then(
+
+// src/index.ts
+run2(process.env, (text2) => process.stdout.write(text2)).then(
   (code3) => {
     process.exitCode = code3;
   },

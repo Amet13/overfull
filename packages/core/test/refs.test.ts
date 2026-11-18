@@ -27,6 +27,7 @@ import {
   verifyEntries,
 } from '../src/refs/index.js';
 import { handlerFetch, json } from './fixtures/refs/fake-fetch.js';
+import { atom, fast } from './helpers.js';
 
 const RAFT = `@inproceedings{ongaro2014search,
   author = {Ongaro, Diego and Ousterhout, John},
@@ -70,8 +71,6 @@ const raftDblp = {
 const emptyCrossref = { message: { items: [] } };
 const emptyDblp = { result: { hits: { '@total': '0' } } };
 const emptyAtom = '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>';
-const atom = (body: string) =>
-  new Response(body, { headers: { 'content-type': 'application/atom+xml' } });
 
 /** Routes by host; each route returns a Response. */
 function router(routes: Partial<Record<string, (u: URL) => Response>>) {
@@ -88,7 +87,6 @@ const allEmpty = {
   'export.arxiv.org': () => atom(emptyAtom),
 };
 
-const fast = { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
 const results = (r: RefResult | undefined): RefResult[] => (r ? [r] : []);
 
 describe('identifiers and query parsing', () => {

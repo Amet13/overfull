@@ -16,6 +16,7 @@ export { type Config, DEFAULT_IMAGE, loadConfig } from './config.js';
 export { type Io, processIo, UsageError } from './io.js';
 export { main } from './main.js';
 export { loadPdfjs, readPdfFacts } from './pdf.js';
+export { REPORT_FORMATS, type RenderOptions, type ReportFormat, renderReport } from './report.js';
 export {
   isCI,
   neutralizeWorkflowCommands,

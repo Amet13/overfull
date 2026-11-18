@@ -35,11 +35,27 @@ export interface ToolContext {
   allowBuild?: boolean;
 }
 
+/** The JSON Schema subset the tool arguments use: one typed property each. */
+export type PropertySchema = { description?: string } & (
+  | { type: 'string'; minLength?: number; maxLength: number; pattern?: string }
+  | { type: 'boolean' }
+  | { type: 'integer'; minimum: number; maximum: number }
+  | { type: 'array'; maxItems: number; items: { type: 'string'; enum: string[] } }
+);
+
+/** A tool's input: an object with typed properties, `required`, no extra properties. */
+export interface InputSchema {
+  type: 'object';
+  properties: Record<string, PropertySchema>;
+  required?: string[];
+  additionalProperties: false;
+}
+
 export interface ToolDef {
   name: string;
   title: string;
   description: string;
-  inputSchema: Json;
+  inputSchema: InputSchema;
   annotations: {
     title: string;
     readOnlyHint: boolean;
@@ -60,12 +76,12 @@ export function toolList(tools: ToolDef[]): Json[] {
  * object with typed properties, `required`, no extra properties. Returns a
  * message for the first problem, or undefined.
  */
-export function validateArgs(schema: Json, args: Json): string | undefined {
-  const props = (schema.properties ?? {}) as Record<string, Json>;
+export function validateArgs(schema: InputSchema, args: Json): string | undefined {
+  const props = schema.properties;
   for (const key of Object.keys(args)) {
     if (!Object.hasOwn(props, key)) return `unknown argument "${key.slice(0, 50)}"`;
   }
-  for (const key of (schema.required as string[] | undefined) ?? []) {
+  for (const key of schema.required ?? []) {
     if (args[key] === undefined) return `"${key}" is required`;
   }
   for (const [key, spec] of Object.entries(props)) {
@@ -75,9 +91,9 @@ export function validateArgs(schema: Json, args: Json): string | undefined {
     switch (spec.type) {
       case 'string': {
         if (typeof v !== 'string') return bad('must be a string');
-        if (v.length < ((spec.minLength as number | undefined) ?? 0)) return bad('is too short');
-        if (v.length > (spec.maxLength as number)) return bad('is too long');
-        if (typeof spec.pattern === 'string' && !new RegExp(spec.pattern).test(v))
+        if (v.length < (spec.minLength ?? 0)) return bad('is too short');
+        if (v.length > spec.maxLength) return bad('is too long');
+        if (spec.pattern !== undefined && !new RegExp(spec.pattern).test(v))
           return bad(`has characters that are not allowed (pattern ${spec.pattern})`);
         break;
       }
@@ -85,14 +101,14 @@ export function validateArgs(schema: Json, args: Json): string | undefined {
         if (typeof v !== 'boolean') return bad('must be true or false');
         break;
       case 'integer':
-        if (!Number.isInteger(v)) return bad('must be an integer');
-        if ((v as number) < (spec.minimum as number) || (v as number) > (spec.maximum as number))
+        if (typeof v !== 'number' || !Number.isInteger(v)) return bad('must be an integer');
+        if (v < spec.minimum || v > spec.maximum)
           return bad(`must be between ${spec.minimum} and ${spec.maximum}`);
         break;
       case 'array': {
         if (!Array.isArray(v)) return bad('must be an array');
-        if (v.length > (spec.maxItems as number)) return bad('has too many items');
-        const allowed = (spec.items as Json).enum as string[];
+        if (v.length > spec.maxItems) return bad('has too many items');
+        const allowed = spec.items.enum;
         for (const item of v) {
           if (typeof item !== 'string' || !allowed.includes(item))
             return bad(`items must be one of: ${allowed.join(', ')}`);
@@ -231,7 +247,7 @@ function readPng(cwd: string, file: string, limit: number): Buffer | undefined {
   }
 }
 
-const noArgs = { type: 'object', properties: {}, additionalProperties: false };
+const noArgs: InputSchema = { type: 'object', properties: {}, additionalProperties: false };
 
 export function createTools(ctx: ToolContext): ToolDef[] {
   const allowBuild = ctx.allowBuild === true;

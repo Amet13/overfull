@@ -1,31 +1,16 @@
 /** Provenance is tamper-evident; cite --json reports what core says answered. */
-import { chmodSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { formatBibEntry, markCited, parseBib, type Report } from '@overfull/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { citeCommand } from '../src/commands/cite.js';
 import { main } from '../src/main.js';
-import { memIo, tempDir } from './helpers.js';
-
-/** Shell-script fakes on PATH and FIFOs do not exist on Windows; these tests run on Linux and macOS. */
-const _POSIX_ONLY = process.platform === 'win32';
+import { memIo, problems, tempDir } from './helpers.js';
 
 const savedPath = process.env.PATH;
 afterEach(() => {
   process.env.PATH = savedPath;
 });
-
-function _fakeBin(scripts: Record<string, string>): string {
-  const dir = tempDir();
-  for (const [name, body] of Object.entries(scripts)) {
-    const p = join(dir, name);
-    writeFileSync(p, `#!/bin/sh\n${body}\n`);
-    chmodSync(p, 0o755);
-  }
-  return dir;
-}
-
-const problems = (r: Report) => r.checks.flatMap((c) => c.problems);
 
 describe('A1: provenance is tamper-evident and offline is not a pass', () => {
   function project(bib: string): string {

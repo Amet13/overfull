@@ -1,3 +1,6 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { allRules, getRule } from '../src/rules.js';
 import { CHECK_IDS } from '../src/types.js';
@@ -38,5 +41,44 @@ describe('rule registry', () => {
       title: 'PDF/UA clause 6.9.9 failed (veraPDF)',
     });
     expect(getRule('no-such-rule')).toBeUndefined();
+  });
+});
+
+describe('every rule is tested', () => {
+  const root = fileURLToPath(new URL('../../..', import.meta.url));
+  /** Rules that cannot have a test or corpus case. Keep this short and say why for each. */
+  const EXEMPT = new Map<string, string>([]);
+
+  /** All test sources, and the rule ids each corpus case expects. */
+  function evidence(): { tests: string; corpus: Set<string> } {
+    let tests = '';
+    for (const dir of ['packages/core/test', 'packages/cli/test', 'site/tests']) {
+      for (const f of readdirSync(join(root, dir), { recursive: true }) as string[]) {
+        if (f.endsWith('.ts') && f !== 'rules.test.ts')
+          tests += readFileSync(join(root, dir, f), 'utf8');
+      }
+    }
+    const corpus = new Set<string>();
+    for (const c of readdirSync(join(root, 'corpus'))) {
+      const file = join(root, 'corpus', c, 'case.json');
+      if (!existsSync(file)) continue;
+      for (const id of (JSON.parse(readFileSync(file, 'utf8')) as { expect: string[] }).expect)
+        corpus.add(id);
+    }
+    return { tests, corpus };
+  }
+
+  it('names each rule id in a test or a corpus case', () => {
+    const { tests, corpus } = evidence();
+    const untested = allRules()
+      .map((r) => r.id)
+      .filter((id) => !EXEMPT.has(id))
+      .filter((id) => !corpus.has(id) && !tests.includes(`'${id}'`) && !tests.includes(`"${id}"`));
+    expect(untested, 'add a unit test or a corpus case for these rules').toEqual([]);
+  });
+
+  it('exempts only rules that exist', () => {
+    const ids = new Set(allRules().map((r) => r.id));
+    for (const id of EXEMPT.keys()) expect(ids.has(id), id).toBe(true);
   });
 });

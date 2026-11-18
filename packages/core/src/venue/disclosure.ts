@@ -70,11 +70,6 @@ function findDisclosure(ctx: VenueContext): Found | null {
   return null;
 }
 
-/** True when the source or PDF contains an AI-use disclosure heading or label. */
-export function hasDisclosure(ctx: VenueContext): boolean {
-  return findDisclosure(ctx) !== null;
-}
-
 export function disclosureProblems(level: Level | undefined, ctx: VenueContext): Problem[] {
   if (!level || level === 'off') return [];
   if (!ctx.texFiles?.length && !ctx.facts) return [];

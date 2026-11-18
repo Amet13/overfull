@@ -4,7 +4,7 @@
  * minutes.
  */
 import { describe, expect, it } from 'vitest';
-import { hasOthers, parseBib, parseNames } from '../src/bib/index.js';
+import { parseBib, parseNames } from '../src/bib/index.js';
 import { analyzeLog, attributeBibliography, parseLog } from '../src/log/index.js';
 import { stripCdata } from '../src/refs/normalize.js';
 import { findCommands, grepTex } from '../src/venue/tex.js';
@@ -46,20 +46,16 @@ describe('1 MB crafted bib and tex sources stay linear', () => {
   it('author field with a long run of spaces', () => {
     const author = `A${' '.repeat(MB)}x`;
     expect(timed(() => parseNames(author))).toBeLessThan(LIMIT_MS);
-    expect(timed(() => hasOthers(author))).toBeLessThan(LIMIT_MS);
     expect(
       timed(() => parseBib(`@article{k, author={${author}}, title={T}, year={2020}}\n`)),
     ).toBeLessThan(LIMIT_MS);
   });
 
-  it('still splits names and detects "and others"', () => {
+  it('still splits names and drops "and others"', () => {
     expect(parseNames('Doe, Jane   and  John Smith and others').map((n) => n.family)).toEqual([
       'Doe',
       'Smith',
     ]);
-    expect(hasOthers('Doe, Jane and others ')).toBe(true);
-    expect(hasOthers('Doe, Jane and Others')).toBe(true);
-    expect(hasOthers('Doe, Jane andothers')).toBe(false);
   });
 
   it('unclosed command arguments and many matches', () => {

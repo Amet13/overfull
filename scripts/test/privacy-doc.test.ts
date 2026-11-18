@@ -97,9 +97,9 @@ describe('What leaves your machine (references.md)', () => {
   });
 
   it('lists exactly the hosts the browser check asks', () => {
-    const check = read('site/src/scripts/check.ts');
+    const check = read('site/src/scripts/pipeline.ts');
     const list = /sources:\s*\[([^\]]*)\]/.exec(check)?.[1];
-    expect(list, 'site/src/scripts/check.ts passes no sources list').toBeTruthy();
+    expect(list, 'site/src/scripts/pipeline.ts passes no sources list').toBeTruthy();
     const asked = new Set(
       [...(list as string).matchAll(/'([^']+)'/g)].map((m) => SOURCE_HOST[m[1] as string]),
     );
