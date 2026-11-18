@@ -141,10 +141,13 @@ Options for --here (existing project, current folder):
                   does not exist; otherwise the line to add is printed. With --agents
                   the hook settings for Claude Code and Gemini CLI are written too
                   (merged into an existing .claude/settings.json or .gemini/settings.json).
+  --vscode        Also write .vscode/tasks.json: an "overfull check" task whose
+                  problems show in VS Code's Problems panel (\`check --gcc\`); an
+                  existing tasks.json is not touched. Not part of --all.
   --all           --agents --ci --make --hooks
   --force         Overwrite files that exist and differ (never a Makefile)
   --dry-run       Write nothing; print what would be written
-On a terminal (stdin and stdout), with none of --agents/--ci/--make/--hooks/--all
+On a terminal (stdin and stdout), with none of --agents/--ci/--make/--hooks/--vscode/--all
 and no --yes, agents, ci and make are asked about (default no); anywhere else
 only overfull.yml is written, and the output says what was done.
 Existing files are never overwritten without --force. Safe to run again.
@@ -169,6 +172,7 @@ export async function initCommand(args: string[], ioIn: Io): Promise<number> {
       ci: { type: 'boolean' },
       make: { type: 'boolean' },
       hooks: { type: 'boolean' },
+      vscode: { type: 'boolean' },
       all: { type: 'boolean' },
       'dry-run': { type: 'boolean' },
       yes: { type: 'boolean', short: 'y' },
@@ -182,7 +186,7 @@ export async function initCommand(args: string[], ioIn: Io): Promise<number> {
     return 0;
   }
   if (values.here === true) return adoptHere(values, positionals, io);
-  for (const flag of ['main', 'agents', 'ci', 'make', 'hooks', 'all', 'dry-run'])
+  for (const flag of ['main', 'agents', 'ci', 'make', 'hooks', 'vscode', 'all', 'dry-run'])
     if (values[flag] !== undefined)
       throw new UsageError(
         `--${flag} works only with --here (adding Overfull to the current folder).`,
@@ -320,12 +324,14 @@ async function adoptHere(
     values.agents === true ||
     values.ci === true ||
     values.make === true ||
-    values.hooks === true;
+    values.hooks === true ||
+    values.vscode === true;
   const parts = {
     agents: all || values.agents === true,
     ci: all || values.ci === true,
     make: all || values.make === true,
     hooks: all || values.hooks === true,
+    vscode: values.vscode === true,
   };
   const asking = !flagged && canAsk(io) && values.json !== true;
   if (asking) {

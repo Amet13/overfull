@@ -15,6 +15,7 @@ import {
 import { dirname, join } from 'node:path';
 import { profilesForStyleFile } from '@overfull/core';
 import { DEFAULT_IMAGE, latexmkrcDirs } from './config.js';
+import { VSCODE_TASKS } from './gcc.js';
 import { HOOK_SETTINGS_FILES, mergeHookSettings } from './guard/settings.js';
 import { UsageError } from './io.js';
 import { ambiguousMainError, detectMain, listFiles, MAX_TEX_BYTES } from './project.js';
@@ -526,6 +527,8 @@ export interface Parts {
   make: boolean;
   /** A git pre-commit hook (`--hooks`); installed by the caller, not part of the plan. */
   hooks?: boolean;
+  /** `.vscode/tasks.json` with an `overfull check` task and its problem matcher (`--vscode`). */
+  vscode?: boolean;
 }
 
 export interface PlannedFile {
@@ -533,7 +536,7 @@ export interface PlannedFile {
   content: string | Buffer;
   /** Why the file is part of the run (printed with it). */
   note: string;
-  /** A Makefile is never overwritten, even with --force. */
+  /** A Makefile or .vscode/tasks.json is never overwritten, even with --force. */
   neverOverwrite?: boolean;
   /** Hook settings: when the file exists, the hook entry is merged in and other keys are kept. */
   mergeHooks?: boolean;
@@ -585,6 +588,13 @@ export function planAdopt(d: Detected, parts: Parts, root: string): Plan {
       path: 'Makefile',
       content: renderMakefile(d),
       note: 'build and check targets',
+      neverOverwrite: true,
+    });
+  if (parts.vscode)
+    files.push({
+      path: '.vscode/tasks.json',
+      content: VSCODE_TASKS,
+      note: 'VS Code task: problems in the editor',
       neverOverwrite: true,
     });
   return { files, ...(link ? { link } : {}) };
@@ -669,7 +679,13 @@ export function applyPlan(
         continue;
       }
       if (f.neverOverwrite) {
-        result.skipped.push({ path: f.path, reason: 'exists; left untouched' });
+        result.skipped.push({
+          path: f.path,
+          reason:
+            f.path === '.vscode/tasks.json'
+              ? 'exists; left untouched (add the task from the CLI guide by hand)'
+              : 'exists; left untouched',
+        });
         if (f.path === 'Makefile') result.makefileLines = makefileSnippet(d);
         continue;
       }

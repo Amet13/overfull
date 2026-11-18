@@ -12,6 +12,7 @@ import {
 import { list, type Parsed, parse, str } from '../args.js';
 import { exitCodeFor, runCheck, sarifFallbackFile } from '../check.js';
 import { loadConfig, locateProject, parseChecks } from '../config.js';
+import { formatGcc } from '../gcc.js';
 import { type Io, noteProject, progressLine, UsageError, useColor } from '../io.js';
 import { isCI, type ReportTarget, reportTarget, writeReport } from '../safety.js';
 
@@ -44,8 +45,10 @@ Options:
   --annotations       Print GitHub workflow annotations
   --sarif             Print a SARIF 2.1.0 log (GitHub code scanning upload)
   --html              Print a self-contained HTML page of the report (to share or attach)
-  --write fmt=file    Also write the report to a file: json, markdown, annotations, sarif
-                      or html. Repeat it to get several formats from one run, e.g.
+  --gcc               Print one line per problem for editors (VS Code tasks, Vim
+                      quickfix, Emacs): file:line:col: error|warning|note: message [rule]
+  --write fmt=file    Also write the report to a file: json, markdown, annotations, sarif,
+                      html or gcc. Repeat it to get several formats from one run, e.g.
                       --write json=report.json --write markdown=summary.md
                       A relative file must stay inside the project and not be a symlink.
   --verbose, -v       Show why and how to fix each problem
@@ -126,7 +129,7 @@ function classifyFiles(
   return out;
 }
 
-const WRITE_FORMATS = ['json', 'markdown', 'annotations', 'sarif', 'html'] as const;
+const WRITE_FORMATS = ['json', 'markdown', 'annotations', 'sarif', 'html', 'gcc'] as const;
 type WriteFormat = (typeof WRITE_FORMATS)[number];
 
 /**
@@ -167,6 +170,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
       annotations: { type: 'boolean' },
       sarif: { type: 'boolean' },
       html: { type: 'boolean' },
+      gcc: { type: 'boolean' },
       write: { type: 'string', multiple: true },
       verbose: { type: 'boolean', short: 'v' },
       watch: { type: 'boolean' },
@@ -191,7 +195,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
   if (!['error', 'warning', 'never'].includes(failOn)) {
     throw new UsageError(`--fail-on must be error, warning or never, got "${failOn}"`);
   }
-  const formats = ['json', 'markdown', 'annotations', 'sarif', 'html'].filter((f) => values[f]);
+  const formats = WRITE_FORMATS.filter((f) => values[f]);
   if (formats.length > 1)
     throw new UsageError(
       `Choose one output format, not ${formats.map((f) => `--${f}`).join(' and ')}`,
@@ -209,7 +213,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
   noteProject(io, location);
   if (values.watch && machine)
     throw new UsageError(
-      '--watch prints the human report; leave out --json, --markdown, --annotations, --sarif and --html',
+      '--watch prints the human report; leave out --json, --markdown, --annotations, --sarif, --html and --gcc',
     );
   const progress = machine || isCI(io.env) ? undefined : progressLine(io, 'references');
   // check --watch keeps each entry's last answer, so an offline re-run does not forget them.
@@ -251,6 +255,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
       if (format === 'json') return formatJson(report);
       if (format === 'markdown') return formatMarkdown(report);
       if (format === 'html') return formatHtml(report);
+      if (format === 'gcc') return formatGcc(report);
       if (format === 'sarif') {
         const fallbackFile = sarifFallbackFile(cwd, io.env, str(values.config), files.main);
         return formatSarif(report, fallbackFile ? { fallbackFile } : {});

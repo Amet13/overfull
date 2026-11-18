@@ -7,13 +7,13 @@ section: Reference
 
 ```text
 overfull init [thesis|paper|slides] [dir] [--force] [--no-git] [--yes] [--json]
-overfull init --here [--main file] [--agents] [--ci] [--make] [--hooks] [--all] [--force]
-                     [--dry-run] [--yes] [--json]
+overfull init --here [--main file] [--agents] [--ci] [--make] [--hooks] [--vscode] [--all]
+                     [--force] [--dry-run] [--yes] [--json]
 overfull build [main.tex] [--engine auto|local|docker] [--image name] [--verbose] [--force]
                [--json] [--config file]
 overfull check [file...] [--main file] [--checks a,b] [--profile name] [--offline] [--refresh]
                [--project-cache] [--watch] [--fail-on error|warning|never]
-               [--json | --markdown | --annotations | --sarif | --html] [--verbose]
+               [--json | --markdown | --annotations | --sarif | --html | --gcc] [--verbose]
                [--write format=file ...]
                [--pdf file] [--log file] [--aux file] [--bib a.bib,b.bib]
                [--mailto address] [--no-verapdf] [--engine auto|local|docker] [--image name]
@@ -70,8 +70,37 @@ To add Overfull to a project you already have, run `overfull init --here` in
 its folder (alias `overfull adopt`). It detects the main file, engine,
 bibliography and venue style file, writes `overfull.yml`, and never touches a
 `.tex` or `.bib` file. Options: `--main <file>`, `--agents`, `--ci`, `--make`,
-`--hooks`, `--all`, `--force`, `--dry-run`, `--yes`; `--json` prints `{detected, written, skipped}`.
+`--hooks`, `--vscode`, `--all`, `--force`, `--dry-run`, `--yes`; `--json` prints `{detected, written, skipped}`.
 See [Add Overfull to an existing project](./existing-project.md).
+
+`--vscode` writes `.vscode/tasks.json` with one task, `overfull check`, that runs
+`overfull check --gcc` and puts each problem in VS Code's Problems panel, on its
+file and line. No extension is needed. Run it with **Terminal → Run Task… →
+overfull check**. It is opt-in and not part of `--all`. An existing `tasks.json`
+is never changed, even with `--force`; add the task to it by hand:
+
+```json
+{
+  "label": "overfull check",
+  "type": "shell",
+  "command": "overfull",
+  "args": ["check", "--gcc"],
+  "options": { "cwd": "${workspaceFolder}" },
+  "group": "test",
+  "problemMatcher": {
+    "owner": "overfull",
+    "source": "overfull",
+    "fileLocation": ["relative", "${workspaceFolder}"],
+    "pattern": {
+      "regexp": "^(.+?):(\\d+):(\\d+): (error|warning|note): (.*) \\[([a-z0-9-]+)\\]$",
+      "file": 1, "line": 2, "column": 3, "severity": 4, "message": 5, "code": 6
+    }
+  }
+}
+```
+
+The task expects the folder open in VS Code to be the project folder (the one
+with `overfull.yml`).
 
 `init` asks questions (which extras to add, whether to set `references.mailto`)
 only when both stdin and stdout are terminals, and not with `--yes` or `--json`.
@@ -165,7 +194,8 @@ those files. Any other extension is a usage error (exit 2).
 | `--annotations` | Print GitHub workflow annotations. |
 | `--sarif` | Print a SARIF 2.1.0 log, for GitHub code scanning (see [the Action](./action.md#code-scanning-sarif)). Problems without a source file point at the main file, line 1. |
 | `--html` | Print the report as one self-contained HTML page (light and dark, printable, no scripts): to keep, attach to a CI run or send to a co-author. |
-| `--write format=file` | Also write the report to a file, in `json`, `markdown`, `annotations`, `sarif` or `html`. Repeat it for several formats from one run: `--write json=report.json --write html=report.html`. A relative path (or an absolute one inside the project) must stay inside the project and must not be a symlink; an absolute path outside the project, such as `$GITHUB_STEP_SUMMARY`, is fine. |
+| `--gcc` | Print one line per problem in the format compilers use, `file:line:col: error\|warning\|note: message [rule]`, errors first. Editors read it without an extension: a VS Code task (`init --here --vscode`), Vim's quickfix (`:set makeprg=overfull\ check\ --gcc`), Emacs `M-x compile`. The column is always 1, and the line is 1 for a problem in a whole file. A problem in no file (a PDF page, the bibliography as a whole) starts with `overfull:` instead, which editors show in the output but do not attach to a file. |
+| `--write format=file` | Also write the report to a file, in `json`, `markdown`, `annotations`, `sarif`, `html` or `gcc`. Repeat it for several formats from one run: `--write json=report.json --write html=report.html`. A relative path (or an absolute one inside the project) must stay inside the project and must not be a symlink; an absolute path outside the project, such as `$GITHUB_STEP_SUMMARY`, is fine. |
 | `--verbose`, `-v` | Show why each problem happened and how to fix it. |
 | `--pdf file` | PDF to check (default `<jobname>.pdf`). |
 | `--log file` | Build log (default `<jobname>.log`). |
@@ -177,9 +207,9 @@ those files. Any other extension is a usage error (exit 2).
 | `--image name` | Docker image for veraPDF and `pdffonts`. Default: `$OVERFULL_IMAGE`, else `ghcr.io/amet13/overfull:3-slim`. |
 | `--config file` | Config file (default `overfull.yml`). |
 
-Use only one of `--json`, `--markdown`, `--annotations`, `--sarif` and `--html` for what is printed; combining them is a usage error (exit 2). `--write` adds files on top of any of them, so one run can print annotations and write the job summary: `overfull check --annotations --write markdown="$GITHUB_STEP_SUMMARY"`. The exit code is the same for every format.
+Use only one of `--json`, `--markdown`, `--annotations`, `--sarif`, `--html` and `--gcc` for what is printed; combining them is a usage error (exit 2). `--write` adds files on top of any of them, so one run can print annotations and write the job summary: `overfull check --annotations --write markdown="$GITHUB_STEP_SUMMARY"`. The exit code is the same for every format.
 
-On an interactive terminal, the references check shows one updating line (`references 12/31`) on stderr. It is not shown in CI, when stderr is redirected, or with `--json`, `--markdown`, `--annotations` or `--sarif`.
+On an interactive terminal, the references check shows one updating line (`references 12/31`) on stderr. It is not shown in CI, when stderr is redirected, or with `--json`, `--markdown`, `--annotations`, `--sarif`, `--html` or `--gcc`.
 
 If `verapdf` is on
 the `PATH`, the accessibility check runs it (PDF/UA-2, falling back to PDF/UA-1

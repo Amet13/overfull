@@ -37,6 +37,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 - Thesis template: front matter with roman page numbers (declaration of originality, acknowledgments, AI-use statement, contents, lists of figures and tables), and `\appendixsection{Title}`, which letters itself.
 - Slides template: references (biblatex, `make cite`) and the basic accessibility rules (title, language, alt text) as warnings.
 - Templates: `make cite ARGS=...`, `make explain RULE=...`, `make doctor` and `make check ARGS=...`, so an agent with only Docker can follow the loop; a `.pre-commit-config.yaml` with the `overfull guard --staged` hook.
+- `overfull check --gcc` (and `--write gcc=file`) prints `file:line:col: error|warning|note: message [rule]`, which editors read without an extension.
+- `overfull init --here --vscode` writes `.vscode/tasks.json`: an `overfull check` task whose problems show in VS Code's Problems panel. Opt-in, not part of `--all`.
 - `start-paper` skill: the venue ids and how to move to a venue's style kit (official class unchanged, paper size, and building without tagging for IEEEtran and llncs).
 - A root `AGENTS.md` for agents working on this repository.
 
