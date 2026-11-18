@@ -10,13 +10,17 @@
 #   builder         node-dist + pnpm: bundles the CLI into one file (overfull.cjs, ~3 MB,
 #                   templates embedded, no node_modules). No TeX Live here, so a code
 #                   change never rebuilds or re-downloads a TeX layer.
+#   verapdf         veraPDF (CLI only), and for the check image a Java runtime cut down
+#                   with jlink to the modules veraPDF uses
 #   texbase-full    TeX Live 2026, scheme-full (pinned digest)
 #   texbase-slim    TeX Live 2026, scheme-basic + LuaTeX, XeTeX, the recommended LaTeX and
 #                   font collections, latexdiff, the venue classes and common packages.
 #                   Missing packages are installed from CTAN by `overfull build`
 #                   (OVERFULL_TEX_INSTALL=1), as any user.
-#   tex             texbase-$TEX_FLAVOR + fonts, poppler, qpdf, veraPDF
-#   check           Debian slim + Node + veraPDF + poppler + git + CLI, no TeX Live
+#   tex             texbase-$TEX_FLAVOR + fonts, poppler, qpdf, veraPDF; Debian packages
+#                   come from snapshot.debian.org at DEBIAN_SNAPSHOT
+#   check           Debian slim + Node + veraPDF (jlink'd Java) + poppler + git + CLI,
+#                   no TeX Live
 #   overfull        tex + Node + CLI (default target)
 #
 # Behind a TLS-intercepting proxy, pass its CA as an optional build secret; it is
@@ -91,6 +95,40 @@ RUN node scripts/build-standalone.mjs \
  && node /opt/overfull/overfull.cjs --version
 
 # ---------------------------------------------------------------------------
+# verapdf: veraPDF, installed once for every image, and a small Java runtime
+# ---------------------------------------------------------------------------
+# The TeX images run veraPDF with the Java of the TeX Live base (Debian testing,
+# OpenJDK 25). The check image gets the same Java version, cut down with jlink to the
+# modules veraPDF needs: about 90 MB on disk instead of a 200 MB JRE. The module list
+# is what `jdeps` finds in veraPDF's jar, plus java.naming, jdk.unsupported and
+# jdk.charsets, which its XML binding and PDF parser load by name. Check a new
+# veraPDF version with PDFs that pass and fail (see docker/README.md).
+FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS verapdf
+
+ARG VERAPDF_VERSION=1.30.4
+ARG VERAPDF_SHA256=04415ef3f149526a3048b9889723e81320ddf013bd891bcc7f0f297f3eadcc23
+
+COPY docker/verapdf-auto-install.xml /tmp/verapdf-auto-install.xml
+RUN --mount=type=secret,id=build_ca,required=false \
+    set -eux; \
+    apt-get update; \
+    # binutils: jlink strips the native libraries with objcopy.
+    apt-get install --no-install-recommends -y ca-certificates curl unzip binutils openjdk-25-jdk-headless; \
+    if [ -s /run/secrets/build_ca ]; then cp /run/secrets/build_ca /usr/local/share/ca-certificates/zz-build-ca.crt && update-ca-certificates >/dev/null; fi; \
+    cd /tmp; \
+    curl -fsSLo verapdf.zip "https://software.verapdf.org/releases/${VERAPDF_VERSION%.*}/verapdf-greenfield-${VERAPDF_VERSION}-installer.zip"; \
+    echo "${VERAPDF_SHA256}  verapdf.zip" | sha256sum -c -; \
+    unzip -q verapdf.zip; \
+    java -jar "verapdf-greenfield-${VERAPDF_VERSION}/verapdf-izpack-installer-${VERAPDF_VERSION}.jar" /tmp/verapdf-auto-install.xml; \
+    # The CLI jar has everything the command line needs; the GUI is not used.
+    rm -rf /opt/verapdf/Uninstaller /opt/verapdf/verapdf-gui /opt/verapdf/bin/gui-*.jar; \
+    jlink --output /opt/java --no-header-files --no-man-pages --strip-debug \
+      --add-modules java.base,java.compiler,java.datatransfer,java.desktop,java.logging,java.management,java.naming,java.sql,java.xml,jdk.charsets,jdk.unsupported; \
+    # Debian's JDK keeps the native debug symbols in separate files; the runtime needs none.
+    find /opt/java -name '*.debuginfo' -delete; \
+    JAVA_HOME=/opt/java /opt/verapdf/verapdf --version
+
+# ---------------------------------------------------------------------------
 # TeX Live bases
 # ---------------------------------------------------------------------------
 # Pinned by digest (multi-arch index: linux/amd64, linux/arm64). Written inline, not as
@@ -145,35 +183,74 @@ ENV OVERFULL_TEX_INSTALL=1
 # ---------------------------------------------------------------------------
 FROM texbase-${TEX_FLAVOR} AS tex
 
-ARG VERAPDF_VERSION=1.30.4
-ARG VERAPDF_SHA256=04415ef3f149526a3048b9889723e81320ddf013bd891bcc7f0f297f3eadcc23
+# Debian packages come from snapshot.debian.org at this time, not from the moving
+# testing suite, so a rebuild installs the same versions. It is at least as new as both
+# TeX Live bases (they are built from different testing snapshots); were a base newer,
+# that base's own snapshot is used. scripts/update-pins.mjs moves it after Dependabot
+# moves the base digests.
+ARG DEBIAN_SNAPSHOT=20261104T212339Z
 
 ENV DEBIAN_FRONTEND=noninteractive \
     DEBCONF_NONINTERACTIVE_SEEN=true \
     LANG=C.UTF-8
 
-# Fonts (Times New Roman via ttf-mscorefonts-installer, FreeMono/FreeSerif) and PDF
-# inspection tools; veraPDF (greenfield, CLI only) for PDF/UA. Java comes with the
-# TeX Live base image. One layer, so nothing downloaded is kept.
-COPY docker/verapdf-auto-install.xml /tmp/verapdf-auto-install.xml
+# The Microsoft core fonts (Times New Roman and others) are not in Debian:
+# ttf-mscorefonts-installer downloads them from SourceForge. They are fetched here
+# instead, each checked against its SHA-256 (the hashes the package itself checks), so
+# a SourceForge outage or a changed file fails the build at this step, with the file's
+# name. The installer then takes them from that directory.
+COPY <<'EOF' /tmp/mscorefonts.sha256
+0524fe42951adc3a7eb870e32f0920313c71f170c859b5f770d82b4ee111e970  andale32.exe
+85297a4d146e9c87ac6f74822734bdee5f4b2a722d7eaa584b7f2cbf76f478f6  arial32.exe
+a425f0ffb6a1a5ede5b979ed6177f4f4f4fdef6ae7c302a7b7720ef332fec0a8  arialb32.exe
+9c6df3feefde26d4e41d4a4fe5db2a89f9123a772594d7f59afd062625cd204e  comic32.exe
+bb511d861655dde879ae552eb86b134d6fae67cb58502e6ff73ec5d9151f3384  courie32.exe
+2c2c7dcda6606ea5cf08918fb7cd3f3359e9e84338dc690013f20cd42e930301  georgi32.exe
+6061ef3b7401d9642f5dfdb5f2b376aa14663f6275e60a51207ad4facf2fccfb  impact32.exe
+db56595ec6ef5d3de5c24994f001f03b2a13e37cee27bc25c58f6f43e8f807ab  times32.exe
+5a690d9bb8510be1b8b4fe49f1f2319651fe51bbe54775ddddd8ef0bd07fdac9  trebuc32.exe
+c1cb61255e363166794e47664e2f21af8e3a26cb6346eb8d2ae2fa85dd5aad96  verdan32.exe
+64595b5abc1080fba8610c5c34fab5863408e806aafe84653ca8575bed17d75a  webdin32.exe
+EOF
+# Fonts (the Microsoft core fonts, FreeMono/FreeSerif) and PDF inspection tools. Java
+# comes with the TeX Live base image. One layer, so nothing downloaded is kept. The
+# original apt sources are put back at the end, so `apt-get install` in a container
+# uses the live suite.
 RUN --mount=type=secret,id=build_ca,required=false \
     set -eux; \
-    sed -i 's/^Components: main$/Components: main contrib non-free/' /etc/apt/sources.list.d/debian.sources; \
-    echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | debconf-set-selections; \
-    apt-get update; \
-    apt-get install --no-install-recommends -y ca-certificates curl unzip; \
+    src=/etc/apt/sources.list.d/debian.sources; \
+    cp "$src" /tmp/debian.sources.orig; \
+    base_snapshot="$(sed -n 's|^# http://snapshot.debian.org/archive/debian/\([0-9]\{8\}T[0-9]\{6\}Z\)$|\1|p' "$src" | head -n 1)"; \
+    snapshot="$(printf '%s\n' "$DEBIAN_SNAPSHOT" "$base_snapshot" | sort | tail -n 1)"; \
+    sed -i \
+      -e "s|^URIs: http://deb.debian.org/debian-security\$|URIs: http://snapshot.debian.org/archive/debian-security/$snapshot|" \
+      -e "s|^URIs: http://deb.debian.org/debian\$|URIs: http://snapshot.debian.org/archive/debian/$snapshot|" \
+      -e 's/^Components: main$/Components: main contrib non-free/' "$src"; \
+    ! grep -q '^URIs: http://deb.debian.org' "$src"; \
+    # A snapshot's Release files are past their Valid-Until date; the signatures are
+    # still checked. snapshot.debian.org can be slow, so retry.
+    apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Retries=5 update; \
+    apt-get -o Acquire::Retries=5 install --no-install-recommends -y ca-certificates curl cabextract; \
     if [ -s /run/secrets/build_ca ]; then cp /run/secrets/build_ca /usr/local/share/ca-certificates/zz-build-ca.crt && update-ca-certificates >/dev/null; fi; \
-    apt-get install --no-install-recommends -y \
+    mkdir /tmp/mscorefonts; \
+    for f in $(awk '{print $2}' /tmp/mscorefonts.sha256); do \
+      for root in https://downloads.sourceforge.net/corefonts \
+          https://netcologne.dl.sourceforge.net/sourceforge/corefonts \
+          https://jaist.dl.sourceforge.net/sourceforge/corefonts; do \
+        curl -fsSL --retry 3 -o "/tmp/mscorefonts/$f" "$root/$f" && break; \
+      done; \
+    done; \
+    (cd /tmp/mscorefonts && sha256sum -c /tmp/mscorefonts.sha256); \
+    printf '%s\n' \
+      'ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true' \
+      'ttf-mscorefonts-installer msttcorefonts/dldir string /tmp/mscorefonts' | debconf-set-selections; \
+    apt-get -o Acquire::Retries=5 install --no-install-recommends -y \
       fontconfig ttf-mscorefonts-installer fonts-freefont-ttf poppler-utils qpdf; \
     test -f /usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf; \
-    cd /tmp; \
-    curl -fsSLo verapdf.zip "https://software.verapdf.org/releases/${VERAPDF_VERSION%.*}/verapdf-greenfield-${VERAPDF_VERSION}-installer.zip"; \
-    echo "${VERAPDF_SHA256}  verapdf.zip" | sha256sum -c -; \
-    unzip -q verapdf.zip; \
-    java -jar "verapdf-greenfield-${VERAPDF_VERSION}/verapdf-izpack-installer-${VERAPDF_VERSION}.jar" /tmp/verapdf-auto-install.xml; \
-    ln -s /opt/verapdf/verapdf /usr/local/bin/verapdf; \
-    rm -rf /tmp/verapdf* /opt/verapdf/Uninstaller; \
+    rm -rf /tmp/mscorefonts /tmp/mscorefonts.sha256; \
+    echo 'ttf-mscorefonts-installer msttcorefonts/dldir string' | debconf-set-selections; \
     if [ -f /usr/local/share/ca-certificates/zz-build-ca.crt ]; then rm /usr/local/share/ca-certificates/zz-build-ca.crt && update-ca-certificates --fresh >/dev/null; fi; \
+    mv /tmp/debian.sources.orig "$src"; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
     fc-cache -f; \
@@ -190,8 +267,12 @@ RUN --mount=type=secret,id=build_ca,required=false \
     (cd /tmp/warm && TEXMFVAR="$sysvar" lualatex -interaction=nonstopmode warm.tex >/dev/null); \
     rm -rf /tmp/warm; \
     chmod a+rwx "$sysvar"; \
-    chmod -R a+rwX "$sysvar/luatex-cache"; \
-    verapdf --version
+    chmod -R a+rwX "$sysvar/luatex-cache"
+
+# veraPDF (greenfield, CLI only) for PDF/UA, run with the base image's Java. After the
+# fonts, so a veraPDF update reuses the layer above.
+COPY --from=verapdf /opt/verapdf /opt/verapdf
+RUN ln -s /opt/verapdf/verapdf /usr/local/bin/verapdf && verapdf --version
 
 WORKDIR /work
 CMD ["bash"]
@@ -203,32 +284,21 @@ CMD ["bash"]
 # image stays the default (last) stage.
 FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS check
 
-ARG VERAPDF_VERSION=1.30.4
-ARG VERAPDF_SHA256=04415ef3f149526a3048b9889723e81320ddf013bd891bcc7f0f297f3eadcc23
-
 ENV DEBIAN_FRONTEND=noninteractive \
     DEBCONF_NONINTERACTIVE_SEEN=true \
-    LANG=C.UTF-8
+    LANG=C.UTF-8 \
+    JAVA_HOME=/opt/java
 
-COPY docker/verapdf-auto-install.xml /tmp/verapdf-auto-install.xml
-RUN --mount=type=secret,id=build_ca,required=false \
-    set -eux; \
+RUN set -eux; \
     apt-get update; \
-    apt-get install --no-install-recommends -y ca-certificates curl unzip; \
-    if [ -s /run/secrets/build_ca ]; then cp /run/secrets/build_ca /usr/local/share/ca-certificates/zz-build-ca.crt && update-ca-certificates >/dev/null; fi; \
-    apt-get install --no-install-recommends -y default-jre-headless poppler-utils git libatomic1; \
-    cd /tmp; \
-    curl -fsSLo verapdf.zip "https://software.verapdf.org/releases/${VERAPDF_VERSION%.*}/verapdf-greenfield-${VERAPDF_VERSION}-installer.zip"; \
-    echo "${VERAPDF_SHA256}  verapdf.zip" | sha256sum -c -; \
-    unzip -q verapdf.zip; \
-    java -jar "verapdf-greenfield-${VERAPDF_VERSION}/verapdf-izpack-installer-${VERAPDF_VERSION}.jar" /tmp/verapdf-auto-install.xml; \
-    ln -s /opt/verapdf/verapdf /usr/local/bin/verapdf; \
-    rm -rf /tmp/verapdf* /opt/verapdf/Uninstaller; \
-    if [ -f /usr/local/share/ca-certificates/zz-build-ca.crt ]; then rm /usr/local/share/ca-certificates/zz-build-ca.crt && update-ca-certificates --fresh >/dev/null; fi; \
-    apt-get purge -y --auto-remove curl unzip; \
+    apt-get install --no-install-recommends -y ca-certificates poppler-utils git libatomic1; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
-    verapdf --version; pdfinfo -v; git --version
+    pdfinfo -v; git --version
+# veraPDF with the jlink'd Java runtime (see the verapdf stage).
+COPY --from=verapdf /opt/java /opt/java
+COPY --from=verapdf /opt/verapdf /opt/verapdf
+RUN ln -s /opt/verapdf/verapdf /usr/local/bin/verapdf && verapdf --version
 
 # The version and labels come after the heavy layer above, so a release reuses it.
 ARG VERSION=dev
