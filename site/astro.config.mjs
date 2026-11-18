@@ -18,13 +18,17 @@ export default defineConfig({
   devToolbar: { enabled: false },
   // Strict Content-Security-Policy, emitted by Astro as a <meta> tag on every
   // page with hashes for its own inline scripts and styles (no 'unsafe-inline'
-  // for scripts). The browser check only talks to the reference indexes.
+  // for scripts). The browser check only talks to the reference indexes it
+  // asks (core's sources 'crossref', 'doi.org' and 'openalex'): CrossRef,
+  // doi.org and where doi.org redirects a lookup (CrossRef's and DataCite's
+  // metadata hosts), and OpenAlex. arXiv and dblp send no CORS headers, so the
+  // page never calls them.
   security: {
     csp: {
       algorithm: 'SHA-256',
       directives: [
         "default-src 'self'",
-        "connect-src 'self' https://api.crossref.org https://doi.org https://data.crossref.org https://export.arxiv.org https://dblp.org https://api.openalex.org",
+        "connect-src 'self' https://api.crossref.org https://doi.org https://data.crossref.org https://data.crosscite.org https://api.datacite.org https://api.openalex.org",
         "img-src 'self' data:",
         "font-src 'self'",
         "worker-src 'self'",

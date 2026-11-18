@@ -84,8 +84,8 @@ const nav = [
               <li><a href={REPO_URL}>GitHub</a></li>
             </ul>
           </nav>
-          <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">
-            <span data-theme-label>Dark</span><span class="sr-only"> theme</span>
+          <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false" title="Dark (lightbox) theme">
+            Dark<span class="sr-only"> theme</span>
           </button>
         </header>
         <main id="main" tabindex="-1">
@@ -121,16 +121,13 @@ const nav = [
       </div>
     </div>
     <script>
+      // A toggle keeps one label ("Dark theme"); only aria-pressed says whether it is on.
       const btn = document.querySelector<HTMLButtonElement>('[data-theme-toggle]');
-      const label = btn?.querySelector<HTMLElement>('[data-theme-label]');
       const root = document.documentElement;
       const media = window.matchMedia('(prefers-color-scheme: dark)');
       const current = () => (root.dataset.theme as 'light' | 'dark' | undefined) ?? (media.matches ? 'dark' : 'light');
       const sync = () => {
-        const dark = current() === 'dark';
-        if (label) label.textContent = dark ? 'Light' : 'Dark';
-        btn?.setAttribute('aria-pressed', String(dark));
-        btn?.setAttribute('title', dark ? 'Switch to the light (paper) theme' : 'Switch to the dark (lightbox) theme');
+        btn?.setAttribute('aria-pressed', String(current() === 'dark'));
       };
       btn?.addEventListener('click', () => {
         const next = current() === 'dark' ? 'light' : 'dark';

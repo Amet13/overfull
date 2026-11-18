@@ -9,15 +9,16 @@ import {
   sortedDocs,
 } from '../../lib/docs';
 import { url } from '../../lib/paths';
+import { wrapTables } from '../../lib/tables';
 
 const docs = await sortedDocs();
 const groups = groupDocs(docs);
 const intro = docs.find((d) => docSlug(d) === '');
 const introHtml = intro
-  ? rewriteDocLinks(intro.rendered?.html ?? '', intro, import.meta.env.BASE_URL)
+  ? wrapTables(rewriteDocLinks(intro.rendered?.html ?? '', intro, import.meta.env.BASE_URL))
   : '';
 ---
-<Docs title="Guide" description={intro?.data.description ?? 'How to start a paper or thesis with Overfull, work with a coding agent or by hand, and read every check.'} docs={docs} current={intro} headings={docHeadings(intro)}>
+<Docs title="Guide" description="How to check a LaTeX paper or thesis with Overfull: install, work by hand, in CI or with a coding agent, and what every check and rule means." docs={docs} current={intro} headings={docHeadings(intro)}>
   {introHtml && <div set:html={introHtml} />}
   {introHtml && <h2 id="contents">All pages</h2>}
   {groups.length === 0 && <p>The guide is being written. Meanwhile, the <a href="https://github.com/amet13/overfull#readme">README</a> covers installation and commands.</p>}

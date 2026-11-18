@@ -6768,6 +6768,19 @@ async function checkArxiv(ctx, id, facts, ev) {
     return checkOpenalexDoi(ctx, arxivDoi(id), facts, ev, "eprint", id);
   }
 }
+async function checkArxivDoi(ctx, id, facts, ev) {
+  const doi = arxivDoi(id);
+  if (sourceAllowed(ctx.opts, "doi.org")) {
+    try {
+      const res = await resolveDoiCached(ctx, doi);
+      ev.searched.add("doi.org");
+      if (res.kind === "found") return assessIdentified(facts, res.record, ev, "eprint", id, "is");
+    } catch (err) {
+      sourceFailed(ctx, ev, "doi.org", err);
+    }
+  }
+  return checkOpenalexDoi(ctx, doi, facts, ev, "eprint", id);
+}
 function arxivDoi(id) {
   return `10.48550/arxiv.${id.toLowerCase()}`;
 }
@@ -6970,10 +6983,7 @@ async function verifyEntry(entry, ctx, ignore) {
     doiUnchecked: false,
     queries: []
   };
-  const viaId = (ids.doi && sourceAllowed(ctx.opts, "doi.org") ? await checkDoi(ctx, ids.doi, facts, ev) : null) ?? (ids.arxivId ? sourceAllowed(ctx.opts, "arxiv") ? await checkArxiv(ctx, ids.arxivId, facts, ev) : (
-    // arXiv may not be asked (the browser check): OpenAlex knows arXiv's DOIs.
-    await checkOpenalexDoi(ctx, arxivDoi(ids.arxivId), facts, ev, "eprint", ids.arxivId)
-  ) : null) ?? await checkOtherIds(ctx, ids, facts, ev);
+  const viaId = (ids.doi && sourceAllowed(ctx.opts, "doi.org") ? await checkDoi(ctx, ids.doi, facts, ev) : null) ?? (ids.arxivId ? sourceAllowed(ctx.opts, "arxiv") ? await checkArxiv(ctx, ids.arxivId, facts, ev) : await checkArxivDoi(ctx, ids.arxivId, facts, ev) : null) ?? await checkOtherIds(ctx, ids, facts, ev);
   const withQuery = (r) => ({ ...r, query: ev.queries[0] ?? "" });
   const found = (a) => withQuery(withBrokenIds(withUncheckedDoi(fromAssessment(base, a, ev), a, ids, ev), ids, ev));
   if (viaId) return found(viaId);

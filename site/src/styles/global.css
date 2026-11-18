@@ -414,6 +414,10 @@ hr {
 .theme-toggle:hover {
   border-color: var(--ink);
 }
+.theme-toggle[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}
 
 /* Running head: small caps label with a hairline, like a book's header */
 .runhead {
@@ -833,14 +837,21 @@ section.block::after {
   color: var(--ink-2);
   font-style: italic;
 }
+/* Wide tables scroll inside a focusable region (see lib/tables.ts);
+   the table itself keeps display: table, so its semantics stay intact. */
+.prose .table-scroll {
+  overflow-x: auto;
+  margin: 0 0 1.5em;
+}
 .prose table {
   border-collapse: collapse;
   width: 100%;
   font-size: var(--s-1);
   margin: 0 0 1.5em;
   font-variant-numeric: lining-nums tabular-nums;
-  display: block;
-  overflow-x: auto;
+}
+.prose .table-scroll > table {
+  margin: 0;
 }
 .prose th,
 .prose td {

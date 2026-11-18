@@ -1,10 +1,14 @@
 /**
  * The browser check. Everything runs here, in the page: files (also a project
  * .zip or a dropped folder, unpacked by ./zip) are read with the File API and
- * analysed by @overfull/core. The only network requests are
- * reference lookups (CrossRef and doi.org; arXiv and DBLP refuse browser
- * requests) when the user leaves "Verify references online" on. pdf.js is
- * loaded only when a PDF is checked.
+ * analysed by @overfull/core. The only network requests are reference lookups,
+ * when the user leaves "Verify references online" on: core's sources
+ * 'crossref', 'doi.org' and 'openalex'. CrossRef gets each title with the first
+ * author's surname and year; doi.org gets each DOI (and arXiv's DOI for an
+ * arXiv id) and redirects it to the DOI's registration agency (CrossRef or
+ * DataCite); OpenAlex gets a DOI or title that the others could not settle.
+ * arXiv and dblp send no CORS headers, so they are never asked (see the CSP in
+ * astro.config.mjs). pdf.js is loaded only when a PDF is checked.
  */
 import {
   accessibilityCheck,
@@ -38,7 +42,16 @@ import {
   verifyEntries,
 } from '@overfull/core';
 import { esc, renderSheet } from '../lib/sheet';
-import { chooseMain, type ProjectFile, projectKindOf, selectForMain } from './project';
+import { readWithinLimits } from './loose';
+import {
+  CONFIG_FILE,
+  chooseMain,
+  type ProjectFile,
+  profileFromConfig,
+  projectKindOf,
+  selectForMain,
+} from './project';
+import { browserRefHints } from './refs-hints';
 import { readZip, selectPaths, ZIP_LIMITS, ZipError } from './zip';
 
 type Kind = 'log' | 'bib' | 'aux' | 'pdf' | 'tex';
@@ -124,6 +137,8 @@ export function initCheck(): void {
   const stopBtn = must<HTMLButtonElement>('#stop');
   const online = must<HTMLInputElement>('#online');
   const profileSel = must<HTMLSelectElement>('#profile');
+  const profileNote = must('#profile-note');
+  const resultTitle = must('#result-title');
   const progress = must('#progress');
   const bar = must('#progress-bar');
   const barFill = must<HTMLElement>('#progress-bar span');
@@ -217,19 +232,38 @@ export function initCheck(): void {
     ].join(', ');
     skippedMsg = [`${project.name}: ${found}.`, intro].filter(Boolean).join(' ');
     note(skippedMsg);
-    if (chosen.length) void run();
+    if (chosen.length) void run({ reveal: true });
     else say(`${project.name}: no .tex, .bib, .log, .aux, .bcf or .pdf files found.`);
   }
 
+  /** Uses the `profile:` of the project's overfull.yml, as `overfull check` would. */
+  function applyConfigProfile(config: string | undefined): string | undefined {
+    const name = config === undefined ? undefined : profileFromConfig(config);
+    if (!name) {
+      profileNote.hidden = true;
+      return config === undefined || !/^profile:/m.test(config)
+        ? undefined
+        : 'The profile settings in overfull.yml are applied only by `overfull check`.';
+    }
+    if (![...profileSel.options].some((o) => o.value === name)) {
+      profileNote.hidden = true;
+      return `overfull.yml names the profile ${name}, which this page does not know; choose one below.`;
+    }
+    profileSel.value = name;
+    profileNote.hidden = false;
+    return undefined;
+  }
+
   /** Takes the files of a project, picks the main file (or asks) and runs. */
-  function loadProject(name: string, all: ProjectFile[], notes: string[]) {
+  function loadProject(name: string, all: ProjectFile[], notes: string[], config?: string) {
     files.length = 0;
     renderFiles();
     tools.hidden = true;
     clearSamples();
     project = { name, all };
     const choice = chooseMain(all);
-    const intro = notes.join(' ');
+    const configNote = applyConfigProfile(config);
+    const intro = [...notes, ...(configNote ? [configNote] : [])].join(' ');
     if (choice.candidates.length > 1) {
       mainSelect.innerHTML = [
         `<option value="">Choose the main file…</option>`,
@@ -266,23 +300,36 @@ export function initCheck(): void {
       : [];
 
   /** Loose files dropped with (or after) a project, by extension; names are the paths. */
-  async function readLoose(list: File[]): Promise<{ all: ProjectFile[]; skipped: string[] }> {
+  async function readLoose(
+    list: File[],
+  ): Promise<{ all: ProjectFile[]; skipped: string[]; notes: string[] }> {
     const all: ProjectFile[] = [];
     const skipped: string[] = [];
+    const notes: string[] = [];
+    const used = { bytes: 0 };
     for (const file of list) {
       const kind = projectKindOf(file.name);
       if (!kind) {
         skipped.push(file.name);
         continue;
       }
-      const data = new Uint8Array(await file.arrayBuffer());
+      const read = await readWithinLimits(file, kind === 'log', used);
+      if (!read.ok) {
+        notes.push(`Skipped ${file.name}: ${read.reason}.`);
+        continue;
+      }
+      if (read.note) notes.push(read.note);
       all.push(
         kind === 'pdf'
-          ? { path: file.name, kind, data }
-          : { path: file.name, kind, text: new TextDecoder('utf-8').decode(data) },
+          ? { path: file.name, kind, data: read.data }
+          : { path: file.name, kind, text: new TextDecoder('utf-8').decode(read.data) },
       );
     }
-    return { all, skipped };
+    if (skipped.length)
+      notes.unshift(
+        `Skipped ${skipped.join(', ')}: not a .log, .bib, .aux, .bcf, .tex or .pdf file.`,
+      );
+    return { all, skipped, notes };
   }
 
   const mergeFiles = (base: ProjectFile[], extra: ProjectFile[]) => [
@@ -294,9 +341,13 @@ export function initCheck(): void {
     say(`Unpacking ${file.name} in your browser…`);
     try {
       const buf = new Uint8Array(await file.arrayBuffer());
-      const zip = await readZip(buf, { filter: (p) => projectKindOf(p) !== null });
+      const zip = await readZip(buf, {
+        filter: (p) => projectKindOf(p) !== null || p === CONFIG_FILE,
+      });
       const all: ProjectFile[] = [];
+      let config: string | undefined;
       for (const f of zip.files) {
+        if (f.path === CONFIG_FILE) config = new TextDecoder('utf-8').decode(f.data);
         const kind = projectKindOf(f.path);
         if (!kind) continue;
         all.push(
@@ -306,15 +357,8 @@ export function initCheck(): void {
         );
       }
       const loose = await readLoose(others);
-      const notes = [
-        ...skippedNotes(zip.skipped),
-        ...(loose.skipped.length
-          ? [
-              `Skipped ${loose.skipped.join(', ')}: not a .log, .bib, .aux, .bcf, .tex or .pdf file.`,
-            ]
-          : []),
-      ];
-      loadProject(file.name, mergeFiles(all, loose.all), notes);
+      const notes = [...skippedNotes(zip.skipped), ...loose.notes];
+      loadProject(file.name, mergeFiles(all, loose.all), notes, config);
     } catch (err) {
       const msg =
         err instanceof ZipError
@@ -342,9 +386,11 @@ export function initCheck(): void {
         );
       const skipped = [...sel.skipped];
       const all: ProjectFile[] = [];
+      let config: string | undefined;
       for (const k of sel.kept) {
         const kind = projectKindOf(k.path);
         const file = items[k.index]?.file;
+        if (k.path === CONFIG_FILE && file && file.size < 1048576) config = await file.text();
         if (!kind || !file) continue;
         if (file.size > ZIP_LIMITS.maxEntryBytes) {
           skipped.push({ path: k.path, reason: 'file is too large' });
@@ -362,6 +408,7 @@ export function initCheck(): void {
         items.every((i) => i.path.split('/')[0] === root) && root ? root : fallbackName,
         all,
         skippedNotes(skipped),
+        config,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -429,9 +476,7 @@ export function initCheck(): void {
       // Files added to an unpacked project (its PDF or log, say) join it.
       const loose = await readLoose(picked);
       project.all = mergeFiles(project.all, loose.all);
-      const notes = loose.skipped.length
-        ? [`Skipped ${loose.skipped.join(', ')}: not a .log, .bib, .aux, .bcf, .tex or .pdf file.`]
-        : [];
+      const notes = loose.notes;
       if (!mainPick.hidden && !mainSelect.value) {
         note(notes.join(' '));
         return;
@@ -440,26 +485,41 @@ export function initCheck(): void {
       return;
     }
     resetProject();
+    profileNote.hidden = true;
     const out: Loaded[] = [];
     const skipped: string[] = [];
+    const notes: string[] = [];
+    const used = { bytes: 0 };
     for (const file of picked) {
-      const buf = new Uint8Array(await file.arrayBuffer());
-      const head = new TextDecoder('latin1').decode(buf.subarray(0, 2048));
+      const head = new TextDecoder('latin1').decode(
+        new Uint8Array(await file.slice(0, 2048).arrayBuffer()),
+      );
       const kind = kindOf(file.name, head);
       if (!kind) {
         skipped.push(file.name);
         continue;
       }
-      if (kind === 'pdf') out.push({ name: file.name, kind, data: buf });
-      else out.push({ name: file.name, kind, text: new TextDecoder('utf-8').decode(buf) });
+      const read = await readWithinLimits(file, kind === 'log', used);
+      if (!read.ok) {
+        notes.push(`Skipped ${file.name}: ${read.reason}.`);
+        continue;
+      }
+      if (read.note) notes.push(read.note);
+      if (kind === 'pdf') out.push({ name: file.name, kind, data: read.data });
+      else out.push({ name: file.name, kind, text: new TextDecoder('utf-8').decode(read.data) });
     }
     clearSamples();
     add(out);
-    skippedMsg = skipped.length
-      ? `Skipped ${skipped.join(', ')}: not a .log, .bib, .aux, .bcf, .tex, .pdf or .zip file.`
-      : '';
+    skippedMsg = [
+      skipped.length
+        ? `Skipped ${skipped.join(', ')}: not a .log, .bib, .aux, .bcf, .tex, .pdf or .zip file.`
+        : '',
+      ...notes,
+    ]
+      .filter(Boolean)
+      .join(' ');
     note(skippedMsg);
-    if (out.length) void run();
+    if (out.length) void run({ reveal: true });
   }
 
   // ----- Input wiring -----
@@ -517,8 +577,9 @@ export function initCheck(): void {
     }
     skippedMsg = '';
     resetProject();
+    profileNote.hidden = true;
     add([{ name: 'pasted.log', kind: 'log', text }]);
-    void run();
+    void run({ reveal: true });
   });
 
   list.addEventListener('click', (e) => {
@@ -550,22 +611,24 @@ export function initCheck(): void {
       resetProject();
       for (const b of document.querySelectorAll<HTMLButtonElement>('[data-sample]'))
         b.setAttribute('aria-pressed', String(b === btn));
+      profileNote.hidden = true;
       add(
         s.files.map((f) => ({ name: f.name, kind: kindOf(f.name, f.text) ?? 'log', text: f.text })),
       );
-      void run();
+      void run({ reveal: true });
     });
   }
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    void run();
+    void run({ reveal: true });
   });
   stopBtn.addEventListener('click', () => controller?.abort());
   online.addEventListener('change', () => {
     if (files.some((f) => f.kind === 'bib')) void run();
   });
   profileSel.addEventListener('change', () => {
+    profileNote.hidden = true;
     if (files.length) void run();
   });
 
@@ -607,8 +670,22 @@ export function initCheck(): void {
     window.setTimeout(() => (copyStatus.textContent = ''), 4000);
   });
 
+  /**
+   * After a run the user started (files, a sample, Run check), focus moves to the
+   * result heading, so a screen reader reads on from the report; in the
+   * single-column layout (phones) the report is scrolled into view, since it
+   * sits below the inputs.
+   */
+  function reveal() {
+    resultTitle.focus({ preventScroll: true });
+    if (window.matchMedia('(max-width: 979px)').matches) {
+      const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      resultTitle.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' });
+    }
+  }
+
   // ----- The run -----
-  async function run() {
+  async function run(opts: { reveal?: boolean } = {}) {
     if (!files.length) return;
     const id = ++runId;
     controller?.abort();
@@ -616,17 +693,25 @@ export function initCheck(): void {
     const signal = controller.signal;
     runBtn.disabled = true;
     const results = new Map<CheckId, CheckResult>();
-    const logs = files.filter((f) => f.kind === 'log');
-    const bibs = files.filter((f) => f.kind === 'bib');
-    const auxes = files.filter((f) => f.kind === 'aux');
-    const pdfs = files.filter((f) => f.kind === 'pdf');
-    const texes = files.filter((f) => f.kind === 'tex');
+    // An empty file has nothing to check: it is named, not counted as a check.
+    const empty = files.filter((f) =>
+      f.kind === 'pdf' ? !f.data?.length : !(f.text ?? '').trim(),
+    );
+    const usable = files.filter((f) => !empty.includes(f));
+    const logs = usable.filter((f) => f.kind === 'log');
+    const bibs = usable.filter((f) => f.kind === 'bib');
+    const auxes = usable.filter((f) => f.kind === 'aux');
+    const pdfs = usable.filter((f) => f.kind === 'pdf');
+    const texes = usable.filter((f) => f.kind === 'tex');
+    const emptyMsg = empty.length
+      ? `${empty.map((f) => f.name).join(', ')}: the file is empty.`
+      : '';
     const profile = resolveProfile(profileSel.value);
     let facts: PdfFacts | undefined;
     let pdfError: string | undefined;
     const multiPdf =
       pdfs.length > 1 ? `One PDF at a time; checking the first: ${pdfs[0]?.name}.` : '';
-    note([skippedMsg, multiPdf].filter(Boolean).join(' '));
+    note([skippedMsg, emptyMsg, multiPdf].filter(Boolean).join(' '));
 
     try {
       // Build and output, from the log
@@ -717,6 +802,7 @@ export function initCheck(): void {
           setBar(null);
           stopBtn.hidden = true;
           const check = refsCheck(refResults, { entries, issues, bibFile: bibs[0]?.name, extra });
+          browserRefHints(check, entries);
           if (signal.aborted && refResults.length < toCheck.length) {
             check.summary =
               `Stopped after ${refResults.length} of ${toCheck.length} references. ${check.summary ?? ''}`.trim();
@@ -758,9 +844,10 @@ export function initCheck(): void {
     }
     if (id !== runId) return;
 
-    note([skippedMsg, multiPdf, pdfError].filter(Boolean).join(' '));
+    note([skippedMsg, emptyMsg, multiPdf, pdfError].filter(Boolean).join(' '));
+    const emptyLog = empty.some((f) => f.kind === 'log');
     const reasons: Record<CheckId, string> = {
-      build: 'No build log supplied',
+      build: emptyLog && !logs.length ? 'The build log is empty' : 'No build log supplied',
       output: pdfError
         ? 'No build log, and the PDF could not be read'
         : 'No build log or PDF supplied',
@@ -797,9 +884,13 @@ export function initCheck(): void {
     const n = checks.flatMap((c) => c.problems);
     const errors = n.filter((p) => p.severity === 'error').length;
     const warnings = n.filter((p) => p.severity === 'warning').length;
+    const ran = checks.filter((c) => c.status !== 'skipped').length;
     say(
-      `Done. ${errors} error${errors === 1 ? '' : 's'}, ${warnings} warning${warnings === 1 ? '' : 's'} across ${checks.filter((c) => c.status !== 'skipped').length} checks.`,
+      ran === 0 && empty.length
+        ? `Done. ${empty.map((f) => f.name).join(', ')}: the file is empty, so there is nothing to check.`
+        : `Done. ${errors} error${errors === 1 ? '' : 's'}, ${warnings} warning${warnings === 1 ? '' : 's'} across ${ran} check${ran === 1 ? '' : 's'}.`,
     );
+    if (opts.reveal) reveal();
   }
 }
 

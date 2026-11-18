@@ -879,7 +879,11 @@ describe('sources allow-list', () => {
   eprint = {2401.99999}}`;
 
   it('with CrossRef alone allowed, no match is unverifiable (info), not reference-not-found', async () => {
-    const f = router({ 'api.crossref.org': () => json(emptyCrossref) });
+    // doi.org is asked for the arXiv DOI (10.48550/arXiv.2401.99999) and does not know it.
+    const f = router({
+      'api.crossref.org': () => json(emptyCrossref),
+      'doi.org': () => json({}, 404),
+    });
     const entries = parseBib(FAKE);
     const [r] = await verifyEntries(entries, {
       fetch: f.fetch,
@@ -888,7 +892,9 @@ describe('sources allow-list', () => {
     });
     expect(r?.status).toBe('unverifiable');
     expect(r?.reason).toBe('could not be checked here (OpenAlex and dblp were not searched)');
-    expect(f.calls.every((c) => new URL(c).hostname === 'api.crossref.org')).toBe(true);
+    expect(
+      f.calls.every((c) => ['api.crossref.org', 'doi.org'].includes(new URL(c).hostname)),
+    ).toBe(true);
     const problems = refsCheck(r ? [r] : [], { entries }).problems;
     expect(problems.map((p) => p.severity)).toEqual(['info']);
     expect(problems.map((p) => p.rule)).not.toContain('reference-not-found');
