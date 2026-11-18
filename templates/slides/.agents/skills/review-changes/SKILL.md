@@ -39,8 +39,10 @@ The author reviews the PDF, not only the LaTeX diff. Make that easy.
 
 5. Write the PR description (template below). List every `TODO(author)` item
    from step 4 with its file and line.
-6. Open the PR (for example `gh pr create`). The template's workflow builds the
-   PDF and the diff in CI and posts the check report.
+6. Open the PR (for example `gh pr create`). The template's workflow
+   (`.github/workflows/preflight.yml`) builds the PDF and the diff in CI, puts
+   the check report in the job summary and annotates the changed lines. It does
+   not comment on the PR.
 
 ## PR description template
 

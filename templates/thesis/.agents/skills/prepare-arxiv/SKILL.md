@@ -1,6 +1,6 @@
 ---
 name: prepare-arxiv
-description: Prepare the LaTeX source for an arXiv submission and verify it with the Overfull arxiv profile, covering the .bbl file, relative paths, file name case, .eps with pdfLaTeX, shell-escape and minted, and optional comment removal with arxiv_latex_cleaner. Use when the author wants to post a preprint to arXiv or the arxiv profile reports problems.
+description: Prepare the LaTeX source for an arXiv submission and verify it with the Overfull arxiv profile, covering the bibliography (.bib or a matching .bbl), relative paths, file name case, .eps with pdfLaTeX, shell-escape and minted, and optional comment removal with arxiv_latex_cleaner. Use when the author wants to post a preprint to arXiv or the arxiv profile reports problems.
 ---
 
 # Prepare an arXiv submission
@@ -34,11 +34,13 @@ supported. Its rules change; check the help pages before each submission.
 
 ## Rules and fixes
 
-- **Bibliography**: include the `.bib` files, or a pre-generated `.bbl` named
-  like the main `.tex` file. If a `.bbl` is present arXiv uses it, and a biblatex
-  `.bbl` must come from the same backend (Biber or BibTeX) and a compatible
-  biblatex version. If arXiv reports a `.bbl` version error, remove the `.bbl`
-  so arXiv runs the backend itself, or tell the author.
+- **Bibliography**: since 2025 arXiv runs Biber itself when biblatex selects it
+  (BibTeX otherwise). Its default is TeX Live 2025, which reads biblatex `.bbl`
+  format 3.3; there is no TeX Live 2026 on arXiv yet. Upload the `.bib` files
+  and no `.bbl`, and let arXiv build the bibliography. Ship a `.bbl` (named like
+  the main file, `main.bbl`) only when it was made with the same TeX Live
+  version as arXiv's: `arxiv-bbl-version` warns when its format does not match.
+  If a `.bbl` is present arXiv uses it instead of the `.bib`.
 - **Paths**: no absolute paths (`/home/…`, `C:\…`) in `\input`,
   `\includegraphics` or `\addbibresource`. Use paths relative to the main file.
 - **File names**: no spaces in file names.
@@ -49,17 +51,17 @@ supported. Its rules change; check the help pages before each submission.
 - **Shell-escape**: `minted`, `\write18`, `svg` and `gnuplot` calls need
   shell-escape, which arXiv does not allow. Replace `minted` with `listings` if
   the author agrees, or pre-render the output and include the result.
-- **Engine**: the templates use LuaLaTeX. arXiv's list of supported processors
-  (<https://info.arxiv.org/help/faq/texlive.html>) has listed pdfLaTeX, LaTeX
-  and XeLaTeX, but not LuaLaTeX. Check the current list. The paper template
-  already has the documented arXiv path: `make arxiv` (or `latexmk -pdf`) builds
-  with pdfLaTeX. Use it, and do not change the engine in any other way. arXiv
-  does not run biber, so upload the generated `.bbl`, renamed to match the main
-  file (`paper-arxiv.bbl` becomes `main.bbl`). The thesis and slides templates
-  have no pdfLaTeX build: explain the options to the author (adapt the
-  source for pdfLaTeX or XeLaTeX, where fonts, packages and tagging support
-  differ, or skip arXiv for this version). arXiv refuses PDFs produced from TeX
-  source, so uploading the PDF is not an option.
+- **Engine**: the templates use LuaLaTeX. arXiv offers pdfLaTeX, LaTeX and
+  XeLaTeX, but not LuaLaTeX (<https://info.arxiv.org/help/faq/texlive.html>;
+  check the current list). The paper template has the documented arXiv path:
+  `make arxiv`, which runs `latexmk -pdf -jobname=paper-arxiv` and writes
+  `paper-arxiv.pdf` next to `paper.pdf`. Use it, and do not change the engine
+  in any other way. Never run a bare `latexmk -pdf`: it overwrites `paper.pdf`.
+  The thesis and slides templates have no pdfLaTeX build: explain the options
+  to the author (adapt the source for pdfLaTeX or XeLaTeX, where fonts,
+  packages and tagging support differ, or skip arXiv for this version). arXiv
+  refuses PDFs produced from TeX source, so uploading the PDF is not an
+  option.
 - **Extra files**: remove build output and unused files. Do not upload the PDF
   as the source when you have the LaTeX.
 
@@ -83,8 +85,9 @@ and run `overfull check --profile arxiv` inside it before upload.
   errors. Run against the default LuaLaTeX build, the arXiv profile always
   reports `arxiv-unsupported-engine`; that is expected and not a reason to
   change the template.
-- The package contains the `.tex` files, figures, the `.bib` or `.bbl`, and
-  nothing private (no `notes/`, no agent files).
+- The package contains the `.tex` files, figures, the `.bib` files (or a `.bbl`
+  that `arxiv-bbl-version` accepts), and nothing private (no `notes/`, no agent
+  files).
 - The author has been told what was changed and that they must upload it
   themselves.
 

@@ -11,7 +11,10 @@ and make the agreed changes.
 ## Steps
 
 1. Save the reviews verbatim in `notes/reviews.md` (if the author has not).
-   Number every comment: `R1.1`, `R1.2`, `R2.1`, …
+   Number every comment: `R1.1`, `R1.2`, `R2.1`, … Reviews are confidential:
+   the templates' `.gitignore` lists `notes/reviews.md`, so it stays on the
+   author's machine. Check that it is ignored (`git check-ignore notes/reviews.md`)
+   and tell the author; never commit it or quote it in a pull request.
 2. Create `notes/response.md` with one entry per comment:
 
    ```markdown

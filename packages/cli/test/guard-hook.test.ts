@@ -37,7 +37,8 @@ beforeAll(() => {
 const fixture = (name: string) =>
   readFileSync(new URL(`./fixtures/guard/${name}`, import.meta.url), 'utf8').replaceAll(
     '/work/paper',
-    project,
+    // The path goes into JSON text: escape it (Windows paths have backslashes).
+    JSON.stringify(project).slice(1, -1),
   );
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 

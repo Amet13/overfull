@@ -39,6 +39,9 @@ the work up in the scholarly indexes and writes the entry from the indexed recor
    document already uses.
 6. `overfull build` then `overfull check --json --checks build,output,references`.
 
+Without `overfull` on PATH, run the same through the Makefile:
+`make cite ARGS='arXiv:1706.03762 --dry-run'`, `make cite ARGS='"Attention Is All You Need"'`.
+
 ## When cite says the title is ambiguous
 
 Short or shared titles ("Literate programming") match several works. Cite then
@@ -65,12 +68,14 @@ author can add those entries by hand. Check reports them as
 ## Fixing problems check reports
 
 - `reference-not-found` (error): remove the `\cite` and tell the author. Do not
-  swap in a similar-sounding paper.
+  swap in a similar-sounding paper. Remove the entry from the `.bib` only if
+  the author asks.
 - `reference-metadata-mismatch` (warning): the entry differs from the record in
   year, authors or title. Show the author both versions. `overfull cite` never
   overwrites an entry (it prints the existing key and adds nothing). If the
   author agrees to replace it, they remove the old entry (or you do, at their
-  request), then run `overfull cite <doi> --key <same key>`.
+  request: deleting a whole entry is allowed by the guard, changing one is
+  not), then run `overfull cite <doi> --key <same key>`.
 - `reference-doi-wrong-work`, `reference-arxiv-wrong-work` (error): the DOI or
   arXiv id belongs to a different paper. Do not re-add from that identifier.
   Ask the author for the right one, or search by exact title with

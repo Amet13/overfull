@@ -9,6 +9,11 @@ The templates produce a tagged PDF through LaTeX's built-in tagging:
 `\DocumentMetadata{…, tagging=on}` at the top of `main.tex`, compiled with
 LuaLaTeX. Most fixes are about content the author must supply, not settings.
 
+Beamer slides are the exception: beamer cannot take `\DocumentMetadata`, so
+the slides template is not tagged. Its accessibility check reports
+`pdf-not-tagged` as an expected warning; fix the title, language and alt-text
+problems, and do not try to add tagging to a beamer deck.
+
 ## Steps
 
 1. Build and check:
@@ -24,15 +29,17 @@ LuaLaTeX. Most fixes are about content the author must supply, not settings.
 
 ## Document level
 
-- `\DocumentMetadata` must be the first line of `main.tex` and keep
-  `tagging=on` and the `lang` setting. Do not remove it to fix a build error;
+- `\DocumentMetadata` must come before `\documentclass` and keep `tagging=on`,
+  `pdfstandard` and the `lang` setting. In the paper template it sits inside an
+  `\ifdefined\directlua` test that picks the math setting for LuaLaTeX or
+  pdfLaTeX; keep both branches in step. Do not remove it to fix a build error;
   fix the error instead (see `fix-build`).
 - Title: set in `metadata.tex`. The PDF title must match the document title.
 - Language: `lang` in `\DocumentMetadata` must match the text (`en`, `de`, …).
   Mark passages in another language with the document's language package
   (for example babel's `\foreignlanguage`).
 - Do not change the engine (except via the arXiv path in `prepare-arxiv`) or the
-  PDF standard settings.
+  PDF standard settings (`pdfstandard`, `pdfversion`).
 
 ## Figures
 
@@ -70,7 +77,7 @@ or without veraPDF installed, only the basics run (`verapdf-not-run`, info).
 | Missing title / DisplayDocTitle (`pdf-missing-title`) | Set the title in `metadata.tex`. |
 | Not tagged (`pdf-not-tagged`), or untagged content (`verapdf-<clause>`) | A package that does not support tagging yet. Report the package to the author; do not remove tagging. |
 | Fonts not embedded (`font-not-embedded`) | Usually an included PDF figure. Re-export it with embedded fonts. |
-| PDF/UA not claimed (`pdfua-not-claimed`, info) | Add `pdfstandard=ua-2` to `\DocumentMetadata`. |
+| PDF/UA not claimed (`pdfua-not-claimed`, info) | The templates claim it already. In another project, tell the author; adding `pdfstandard=ua-2` (with `pdfversion=2.0`) is their decision, because the PDF must then pass veraPDF. |
 
 ## Limits
 

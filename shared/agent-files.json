@@ -1,0 +1,10 @@
+[
+  ".claude/settings.json",
+  ".codex/hooks.json",
+  ".cursor/rules/overfull.mdc",
+  ".gemini/settings.json",
+  ".github/copilot-instructions.md",
+  "AGENTS.md",
+  "CLAUDE.md",
+  "GEMINI.md"
+]

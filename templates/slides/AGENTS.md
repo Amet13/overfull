@@ -34,14 +34,26 @@ The report has `checks[]` (`build`, `output`, `references`, `accessibility`,
 `severity`, `message`, `location` (`file`, `line`, `page`), `fix`, `data`.
 `overfull explain <rule>` explains a rule; `--checks build,output` runs a subset.
 
+**When `overfull` is not on PATH** (only Docker is installed), use the
+Makefile, which runs the same commands in the Overfull image: `make build`,
+`make check ARGS=--json`, `make cite ARGS=<doi>`, `make explain RULE=<rule>`,
+`make doctor`, `make pages PAGES=3-5`, `make diff`. Wherever a skill says
+`overfull <command> <options>`, run `make <command> ARGS="<options>"`. The
+`.bib` guard cannot run without `overfull` on PATH (the hook says so); its
+rules still apply.
+
 Build and tools:
 
-- Do not pass `--engine` or `--image` unless the author asks. `check` never runs
-  `build.image` from `overfull.yml`.
-- Never install TeX packages or fonts globally. If one is missing, use
-  `overfull build --engine docker` or tell the author.
-- Do not change the TeX engine or document class to silence an error. The only
-  exception is the arXiv build with pdfLaTeX (`make arxiv`, see `prepare-arxiv`).
+- Do not pass `--image`, and pass `--engine` only in one case: a package or
+  font is missing from the local TeX installation, then use
+  `overfull build --engine docker` (the image installs what it lacks). `check`
+  never runs `build.image` from `overfull.yml`.
+- Never install TeX packages or fonts globally. If a package is missing in
+  Docker too, tell the author.
+- Do not change the TeX engine or document class to silence an error. Two
+  exceptions, both on the author's request: the arXiv build with pdfLaTeX
+  (`make arxiv`, see `prepare-arxiv`), and switching to a venue's official
+  class or style file (see "Use the venue kit" in `start-paper`).
 - `overfull doctor` shows what is installed; exit 1 means nothing can build: tell
   the author.
 
@@ -50,9 +62,11 @@ Build and tools:
 References:
 
 - Add references only with `overfull cite <doi | arXiv:id | ACL id | PMID | "title">`.
-  Never write or edit BibTeX from memory. A guard blocks direct `.bib` edits
-  (agent hook) and commits of hand-written entries (pre-commit); if it blocks
-  you, use `overfull cite`. Do not work around it.
+  Never write or edit BibTeX from memory. A guard blocks edits that add or
+  change `.bib` entries (agent hook) and commits of hand-written entries (the
+  pre-commit hook in `.pre-commit-config.yaml`, once the author ran
+  `pre-commit install`); if it blocks you, use `overfull cite`. Do not work
+  around it. Deleting a whole entry the author asked you to remove is allowed.
 - Cite only keys you added with `overfull cite` or the author provided. Never
   cite a key reported as `reference-not-found` or `citation-key-missing`.
 - If `cite` finds no confident match, stop and tell the author what you searched
@@ -82,13 +96,23 @@ Rules and checks:
 - Do not edit the `venue:` section, change `profile`, remove `checks` or add
   `references.ignore` entries to make a check pass. Change `overfull.yml` only
   when the author tells you what the venue requires.
+- Double-blind review: in the paper template, `\PaperAnonymoustrue` in
+  `metadata.tex` hides names, affiliations, e-mail, PDF author and
+  acknowledgments. Never put names back while `venue.anonymous` is true.
 - Do not hack spacing, fonts, margins or float parameters to meet a page limit.
 
 Figures and accessibility:
 
 - Keep figures reproducible: data plus pgfplots code or a script.
 - Every figure needs alt text that says what it shows, not "Figure 3".
-- Keep `\DocumentMetadata`, `tagging=on`, the document language and the title.
+- Keep `\DocumentMetadata` before `\documentclass` (the paper template wraps
+  it in an `\ifdefined` test that picks the math setting per engine; keep
+  that), and keep `tagging=on`, `pdfstandard`, the document language and the
+  title. Do not change the PDF standard settings.
+- Exceptions: Beamer slides cannot take `\DocumentMetadata` and are not tagged
+  (the slides template says so); a venue class that is incompatible with
+  tagging (IEEEtran, llncs) builds without it, and you tell the author the PDF
+  is no longer tagged.
 
 LaTeX source:
 
@@ -107,7 +131,8 @@ When layout matters, render pages and look at them if you can read images:
 - One logical change per commit, with a message that says what changed in the
   content.
 - Work on a branch and open a pull request; `overfull diff --base main` gives a
-  PDF with your changes highlighted. In the description, list what changed, what
+  PDF with your changes highlighted. The template workflow
+  (`.github/workflows/preflight.yml`) puts the check report in the job summary. In the description, list what changed, what
   you could not verify and the remaining warnings.
 - If the venue asks for an AI-use statement (`venue.disclosure: required`),
   draft it with `write-disclosure` from what was actually done. The author
