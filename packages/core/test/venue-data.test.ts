@@ -1,17 +1,16 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   profilesForStyleFile,
   resolveProfile,
-  styleFileIndex,
   UnknownProfileError,
   type VenueProfileData,
   venueCheck,
 } from '../src/venue/index.js';
+import { tempDir } from './helpers.js';
 
 const script = fileURLToPath(new URL('../../../scripts/build-venues.mjs', import.meta.url));
 const fixtures = fileURLToPath(new URL('./fixtures/venue/', import.meta.url));
@@ -62,7 +61,6 @@ describe('venue profiles from data', () => {
     expect(profilesForStyleFile('exampletest.sty', venues)).toEqual(['example-test-venue']);
     expect(profilesForStyleFile('sub/dir/ExampleTest.STY', venues)).toEqual(['example-test-venue']);
     expect(profilesForStyleFile('other.sty', venues)).toEqual([]);
-    expect(styleFileIndex(venues)).toEqual({ 'exampletest.sty': ['example-test-venue'] });
   });
 });
 
@@ -81,6 +79,34 @@ describe('venue-profile-stale', () => {
     expect(p?.severity).toBe('info');
     expect(p?.message).toMatch(/2026-01-15.*out of date/);
     expect(p?.fix).toContain('https://example.invalid/test-fixture');
+  });
+
+  it("says so 30 days after the edition's deadline", () => {
+    const p = resolveProfile({ extends: 'example-test-venue', deadline: '2026-05-01' }, venues);
+    expect(venueCheck(p, ctx('2026-05-31T12:00:00Z')).problems.map((x) => x.rule)).not.toContain(
+      'venue-profile-stale',
+    );
+    const r = venueCheck(p, ctx('2026-06-01T12:00:00Z'));
+    const stale = r.problems.filter((x) => x.rule === 'venue-profile-stale');
+    expect(stale).toHaveLength(1);
+    expect(stale[0]?.severity).toBe('info');
+    expect(stale[0]?.message).toMatch(/deadline \(2026-05-01\) passed 31 days ago/);
+    expect(stale[0]?.data).toMatchObject({ deadline: '2026-05-01', days: 31 });
+  });
+
+  it('gives one note when the deadline passed and the check is old', () => {
+    const p = resolveProfile({ extends: 'example-test-venue', deadline: '2026-05-01' }, venues);
+    const r = venueCheck(p, ctx('2027-06-01T00:00:00Z'));
+    const stale = r.problems.filter((x) => x.rule === 'venue-profile-stale');
+    expect(stale).toHaveLength(1);
+    expect(stale[0]?.message).toMatch(/deadline/);
+  });
+
+  it('is silent before the deadline even with an old check date', () => {
+    const p = resolveProfile({ extends: 'example-test-venue', deadline: '2027-09-01' }, venues);
+    const r = venueCheck(p, ctx('2027-03-16T00:00:00Z'));
+    const stale = r.problems.filter((x) => x.rule === 'venue-profile-stale');
+    expect(stale.map((x) => x.data?.checkedOn)).toEqual(['2026-01-15']);
   });
 
   it('does not apply to profiles without checkedOn', () => {
@@ -104,7 +130,7 @@ describe('scripts/build-venues.mjs', () => {
   });
 
   it('--check fails when the generated file is stale, and a write fixes it', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'venues-'));
+    const dir = tempDir();
     const out = join(dir, 'gen.ts');
     const base = ['--dir', `${fixtures}venues`, '--out', out];
     expect(run('--check', ...base).status).toBe(1);
@@ -113,5 +139,38 @@ describe('scripts/build-venues.mjs', () => {
     expect(run('--check', ...base).status).toBe(0);
     writeFileSync(out, `${readFileSync(out, 'utf8')}// edited\n`);
     expect(run('--check', ...base).status).toBe(1);
+  });
+
+  it('validates deadline', () => {
+    const dir = tempDir();
+    const base = 'name: X\nyear: 2027\nsource: https://example.org\ncheckedOn: 2026-11-10\n';
+    writeFileSync(join(dir, 'good-venue.yml'), `id: good-venue\n${base}deadline: 2027-01-31\n`);
+    writeFileSync(join(dir, 'bad-venue.yml'), `id: bad-venue\n${base}deadline: 2027-02-30\n`);
+    const r = run('--print', '--dir', dir);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain('bad-venue.yml: \\"deadline\\" must be a date');
+    expect(JSON.parse(r.stdout).profiles['good-venue'].deadline).toBe('2027-01-31');
+  });
+
+  it('validates anonymizedByClass', () => {
+    const dir = tempDir();
+    const base =
+      'name: X\nyear: 2027\nsource: https://example.org\ncheckedOn: 2026-11-10\nanonymous: true\n';
+    writeFileSync(
+      join(dir, 'good-venue.yml'),
+      `id: good-venue\n${base}anonymizedByClass:\n  package: good_2027\n  unlessOptions: [final]\n`,
+    );
+    writeFileSync(
+      join(dir, 'bad-venue.yml'),
+      `id: bad-venue\n${base}anonymizedByClass:\n  package: bad\n  options: [x]\n  withOptions: []\n`,
+    );
+    const r = run('--print', '--dir', dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr + r.stdout).toContain('unknown anonymizedByClass field \\"options\\"');
+    expect(r.stdout).toContain('anonymizedByClass.withOptions');
+    expect(JSON.parse(r.stdout).profiles['good-venue'].anonymizedByClass).toEqual({
+      package: 'good_2027',
+      unlessOptions: ['final'],
+    });
   });
 });

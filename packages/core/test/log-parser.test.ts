@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeLog, normalizePath, parseLog } from '../src/log/index.js';
+import { LineReader } from '../src/log/lines.js';
 import { LINEAR_BUDGET_MS, timed } from './linear-time.js';
 
 const BANNER =
@@ -493,5 +494,54 @@ describe('performance', () => {
       }),
     ).toBeLessThan(LINEAR_BUDGET_MS);
     expect(result?.parsed.errors.length).toBeGreaterThan(1000);
+  });
+});
+
+describe('fontspec feature warnings (older TeX Live)', () => {
+  it('reports a requested OpenType feature the font lacks', () => {
+    // fontspec before 2.9 printed this for OpenType fonts; 2.9 (TeX Live 2026) no longer
+    // checks OpenType features, so this rule has no corpus case.
+    const log = [
+      'This is LuaHBTeX, Version 1.18.0 (TeX Live 2024)  (format=lualatex 2024.6.1)',
+      '(./main.tex',
+      'Package fontspec Warning: ',
+      "(fontspec)                OpenType feature 'Style=Swash' (swsh) not",
+      "(fontspec)                available for font 'Latin Modern Roman' with",
+      "(fontspec)                script 'Latin' and language 'Default'.",
+      '',
+      ')',
+    ].join('\n');
+    const rules = analyzeLog(log).output.problems.map((p) => p.rule);
+    expect(rules).toContain('font-feature-missing');
+  });
+});
+
+describe('wrapped non-ASCII lines (pdfTeX counts bytes)', () => {
+  /** The logical line after the banner. */
+  const second = (head: string, first: string) => {
+    const r = new LineReader(`${head}\n${first}\ncontinued\n`);
+    r.next();
+    return r.next().text;
+  };
+  const PDFTEX = 'This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2026)';
+  const XETEX = 'This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2026)';
+
+  it('joins a line that fills 79 bytes with 2-, 3- and 4-byte characters', () => {
+    for (const line of [
+      `${'a'.repeat(77)}é`, // 78 characters, 79 bytes
+      `${'a'.repeat(76)}€`, // 77 characters, 79 bytes
+      `${'a'.repeat(75)}😀`, // a surrogate pair: 76 characters, 79 bytes
+      `${'a'.repeat(70)}é\uFFFD`, // a character pdfTeX split, decoded as U+FFFD
+    ])
+      expect(second(PDFTEX, line), line).toBe(`${line}continued`);
+  });
+
+  it('keeps a shorter non-ASCII line, and counts characters for XeTeX', () => {
+    const short = `${'a'.repeat(70)}éé`;
+    expect(second(PDFTEX, short)).toBe(short);
+    const bytes79 = `${'a'.repeat(77)}é`;
+    expect(second(XETEX, bytes79)).toBe(bytes79);
+    const chars79 = `${'a'.repeat(78)}é`;
+    expect(second(XETEX, chars79)).toBe(`${chars79}continued`);
   });
 });

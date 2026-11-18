@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { main } from '../src/main.js';
@@ -22,6 +22,32 @@ describe('templates', () => {
     ]) {
       expect(isTemplateFile(f), f).toBe(false);
     }
+  });
+});
+
+describe('template project files', () => {
+  const dir = templatesDir();
+  const read = (t: string, f: string) => readFileSync(join(dir as string, t, f), 'utf8');
+  it.skipIf(!dir)('ignore only root PDFs, ship the guard and the agent make targets', () => {
+    for (const t of ['paper', 'thesis', 'slides']) {
+      const ignore = read(t, '.gitignore').split('\n');
+      expect(ignore, t).toContain('/*.pdf');
+      expect(ignore, t).not.toContain('*.pdf');
+      expect(ignore, t).toContain('notes/reviews.md');
+      expect(read(t, '.pre-commit-config.yaml')).toContain('entry: overfull guard --staged');
+      const make = read(t, 'Makefile');
+      for (const target of ['build', 'check', 'cite', 'explain', 'doctor'])
+        expect(make, `${t}: ${target}`).toMatch(new RegExp(`\\n${target}: ##`));
+      expect(make).toContain('$(RUN_OVERFULL) build');
+      expect(make).not.toContain('overfull-tex:dev');
+      const wf = read(t, '.github/workflows/preflight.yml');
+      expect(wf).toContain('name: preflight');
+      expect(wf).toContain('(success() || failure())');
+      expect(read(t, 'overfull.yml')).toContain('ghcr.io/amet13/overfull:3-slim');
+    }
+    const paper = read('paper', '.github/workflows/preflight.yml');
+    expect(paper.indexOf('name: Preflight')).toBeLessThan(paper.indexOf('arXiv'));
+    expect(paper).toContain('overfull check --profile arxiv');
   });
 });
 
@@ -59,6 +85,20 @@ describe('overfull init', () => {
 });
 
 describe('overfull doctor', () => {
+  it('needs the Node version the package.json files declare, and this one passes', async () => {
+    const { MIN_NODE_MAJOR } = await import('../src/commands/doctor.js');
+    for (const file of ['../package.json', '../../../package.json']) {
+      const pkg = JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8')) as {
+        engines: { node: string };
+      };
+      expect(pkg.engines.node).toBe(`>=${MIN_NODE_MAJOR}`);
+    }
+    const io = memIo(tempDir());
+    await main(['doctor', '--json'], io);
+    const { items } = JSON.parse(io.stdoutText()) as { items: { name: string; ok: boolean }[] };
+    expect(items.find((i) => i.name === 'node')?.ok).toBe(true);
+  });
+
   it('lists tools; exits 1 only when nothing can build', async () => {
     const io = memIo(tempDir());
     const code = await main(['doctor'], io);
@@ -80,16 +120,39 @@ describe('overfull doctor', () => {
     expect(text).toMatch(/api\.crossref\.org +unreachable/);
   });
 
-  it('reports an invalid config without failing', async () => {
+  it('marks an invalid config with ✕ and exits 1', async () => {
     const dir = tempDir();
     writeFileSync(join(dir, 'overfull.yml'), 'mian: x.tex');
     const io = memIo(dir);
     const code = await main(['doctor', '--json'], io);
-    const { items, canBuild } = JSON.parse(io.stdoutText()) as {
-      canBuild: boolean;
-      items: { name: string; ok: boolean; detail: string }[];
+    const { items, configValid } = JSON.parse(io.stdoutText()) as {
+      configValid: boolean;
+      items: { name: string; ok: boolean; error?: boolean; detail: string }[];
     };
-    expect(code).toBe(canBuild ? 0 : 1);
-    expect(items.find((i) => i.name === 'overfull.yml')).toMatchObject({ ok: false });
+    expect(code).toBe(1);
+    expect(configValid).toBe(false);
+    expect(items.find((i) => i.name === 'overfull.yml')).toMatchObject({ ok: false, error: true });
+    const human = memIo(dir);
+    expect(await main(['doctor'], human)).toBe(1);
+    expect(human.stdoutText()).toMatch(/✕ overfull\.yml +overfull\.yml: unknown key `mian`/);
+  });
+
+  it('a missing --config file is ✕ and exit 1', async () => {
+    const io = memIo(tempDir());
+    expect(await main(['doctor', '--config', 'nope.yml'], io)).toBe(1);
+    expect(io.stdoutText()).toContain('✕ overfull.yml');
+    expect(io.stdoutText()).toContain('Config file not found: nope.yml');
+  });
+
+  it('keeps the whole YAML error, with the line it points at (doctor and check)', async () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, 'overfull.yml'), 'main: a: b\n');
+    const io = memIo(dir);
+    expect(await main(['doctor'], io)).toBe(1);
+    expect(io.stdoutText()).toMatch(/invalid YAML: .*at line 1, column \d+:\n/);
+    expect(io.stdoutText()).toContain('main: a: b');
+    const check = memIo(dir);
+    expect(await main(['check'], check)).toBe(2);
+    expect(check.stderrText()).toMatch(/at line 1, column \d+:\n\nmain: a: b\n +\^/);
   });
 });

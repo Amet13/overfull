@@ -23,4 +23,13 @@ describe('doctor network line', () => {
       expect(item).toMatchObject({ ok: true, detail: 'reachable', status });
     }
   });
+
+  it('OVERFULL_NO_DOCKER=1 never runs docker and says so', async () => {
+    const io = memIo(tempDir(), { OVERFULL_NO_DOCKER: '1', PATH: process.env.PATH });
+    await main(['doctor', '--json'], io);
+    const docker = JSON.parse(io.stdoutText()).items.find(
+      (i: { name: string }) => i.name === 'docker',
+    );
+    expect(docker).toMatchObject({ ok: false, detail: 'not used (OVERFULL_NO_DOCKER=1)' });
+  });
 });

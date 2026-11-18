@@ -11,7 +11,7 @@ pnpm build
 pnpm test
 ```
 
-You need Node 26 or newer and pnpm 12 (`corepack enable` or
+You need Node 22 or newer (CI runs 22, 24 and 26) and pnpm 12 (`corepack enable` or
 `npm install -g pnpm@12`). Docker is needed for anything that
 compiles LaTeX (corpus, templates, end-to-end tests).
 
@@ -77,19 +77,49 @@ pnpm templates:check
 pnpm venues:check
 ```
 
+If you changed `site/` or `docs/` (the guide is built into the website), also run
+the site checks:
+
+```bash
+pnpm --filter site check && pnpm --filter site build
+```
+
 If you changed `action/src` or anything it bundles, rebuild the Action and
 commit `action/dist`: `pnpm --filter overfull-action build` (CI checks it).
 
 `make help` lists the Docker tasks: `make image`, `make corpus`, `make e2e`.
+
+The end-to-end test of `overfull build` and `overfull check` in Docker is skipped
+unless you ask for it. Build the image first (`make image` tags it
+`overfull:dev`), then run:
+
+```bash
+OVERFULL_E2E=1 pnpm test packages/cli/test/e2e.test.ts
+```
+
+It uses `$OVERFULL_IMAGE` when set, else `overfull:dev`.
+
+The live reference test asks the real indexes (CrossRef, arXiv and others), so it is
+skipped too. Run it with network access:
+
+```bash
+OVERFULL_LIVE=1 pnpm test packages/core/test/refs.live.test.ts
+```
+
+The weekly `sources-health` maintenance job runs it and reports a failure in its issue.
 
 ## Cutting a release (maintainers)
 
 Overfull ships as a Docker image, GitHub Release downloads and the Action. It is
 not published to npm.
 
-Releases normally happen on their own: `autorelease.yml` proposes a patch release
-every month and publishes it once merged (see [MAINTAINING.md](MAINTAINING.md)). To
-release by hand, for example a minor or major version:
+Releases normally happen on their own: `autorelease.yml` proposes a release every
+month and publishes it once merged (see [MAINTAINING.md](MAINTAINING.md)).
+`scripts/release-notes.mjs` moves the `[Unreleased]` section into the new, dated
+version section, merges the commit subjects into its `### Changed` list and folds
+dependency bumps into one line. The version is a minor bump when the section has
+`### Added` entries, else a patch bump. Write user-visible changes into
+`[Unreleased]` as you go. To release by hand, for example a major version:
 
 1. `node scripts/bump-version.mjs X.Y.Z --dry-run`, then without `--dry-run`.
    It updates every `package.json`, core's `VERSION`, `CITATION.cff` and, on a
@@ -104,12 +134,14 @@ release by hand, for example a minor or major version:
    - refuses to run unless CI passed on that commit and `vX.Y.Z` is not
      released yet;
    - builds the executables, `overfull.cjs`, template PDFs, `SHA256SUMS` and
-     the signed provenance, then creates the `vX.Y.Z` tag and GitHub release;
-   - moves the Action's major tag (`vX`);
-   - publishes `ghcr.io/amet13/overfull:X.Y.Z`, `X.Y` and `X`.
+     the signed provenance, and makes sure the commit's images exist;
+   - after the `release` environment's approval, publishes
+     `ghcr.io/amet13/overfull:X.Y.Z`, `X.Y` and `X`, then creates the `vX.Y.Z`
+     tag and GitHub release;
+   - moves the Action's major tag (`vX`).
 
-   Pushing a `vX.Y.Z` tag yourself does the same (the image is then built by
-   `image.yml` on the tag push).
+   Pushing a `vX.Y.Z` tag yourself does the same once CI passed on that commit
+   (the image is then built by `image.yml` on the tag push).
 
 ## Code of conduct
 

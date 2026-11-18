@@ -1,0 +1,7 @@
+{
+  "title": "A new citation since Biber last ran",
+  "engine": "lualatex",
+  "check": "output",
+  "expect": ["bibliography-stale"],
+  "run": "once"
+}

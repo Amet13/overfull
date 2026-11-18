@@ -6,36 +6,45 @@ section: Reference
 ---
 
 ```text
-overfull init [thesis|paper|slides] [dir] [--force] [--no-git] [--json]
+overfull init [thesis|paper|slides] [dir] [--force] [--no-git] [--yes] [--json]
+overfull init --here [--main file] [--agents] [--ci] [--make] [--hooks] [--vscode] [--all]
+                     [--force] [--dry-run] [--yes] [--json]
 overfull build [main.tex] [--engine auto|local|docker] [--image name] [--verbose] [--force]
                [--json] [--config file]
-overfull check [file...] [--main file] [--checks a,b] [--profile p] [--offline] [--refresh] [--watch]
-               [--fail-on error|warning|never]
-               [--json | --markdown | --annotations | --sarif | --html] [--verbose]
+overfull check [file...] [--main file] [--checks a,b] [--profile name] [--offline] [--refresh]
+               [--project-cache] [--watch] [--fail-on error|warning|never]
+               [--json | --markdown | --annotations | --sarif | --html | --gcc] [--verbose]
                [--write format=file ...]
                [--pdf file] [--log file] [--aux file] [--bib a.bib,b.bib]
                [--mailto address] [--no-verapdf] [--engine auto|local|docker] [--image name]
                [--config file]
-overfull cite <doi | arXiv:id | "title"> [--bib file] [--key k] [--author name] [--year yyyy]
-              [--dry-run] [--json] [--mailto addr] [--config file]
+overfull cite <doi | arXiv:id | ACL id | PMID | PMCID | "title"> [--bib file] [--key k]
+              [--author name] [--year yyyy] [--dry-run] [--json] [--mailto addr] [--config file]
 overfull pages <range> [--main file] [--pdf file] [--out dir] [--dpi n] [--json] [--config file]
 overfull diff [--base ref] [--main file] [--out file] [--engine auto|local|docker] [--json]
               [--config file]
 overfull explain <rule> [--json]
 overfull explain --list [--json]
 overfull doctor [--json] [--config file]
-overfull mcp [--cwd dir]
+overfull guard --staged [--offline] [--json]
+overfull guard --hook [claude|gemini|codex]
+overfull mcp [--cwd dir] [--allow-build]
 ```
 
 `overfull --version` prints the version (for example `3.1.0`). `overfull <command> --help` (or
 `-h`) prints the options of one command.
 
-Every command takes `--json` and then prints JSON on stdout. See
+Every command except `mcp` (and `guard --hook`, which answers in its harness's
+own format) takes `--json` and then prints JSON on stdout. See
 [JSON output](#json-output) for the shape of each one.
 
-Commands read `overfull.yml` in the current directory for the main file, job
-name, bibliography, profile and checks. Flags override it for one run. See
-[Configuration](./config.md).
+Commands read `overfull.yml` (or `overfull.yaml`) for the main file, job name,
+bibliography, profile and checks. Flags override it for one run. See
+[Configuration](./config.md). Run from a subfolder (`sections/`), `check`,
+`build`, `pages`, `diff`, `cite`, `doctor` and `mcp` use the nearest
+`overfull.yml` in a folder above, up to the root of the Git repository, and say
+so on stderr (`Using ../overfull.yml.`). That folder is then the project folder;
+file arguments are still read relative to the folder you are in.
 
 ## init
 
@@ -43,23 +52,61 @@ name, bibliography, profile and checks. Flags override it for one run. See
 overfull init paper my-paper
 ```
 
-Copies a template (`thesis`, `paper` or `slides`) into `dir`. The template
+`overfull init [thesis|paper|slides] [dir]` copies a template into `dir`. The template
 defaults to `thesis` and `dir` to `./<template>`. `overfull init my-thesis`
-creates the thesis template in `my-thesis`. Each template includes
+creates the thesis template in `my-thesis`; a name within two letters of a
+template name (`papr`) is taken as a typo and refused with "Did you mean
+`paper`?". More than two arguments is a usage error. Each template includes
 `overfull.yml`, a Makefile, a GitHub workflow, `AGENTS.md` and skills.
 
 | Flag | Effect |
 | --- | --- |
 | `--force` | Copy into a directory that is not empty. Existing files are overwritten. |
 | `--no-git` | Do not run `git init`. By default a new project outside a Git repository gets `git init -b main` and, when `user.name` and `user.email` are set, an initial commit. |
+| `--yes`, `-y` | Ask nothing; take the default answers. |
 | `--json` | Print `{template, dir, git}`. |
 
 To add Overfull to a project you already have, run `overfull init --here` in
 its folder (alias `overfull adopt`). It detects the main file, engine,
 bibliography and venue style file, writes `overfull.yml`, and never touches a
 `.tex` or `.bib` file. Options: `--main <file>`, `--agents`, `--ci`, `--make`,
-`--hooks`, `--all`, `--force`, `--dry-run`; `--json` prints `{detected, written, skipped}`.
+`--hooks`, `--vscode`, `--all`, `--force`, `--dry-run`, `--yes`; `--json` prints `{detected, written, skipped}`.
 See [Add Overfull to an existing project](./existing-project.md).
+
+`--vscode` writes `.vscode/tasks.json` with one task, `overfull check`, that runs
+`overfull check --gcc` and puts each problem in VS Code's Problems panel, on its
+file and line. No extension is needed. Run it with **Terminal → Run Task… →
+overfull check**. It is opt-in and not part of `--all`. An existing `tasks.json`
+is never changed, even with `--force`; add the task to it by hand:
+
+```json
+{
+  "label": "overfull check",
+  "type": "shell",
+  "command": "overfull",
+  "args": ["check", "--gcc"],
+  "options": { "cwd": "${workspaceFolder}" },
+  "group": "test",
+  "problemMatcher": {
+    "owner": "overfull",
+    "source": "overfull",
+    "fileLocation": ["relative", "${workspaceFolder}"],
+    "pattern": {
+      "regexp": "^(.+?):(\\d+):(\\d+): (error|warning|note): (.*) \\[([a-z0-9-]+)\\]$",
+      "file": 1, "line": 2, "column": 3, "severity": 4, "message": 5, "code": 6
+    }
+  }
+}
+```
+
+The task expects the folder open in VS Code to be the project folder (the one
+with `overfull.yml`).
+
+`init` asks questions (which extras to add, whether to set `references.mailto`)
+only when both stdin and stdout are terminals, and not with `--yes` or `--json`.
+Every answer defaults to no, and the end of input (Ctrl-D, a closed stdin) counts
+as no. Otherwise nothing is asked: only `overfull.yml` (and a `.latexmkrc` when
+needed) is written, and the output lists what was written and what was not.
 
 ## build
 
@@ -70,7 +117,8 @@ overfull build main.tex --engine docker
 
 Compiles the document with `latexmk`, then checks the build log and the PDF
 (the `build` and `output` checks) and prints the report. `main.tex` defaults to
-`main` in `overfull.yml`.
+`main` in `overfull.yml`, else the detected main file. When there is none, or
+several `.tex` files could be the main file, `build` exits with 2 and says why.
 
 `--engine auto` (the default) uses a local `latexmk` if one is found and the
 Docker image otherwise. `local` and `docker` force one. Without a `.latexmkrc`,
@@ -97,7 +145,7 @@ Output goes to `build.outDir` from `overfull.yml` (passed as `-outdir` and
 Only build projects you trust: a `.latexmkrc` is Perl code that `latexmk` runs.
 
 Without `--image`, the image is `$OVERFULL_IMAGE` if set, else `build.image`
-from `overfull.yml`, else `ghcr.io/amet13/overfull:3`. Exit codes: 0 built,
+from `overfull.yml`, else `ghcr.io/amet13/overfull:3-slim`. Exit codes: 0 built,
 1 build failed, 2 usage error. With `--json`, a build that fails before LaTeX
 writes a log prints `{"error": {"code": "build-failed", "message", "exitCode"}}`.
 
@@ -135,17 +183,19 @@ those files. Any other extension is a usage error (exit 2).
 | --- | --- |
 | `--main file` | Main `.tex` file. Overrides `main:` in `overfull.yml` and detection. `pages` and `diff` take it too. |
 | `--checks a,b` | Run only these checks: `build`, `output`, `references`, `accessibility`, `venue`. |
-| `--profile p` | Use this venue profile instead of the one in `overfull.yml`: `generic`, `thesis`, `paper`, `arxiv`, `double-blind`. |
+| `--profile name` | Use this venue profile instead of the one in `overfull.yml`: `generic`, `thesis`, `paper`, `arxiv`, `double-blind`, or a venue id such as `neurips-2026` (see [Venues](./venues.md); an unknown name lists them all). |
 | `--offline` | Do not look references up online. The references check is skipped. Missing keys and `.bib` syntax errors are still reported. |
 | `--refresh` | Ignore cached reference answers and look every reference up again. The new answers are still written to the cache. |
-| `--watch` | Keep running and check again whenever the log, PDF, `.aux` or a `.bib` file changes. References are looked up again only when a `.bib` file changed. Stop with Ctrl-C. Human output only. |
+| `--project-cache` | Keep the reference cache in `.overfull/cache/refs.json` instead of your user cache folder (same as `OVERFULL_REFS_CACHE=project`). Never used in CI. `references.cache` in `overfull.yml` cannot turn it on. See [Cache](./config.md#cache). |
+| `--watch` | Keep running and check again whenever the log, PDF, `.aux` or a `.bib` file changes. References are looked up again only when a `.bib` file changed; otherwise each entry keeps its last answer, so a verified entry stays verified. Stop with Ctrl-C. Human output only. |
 | `--fail-on level` | `error` (default), `warning` or `never`. |
 | `--json` | Print the report as JSON (schema below). |
 | `--markdown` | Print a Markdown summary, for PR comments and job summaries. |
 | `--annotations` | Print GitHub workflow annotations. |
 | `--sarif` | Print a SARIF 2.1.0 log, for GitHub code scanning (see [the Action](./action.md#code-scanning-sarif)). Problems without a source file point at the main file, line 1. |
 | `--html` | Print the report as one self-contained HTML page (light and dark, printable, no scripts): to keep, attach to a CI run or send to a co-author. |
-| `--write format=file` | Also write the report to a file, in `json`, `markdown`, `annotations`, `sarif` or `html`. Repeat it for several formats from one run: `--write json=report.json --write html=report.html`. |
+| `--gcc` | Print one line per problem in the format compilers use, `file:line:col: error\|warning\|note: message [rule]`, errors first. Editors read it without an extension: a VS Code task (`init --here --vscode`), Vim's quickfix (`:set makeprg=overfull\ check\ --gcc`), Emacs `M-x compile`. The column is always 1, and the line is 1 for a problem in a whole file. A problem in no file (a PDF page, the bibliography as a whole) starts with `overfull:` instead, which editors show in the output but do not attach to a file. |
+| `--write format=file` | Also write the report to a file, in `json`, `markdown`, `annotations`, `sarif`, `html` or `gcc`. Repeat it for several formats from one run: `--write json=report.json --write html=report.html`. A relative path (or an absolute one inside the project) must stay inside the project and must not be a symlink; an absolute path outside the project, such as `$GITHUB_STEP_SUMMARY`, is fine. |
 | `--verbose`, `-v` | Show why each problem happened and how to fix it. |
 | `--pdf file` | PDF to check (default `<jobname>.pdf`). |
 | `--log file` | Build log (default `<jobname>.log`). |
@@ -154,12 +204,12 @@ those files. Any other extension is a usage error (exit 2).
 | `--mailto address` | Contact address for CrossRef's polite pool. |
 | `--no-verapdf` | Do not run veraPDF, even if it is installed. |
 | `--engine e` | Where veraPDF and `pdffonts` run when they are not installed: `auto` (the Overfull image, when Docker already has it), `docker` or `local`. |
-| `--image name` | Docker image for veraPDF and `pdffonts`. Default: `$OVERFULL_IMAGE`, else `ghcr.io/amet13/overfull:3`. |
+| `--image name` | Docker image for veraPDF and `pdffonts`. Default: `$OVERFULL_IMAGE`, else `ghcr.io/amet13/overfull:3-slim`. |
 | `--config file` | Config file (default `overfull.yml`). |
 
-Use only one of `--json`, `--markdown`, `--annotations`, `--sarif` and `--html` for what is printed; combining them is a usage error (exit 2). `--write` adds files on top of any of them, so one run can print annotations and write the job summary: `overfull check --annotations --write markdown="$GITHUB_STEP_SUMMARY"`. The exit code is the same for every format.
+Use only one of `--json`, `--markdown`, `--annotations`, `--sarif`, `--html` and `--gcc` for what is printed; combining them is a usage error (exit 2). `--write` adds files on top of any of them, so one run can print annotations and write the job summary: `overfull check --annotations --write markdown="$GITHUB_STEP_SUMMARY"`. The exit code is the same for every format.
 
-On an interactive terminal, the references check shows one updating line (`references 12/31`) on stderr. It is not shown in CI, when stderr is redirected, or with `--json`, `--markdown`, `--annotations` or `--sarif`.
+On an interactive terminal, the references check shows one updating line (`references 12/31`) on stderr. It is not shown in CI, when stderr is redirected, or with `--json`, `--markdown`, `--annotations`, `--sarif`, `--html` or `--gcc`.
 
 If `verapdf` is on
 the `PATH`, the accessibility check runs it (PDF/UA-2, falling back to PDF/UA-1
@@ -176,13 +226,18 @@ and `pages` do use `build.image`; only build projects you trust.)
 ```sh
 overfull cite 10.1145/3442188.3445922
 overfull cite arXiv:1706.03762 --key vaswani2017
+overfull cite 2020.acl-main.1
+overfull cite PMID:19872477
 overfull cite "Attention Is All You Need" --dry-run
 ```
 
-Looks up a DOI, an arXiv id or a title in CrossRef, doi.org, arXiv and DBLP, and
-appends a BibTeX entry built from the indexed record to the bibliography. OpenAlex
-is also searched for titles when the `OPENALEX_API_KEY` environment variable is
-set. Prints the citation key as its last line.
+Looks up a DOI (doi.org), an arXiv id (arXiv), an ACL Anthology id
+(`2020.acl-main.1`), a PubMed id (`PMID:19872477`) or PubMed Central id
+(`PMC2323736`, through Europe PMC), or a title (CrossRef, DBLP, arXiv, then
+OpenAlex, Semantic Scholar and Europe PMC), and appends a BibTeX entry built from
+the indexed record to the bibliography. Prints the citation key as its last
+line. What each service receives:
+[What leaves your machine](./references.md#what-leaves-your-machine).
 
 When the arXiv record of a preprint names the DOI of its published version (a
 journal or proceedings article with the same title), `cite` writes the published
@@ -242,11 +297,15 @@ page). Useful for agents that can read images, and for quick looks. It uses
 
 | Flag | Effect |
 | --- | --- |
-| `--pdf file` | Render this PDF (default `<jobname>.pdf`). |
+| `--pdf file` | Render this PDF (default `<jobname>.pdf` in `build.outDir`). Must be inside the project, like `check --pdf`. |
+| `--main file` | Main `.tex` file, to find `<jobname>.pdf` (default `main` in `overfull.yml`, else detected). |
 | `--out dir` | Write images here (default `.overfull/pages`; files are named `page-<n>.png`). Must be inside the project, also after resolving symlinks. |
-| `--dpi n` | Resolution (default 110). |
+| `--dpi n` | Resolution, at most 600 (default 110). A larger value is a usage error. |
 | `--json` | Print `{pages: [{page, file}]}`. |
 | `--config file` | Config file (default `overfull.yml`). |
+
+Each image is checked after rendering: a missing PNG, or one far from the page
+size at that resolution, is a `render-failed` error (exit 1).
 
 ## diff
 
@@ -261,12 +320,15 @@ Prints the path of the PDF. The project must be in a Git repository.
 
 | Flag | Effect |
 | --- | --- |
-| `--base ref` | Revision to compare with. Default: the merge base with `origin/main`, else `HEAD~1`. |
+| `--base ref` | Revision to compare with. Default: the merge base with `origin/main`, else `HEAD~1`. In a new repository with one commit, the uncommitted changes are compared with `HEAD`; with nothing changed, `diff` exits with 2 and suggests `--base HEAD`. |
 | `--main file` | Main `.tex` file (default `main` in `overfull.yml`). |
 | `--out file` | Output PDF (default `overfull-diff.pdf`). Must be inside the project, also after resolving symlinks. |
-| `--engine e` | `auto` (default), `local` or `docker`. |
+| `--engine e` | `auto` (default), `local` or `docker`. Any other value is a usage error. |
 | `--json` | Print `{pdf, base, sha, complete}`. `complete` is `false` when the diff document had LaTeX errors and the PDF may be incomplete. |
 | `--config file` | Config file (default `overfull.yml`). |
+
+When the diff document had LaTeX errors, the PDF is still written, but `diff`
+exits with 1, with or without `--json`.
 
 ## explain
 
@@ -297,9 +359,11 @@ veraPDF, latexdiff, Git, Docker), whether the Docker image is pulled, whether
 `api.crossref.org` answers (any HTTP response prints "reachable"; `--json` also
 has the status code), whether `overfull.yml` is valid, and what is
 disabled without each missing tool. It exits with 1 when nothing can build the
-document: no local TeX Live (`latexmk`) and no usable Docker image. Other missing
+document: no local TeX Live (`latexmk`) and no usable Docker image. It also exits
+with 1 when the config file is invalid, or the file given with `--config` does
+not exist; that line is marked ✕ and shows the whole error. Other missing
 tools only limit what can run, and the exit code stays 0. `--json` prints
-`{"canBuild", "message", "items": [{"name", "ok", "detail", "needFor"?, "status"?}]}`.
+`{"canBuild", "configValid", "message", "items": [{"name", "ok", "detail", "needFor"?, "status"?, "error"?}]}`.
 `--config file` checks a different config file.
 
 ## guard
@@ -314,7 +378,8 @@ Blocks hand-written bibliography entries when they happen. `--staged` reads the
 staged changes to `.bib` files and checks each entry that was added or changed.
 An entry passes when it has a valid `overfull cite` marker, carries
 `note = {overfull: author-provided}` or `overfull: skip`, or is found in the
-indexes. Removed entries and whitespace or field-order changes pass. Otherwise
+indexes (see [What leaves your machine](./references.md#what-leaves-your-machine)).
+Removed entries and whitespace or field-order changes pass. Otherwise
 the commit is refused and the file, key and the `overfull cite` command to use
 are printed. It works before the first commit. `--hook` answers an AI agent's
 hook and denies direct writes to `.bib` files by the agent's file tools; anything
@@ -323,7 +388,7 @@ it does not recognise is allowed. See [Guard](./with-an-agent.md#guard).
 | Flag | Effect |
 | --- | --- |
 | `--staged` | Check the staged `.bib` changes. |
-| `--hook [claude\|gemini]` | Answer a hook payload from stdin. Without a name, the harness is detected from the payload. |
+| `--hook [claude\|gemini\|codex]` | Answer a hook payload from stdin: Claude Code, Gemini CLI or Codex CLI. Without a name, the harness is detected from the payload. |
 | `--offline` | With `--staged`: do not ask the indexes. |
 | `--json` | With `--staged`: print `{status, files, checked, passed, blocked}`. |
 
@@ -334,25 +399,28 @@ Exit codes: 0 pass, 1 blocked, 2 usage or internal error. `--hook` always exits 
 ```sh
 overfull mcp
 overfull mcp --cwd /path/to/project
+overfull mcp --allow-build
 ```
 
 Runs Overfull as a Model Context Protocol server on stdin and stdout, for AI
 tools that have no shell. An MCP client starts it; you do not run it by hand.
 It offers the tools `check`, `cite`, `explain`, `pages` and `doctor`, with the
-same results as the commands' `--json` output. It works on the folder it was
+same results as the commands' `--json` output. It cannot build unless started
+with `--allow-build`: a person builds the document first. It works on the folder it was
 started in, or on `--cwd`, and never on a folder or an output path chosen by the
 client. See [Using Overfull over MCP](./mcp.md).
 
 | Flag | Effect |
 | --- | --- |
-| `--cwd dir` | The project folder. Default: the current directory. |
+| `--cwd dir` | The project folder. Default: the current directory (or the nearest folder above with `overfull.yml`). |
+| `--allow-build` | Add a `build` tool that runs `overfull build`. Only for projects you trust: `latexmk` runs the project's `.latexmkrc` (Perl code), and `build.image` in `overfull.yml` chooses the Docker image. |
 
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Success. For `check`: pass, or warnings without `--fail-on warning`; always 0 with `--fail-on never`. `doctor`: 0 when something can build the document. |
-| 1 | Problems found. For `check`: at least one error (or warning with `--fail-on warning`). For `build`: the build failed. For `cite`: no confident match, or an ambiguous title. For `pages` and `diff`: rendering or building the PDF failed. For `doctor`: nothing can build the document. |
+| 0 | Success. For `check`: pass, or warnings without `--fail-on warning`; always 0 with `--fail-on never`. `doctor`: 0 when something can build the document and the config is valid. |
+| 1 | Problems found. For `check`: at least one error (or warning with `--fail-on warning`), or nothing was checked (report `status: "skipped"`, for example no log, PDF or `.bib` file was found). For `build`: the build failed. For `cite`: no confident match, or an ambiguous title. For `pages` and `diff`: rendering or building the PDF failed, or the diff PDF is incomplete. For `doctor`: nothing can build the document, or the config file is invalid or missing. |
 | 2 | Usage error (bad flag, missing file, unknown rule or profile, invalid `overfull.yml`) or internal error. Set `OVERFULL_DEBUG=1` for a stack trace. |
 
 Under `--json`, a usage or internal error is also JSON on stdout (see below), with
@@ -360,7 +428,7 @@ the same exit code 2.
 
 ## JSON output
 
-Every command prints JSON on stdout with `--json`:
+Every command except `mcp` prints JSON on stdout with `--json`:
 
 | Command | Output |
 | --- | --- |
@@ -370,7 +438,8 @@ Every command prints JSON on stdout with `--json`:
 | `pages` | `{pages: [{page, file}]}`. |
 | `diff` | `{pdf, base, sha, complete}`. |
 | `explain <rule>` | `{id, check, severity, title, summary, fix, corpus?}`. With `--list`, an array of these. |
-| `doctor` | `{canBuild, message, items: [{name, ok, detail, needFor?, status?}]}`. `status` is the HTTP status of the CrossRef probe. |
+| `doctor` | `{canBuild, configValid, message, items: [{name, ok, detail, needFor?, status?, error?}]}`. `status` is the HTTP status of the CrossRef probe; `error: true` marks an invalid or missing config file. |
+| `guard --staged` | `{status, files, checked, passed, blocked}`. |
 
 Failures that the command itself reports (a failed build, a page that cannot be
 rendered, a diff that cannot be built) print `{"error": {"code", "message"}}` and
@@ -434,7 +503,7 @@ a real report has one entry per check that ran.
 | `version` | string | Overfull version. |
 | `target` | string? | The PDF that was checked, or the main file when there is no PDF. |
 | `assumed` | object? | Only when there is no `overfull.yml`: `{main, mainSource, jobname, profile, bib}`, what the run assumed. `mainSource` is `--main`, `main.tex`, `detected` or `default`. |
-| `status` | `pass` \| `warn` \| `fail` | Worst status of the checks that ran. Skipped checks do not count. |
+| `status` | `pass` \| `warn` \| `fail` \| `skipped` | Worst status of the checks that ran. Skipped checks do not count. `skipped` means every check was skipped and nothing was checked (each check's `skippedReason` says why); `check` then exits with 1, whatever `--fail-on` (except `never`). |
 | `checks[].check` | string | `build`, `output`, `references`, `accessibility`, `venue`. |
 | `checks[].status` | `pass` \| `warn` \| `fail` \| `skipped` | `skipped` has `skippedReason`. |
 | `checks[].summary` | string? | Short human summary. |

@@ -11,27 +11,37 @@ them run the same checks.
 | You have | Use |
 | --- | --- |
 | Docker only | The Docker image and the template Makefile |
-| No Docker, no Node | The [one-line installer](#one-line-install) or the single-file download from GitHub Releases; builds then need a local TeX Live |
-| Git, Node.js 26+, pnpm and Docker | [From source](#from-source), to work on Overfull itself |
+| No Docker, no Node | The [one-line installer](#one-line-install), [Homebrew, Scoop or Nix](#homebrew-scoop-and-nix), or the single-file download from GitHub Releases; builds then need a local TeX Live |
+| Git, Node.js 22+, pnpm and Docker | [From source](#from-source), to work on Overfull itself |
 | VS Code + Docker | The Dev Container |
 | Overleaf | Git sync to a local or GitHub copy |
 
 ## Docker only
 
-The image `ghcr.io/amet13/overfull:3` contains TeX Live 2026, fonts, poppler,
-qpdf, veraPDF, latexdiff, Node.js and the `overfull` CLI. You do not need to
-install TeX or Node.
-`ghcr.io/amet13/overfull:3-slim` is about a fifth of the size: TeX Live's basic
-scheme plus LuaLaTeX, the recommended LaTeX packages and fonts, and what the
-templates use. When a document needs a package it lacks, `overfull build` installs
-it from CTAN and builds again. The templates' workflows use it. (`:3-medium`, the
-image it replaced, now points to it.) `:3-check` has no TeX Live and only checks. See [the Docker README](https://github.com/amet13/overfull/blob/main/docker/README.md).
+Start with `ghcr.io/amet13/overfull:3-slim`. It has TeX Live's basic scheme plus
+LuaLaTeX and XeLaTeX, the recommended LaTeX packages and fonts, biblatex and Biber,
+latexdiff, the classes of the built-in venue profiles (IEEEtran, acmart, llncs,
+elsarticle, REVTeX), common packages and the Fira and Inconsolata fonts, along with
+poppler, qpdf, veraPDF, Node.js and the `overfull` CLI. You do not need to install
+TeX or Node. When a document needs a package the image lacks, `overfull build`
+installs it from CTAN and builds again, for any user. `overfull build --engine docker`
+uses this image by default, and the templates' workflows use it too.
+
+The other images:
+
+- `ghcr.io/amet13/overfull:3` has all of TeX Live 2026: about 3 GB compressed and
+  9–10 GB on disk. Use it when a document must build without network access or uses
+  many packages outside the slim set.
+- `ghcr.io/amet13/overfull:3-check` has no TeX Live and only checks.
+
+`-slim` tags exist from 3.1.2 on. `:3-medium`, the image slim replaced, is another
+name for it for the rest of 3.x. See
+[the Docker README](https://github.com/amet13/overfull/blob/main/docker/README.md).
 
 > **New to Docker?** Install [Docker Desktop](https://docs.docker.com/desktop/)
 > (macOS, Windows) or [Docker Engine](https://docs.docker.com/engine/install/)
-> (Linux) and start it. The first build downloads the Overfull image: about
-> 3 GB compressed, 9–10 GB on disk, so allow a few minutes and the disk space.
-> After that, builds take seconds.
+> (Linux) and start it. The first build downloads the image (about 0.7 GB for
+> slim), so allow a few minutes. After that, builds take seconds.
 
 In a project made from an Overfull template, the Makefile uses the image for
 you:
@@ -42,11 +52,17 @@ make check     # run all checks
 make help      # list every target
 ```
 
-To run the CLI directly in the image, mount your project:
+To run the CLI directly in the image, mount your project and run as yourself, so
+the files it writes belong to you:
 
 ```sh
-docker run --rm -v "$PWD":/work -w /work ghcr.io/amet13/overfull:3 overfull check
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  -v "$PWD":/work -w /work ghcr.io/amet13/overfull:3-slim overfull check
 ```
+
+`HOME=/tmp` gives that user a writable home. The images also work with a read-only
+root filesystem (`--read-only --tmpfs /tmp`); LuaLaTeX then rebuilds its font list
+once per container (a few seconds in slim, about a minute in the full image).
 
 The image tag matches the Overfull major version. The template pins it in
 `overfull.yml` under `build.image`.
@@ -57,6 +73,12 @@ Installs the single-file `overfull` for your system, checks it against the
 release's `SHA256SUMS`, and puts it in `~/.local/bin` (Windows:
 `%LOCALAPPDATA%\overfull\bin`). No `sudo`, no Node.js. If the checksum does not
 match, nothing is installed.
+
+When the [GitHub CLI](https://cli.github.com/) is installed and logged in
+(`gh auth login`), the installer also runs
+`gh attestation verify <file> --repo amet13/overfull`, which checks that the file
+was built by this repository's release workflow. If that check fails, nothing is
+installed. Without `gh` the step is skipped and the checksum is the only check.
 
 Linux (x64, arm64) and macOS (Apple silicon):
 
@@ -74,19 +96,50 @@ The installer prints a `PATH` line if the directory is not on your `PATH`.
 Set `OVERFULL_VERSION=v3.1.0` to install a specific release and
 `OVERFULL_INSTALL_DIR` to install somewhere else. Native builds exist for Linux
 (x64, arm64), macOS (Apple silicon and Intel) and Windows (x64); anywhere else,
-use `overfull.cjs` with Node.js 26, or Docker.
+use `overfull.cjs` with Node.js 22 or newer, or Docker.
 
 To do it by hand, download your file from
 [GitHub Releases](https://github.com/amet13/overfull/releases)
 (`overfull-linux-x64`, `overfull-linux-arm64`, `overfull-darwin-arm64`, `overfull-darwin-x64`,
-`overfull-win-x64.exe`), check it with `sha256sum -c --ignore-missing SHA256SUMS`,
+`overfull-win-x64.exe`), check it with `sha256sum -c --ignore-missing SHA256SUMS`
+(and, with the GitHub CLI, `gh attestation verify overfull-linux-x64 --repo amet13/overfull`),
 rename it to `overfull`, and make it executable.
 
 Each executable is about 150 MB, almost all of it the Node.js runtime it carries.
-Since 3.2 every release also has a gzip copy (`overfull-linux-x64.gz` and so on,
+Since 3.1.1 every release also has a gzip copy (`overfull-linux-x64.gz` and so on,
 about 50 MB, also listed in `SHA256SUMS`); the installers download that one and
 check both the compressed file and the unpacked executable. By hand:
 `gzip -d overfull-linux-x64.gz`.
+
+## Homebrew, Scoop and Nix
+
+This repository is also a Homebrew tap, a Scoop bucket and a Nix flake. They
+install the same executables from GitHub Releases, checked against the release's
+`SHA256SUMS`, and are updated by a pull request after each release.
+
+Homebrew (macOS Apple silicon and Intel, Linux x64 and arm64):
+
+```sh
+brew tap amet13/overfull https://github.com/Amet13/overfull
+brew install amet13/overfull/overfull
+```
+
+Scoop (Windows x64):
+
+```powershell
+scoop bucket add overfull https://github.com/Amet13/overfull
+scoop install overfull/overfull
+```
+
+Nix (Linux x64 and arm64, macOS):
+
+```sh
+nix run github:Amet13/overfull -- --version
+nix profile install github:Amet13/overfull
+```
+
+`brew upgrade` and `scoop update` pick up a new release once its pull request is
+merged. Adding the tap or the bucket clones this repository.
 
 ## Release download
 
@@ -100,7 +153,7 @@ Docker otherwise. Force one with `--engine local` or `--engine docker`.
 
 Reference lookups go to CrossRef, doi.org, arXiv, DBLP, OpenAlex, Semantic
 Scholar, the ACL Anthology and Europe PMC (see
-[References](./references.md)). They need network access. Use
+[What leaves your machine](./references.md#what-leaves-your-machine)). They need network access. Use
 `overfull check --offline` to skip them.
 
 ## Dev Container and VS Code

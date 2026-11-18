@@ -4,8 +4,9 @@
  * minutes.
  */
 import { describe, expect, it } from 'vitest';
-import { hasOthers, parseBib, parseNames } from '../src/bib/index.js';
-import { analyzeLog, parseLog } from '../src/log/index.js';
+import { parseBib, parseNames } from '../src/bib/index.js';
+import { analyzeLog, attributeBibliography, parseLog } from '../src/log/index.js';
+import { stripCdata } from '../src/refs/normalize.js';
 import { findCommands, grepTex } from '../src/venue/tex.js';
 import { LINEAR_BUDGET_MS as LIMIT_MS, timed } from './linear-time.js';
 
@@ -28,6 +29,7 @@ describe('1 MB crafted logs stay linear', () => {
     'spaced file token': `(./a${fill(' b')}\n`,
     'many spaced file tokens': `${fill('(./a b ')}\n`,
     'LaTeX error file': `! LaTeX Error: File \`${fill("x' ")}\n`,
+    'unmatched parentheses then warnings': `(./main.tex ${fill('(', MB / 2)}\n${fill('LaTeX Warning: Something on input line 1.\n\n', MB / 2)}`,
   };
   it.each(Object.keys(logs))('%s', (name) => {
     const text = logs[name] as string;
@@ -44,20 +46,16 @@ describe('1 MB crafted bib and tex sources stay linear', () => {
   it('author field with a long run of spaces', () => {
     const author = `A${' '.repeat(MB)}x`;
     expect(timed(() => parseNames(author))).toBeLessThan(LIMIT_MS);
-    expect(timed(() => hasOthers(author))).toBeLessThan(LIMIT_MS);
     expect(
       timed(() => parseBib(`@article{k, author={${author}}, title={T}, year={2020}}\n`)),
     ).toBeLessThan(LIMIT_MS);
   });
 
-  it('still splits names and detects "and others"', () => {
+  it('still splits names and drops "and others"', () => {
     expect(parseNames('Doe, Jane   and  John Smith and others').map((n) => n.family)).toEqual([
       'Doe',
       'Smith',
     ]);
-    expect(hasOthers('Doe, Jane and others ')).toBe(true);
-    expect(hasOthers('Doe, Jane and Others')).toBe(true);
-    expect(hasOthers('Doe, Jane andothers')).toBe(false);
   });
 
   it('unclosed command arguments and many matches', () => {
@@ -85,5 +83,48 @@ describe('1 MB crafted bib and tex sources stay linear', () => {
       { file: 'm.tex', line: 2, name: 'includegraphics', optional: 'width=1cm', arg: 'a{b}c' },
       { file: 'm.tex', line: 3, name: 'includegraphics', arg: 'd' },
     ]);
+  });
+});
+
+describe('1 MB .bbl files stay linear', () => {
+  const at = (line: number) =>
+    ({
+      rule: 'tex-error',
+      check: 'build',
+      severity: 'error',
+      message: 'x',
+      location: { file: 'main.bbl', line },
+    }) as const;
+  it.each([
+    ['many entries', fill('\\bibitem{k}\nA.~Author.\n\n')],
+    ['unclosed optional labels', fill('\\bibitem[')],
+    ['unclosed keys', fill('\\entry{')],
+  ])('%s', (_name, text) => {
+    const problems = Array.from({ length: 1000 }, (_, i) => at(i * 50 + 1));
+    const bbl = { path: 'main.bbl', text };
+    expect(timed(() => attributeBibliography(problems, { bbl, bibs: [] }))).toBeLessThan(LIMIT_MS);
+  });
+});
+
+describe('bibliography attribution stays linear', () => {
+  it('\\bibitem followed by a long run of whitespace and no brace', () => {
+    const text = `\\bibitem${' \t'.repeat(MB / 4)}x`;
+    expect(
+      timed(() => attributeBibliography([], { bbl: { path: 'main.bbl', text } })),
+    ).toBeLessThan(LIMIT_MS);
+  });
+});
+
+describe('XML text from outside services stays linear', () => {
+  it('many unclosed CDATA sections', () => {
+    const text = fill('<![CDATA[a');
+    expect(timed(() => stripCdata(text))).toBeLessThan(LIMIT_MS);
+    expect(stripCdata(text)).toBe(text);
+  });
+
+  it('stripCdata keeps the content of closed sections and leaves the rest', () => {
+    expect(stripCdata('a <![CDATA[<b>x</b>]]> c <![CDATA[y]]>')).toBe('a <b>x</b> c y');
+    expect(stripCdata('a <![CDATA[open')).toBe('a <![CDATA[open');
+    expect(stripCdata('<![CDATA[]]><![CDATA[z]]>')).toBe('z');
   });
 });

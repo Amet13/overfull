@@ -4,7 +4,9 @@
 # and skips pull requests from forks.
 #
 # A merge made with GITHUB_TOKEN starts no workflows, so after merging it starts ci,
-# image, pages and regenerate on main itself.
+# codeql and regenerate on main itself, and image and pages when the changed files match
+# their path filters. A pull request behind main is not merged: main is merged into it and
+# ci starts again on it (that run, see below, merges it).
 #
 # This workflow starts only for runs GitHub reports (Dependabot's, a person's). The ci
 # runs that the automation dispatches on its automation/* branches are started with
@@ -34,11 +36,14 @@ jobs:
       pull-requests: write
       actions: write
       checks: read
+      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            .github/workflows
       - name: Merge when every check passed
         env:
           GH_TOKEN: ${{ github.token }}

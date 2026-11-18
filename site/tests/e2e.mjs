@@ -12,12 +12,16 @@
  *  - drops a project .zip (built here from packages/cli/test/fixtures/project)
  *    and a folder, and checks the main file and .bib are found, a choice is
  *    offered when the main file is ambiguous, and bad zips are explained;
+ *  - looks up a DataCite DOI and an arXiv id with the network mocked, so the
+ *    Content-Security-Policy must allow the hosts doi.org redirects to;
+ *  - reads the profile from overfull.yml in a zip, skips a file over the size
+ *    limit, names an empty log, and moves focus to the report on a phone;
  *  - writes screenshots to test-screenshots/ (git-ignored).
  *
  * Env: SITE_BASE (default /overfull), PORT (default 4391), E2E_FULL_AXE=1 to
  * scan every rule page in every variant (default: the main pages only).
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -292,6 +296,49 @@ try {
     await page.goto(`${root}rules/`);
     const theme = await page.evaluate(() => document.documentElement.dataset.theme);
     if (theme !== 'dark') fail(`theme toggle did not persist (got ${theme})`);
+    // A toggle keeps its label; only aria-pressed changes.
+    const toggle = await page.$eval('[data-theme-toggle]', (b) => [
+      b.textContent?.replace(/\s+/g, ' ').trim(),
+      b.getAttribute('aria-pressed'),
+    ]);
+    if (toggle.join('|') !== 'Dark theme|true')
+      fail(`theme toggle: label and state are ${toggle.join('|')}`);
+    await ctx.close();
+  }
+
+  // ---- Home: the hero terminal fits, install is reachable from the hero ----
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await ctx.newPage();
+    await page.goto(root);
+    const term = await page.$eval('.term-body', (e) => [e.scrollWidth, e.clientWidth]);
+    console.log(`\nHero terminal at 1280px: scrollWidth ${term[0]}, clientWidth ${term[1]}`);
+    if (term[0] > term[1]) fail(`hero terminal is cut off at 1280px: ${term[0]} > ${term[1]}`);
+    if (!(await page.isVisible('.hero-links a[href="#start-title"]')))
+      fail('home: no install link in the hero');
+    for (const path of ['', 'check/', 'templates/', 'docs/']) {
+      await page.goto(root + path);
+      const d = await page.$eval('meta[name="description"]', (m) => m.content);
+      if (d.length > 155) fail(`${path || 'home'}: meta description is ${d.length} characters`);
+    }
+    await ctx.close();
+  }
+
+  // ---- Wide docs tables scroll with the keyboard (375px) ----
+  {
+    const ctx = await browser.newContext({ viewport: { width: 375, height: 812 } });
+    const page = await ctx.newPage();
+    await page.goto(`${root}docs/cli/`);
+    const axe = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'])
+      .analyze();
+    const bad = axe.violations.filter((x) => x.impact === 'serious' || x.impact === 'critical');
+    console.log(`/docs/cli/ at 375px: ${bad.length} serious or critical axe violations`);
+    for (const x of bad) fail(`375 /docs/cli/: axe ${x.impact} ${x.id}`);
+    const wrapped = await page.$$eval('table', (ts) =>
+      ts.every((t) => t.parentElement?.matches('.table-scroll[role="region"][tabindex="0"]')),
+    );
+    if (!wrapped) fail('/docs/cli/: a table is not in a focusable region');
     await ctx.close();
   }
 
@@ -321,6 +368,25 @@ try {
     await page.waitForSelector('#sheet-view .sheet', { timeout: 15000 });
     const logChecks = await page.$$eval('#sheet-view .sheet-check', (s) => s.length);
     if (logChecks !== 5) fail(`check page: expected 5 checks in the sheet, got ${logChecks}`);
+    if (v.width === 375) {
+      // On a phone the report is below the inputs: focus moves to it, and it is scrolled
+      // into view.
+      await page
+        .waitForFunction(
+          () => (document.activeElement?.getBoundingClientRect().top ?? 999) < innerHeight / 2,
+          null,
+          { timeout: 3000 },
+        )
+        .catch(() => {});
+      const focus = await page.evaluate(() => {
+        const el = document.activeElement;
+        return { id: el?.id, top: Math.round(el?.getBoundingClientRect().top ?? -1) };
+      });
+      console.log(`  375px after a run: focus #${focus.id}, top ${focus.top}px`);
+      if (focus.id !== 'result-title' || focus.top < 0 || focus.top >= v.height / 2)
+        fail(`check page 375: report heading not focused and in view: ${JSON.stringify(focus)}`);
+      await page.screenshot({ path: join(shots, `check-after-run-375-${v.scheme}.png`) });
+    }
     const buildStatus = await page.textContent('#sheet-view .sheet-check .sheet-status');
     console.log(`  log sample: build ${buildStatus?.replace('Status: ', '').trim()}`);
     await page.screenshot({
@@ -521,6 +587,49 @@ try {
       null,
       { timeout: 10000 },
     );
+    // overfull.yml in a zip sets the profile, as in `overfull check`
+    const venueCount = await page.$$eval(
+      '#profile optgroup[label="Venues"] option',
+      (o) => o.length,
+    );
+    if (venueCount !== 12) fail(`check page: ${venueCount} venue profiles offered, expected 12`);
+    await page.evaluate(() => {
+      document.querySelector('#progress').textContent = '';
+    });
+    await page.setInputFiles('#file-input', {
+      name: 'venue-paper.zip',
+      mimeType: 'application/zip',
+      buffer: makeZip([
+        ...projectFiles().filter(([n]) => !n.endsWith('/overfull.yml')),
+        ['my-paper/overfull.yml', 'main: main.tex\nprofile: neurips-2026 # the venue\n'],
+      ]),
+    });
+    await waitDone();
+    const profile = await page.inputValue('#profile');
+    if (profile !== 'neurips-2026') fail(`check page: overfull.yml profile not used (${profile})`);
+    if (!(await page.isVisible('#profile-note')))
+      fail('check page: "profile from overfull.yml" not shown');
+
+    // Loose files: over the size limit is skipped; an empty log is named, not "0 checks"
+    const huge = join(shots, 'huge.pdf');
+    writeFileSync(huge, Buffer.alloc(51 * 1024 * 1024, 0x20));
+    await page.setInputFiles('#file-input', huge);
+    await page.waitForFunction(
+      () => /huge\.pdf: too large/.test(document.querySelector('#notice')?.textContent ?? ''),
+      null,
+      { timeout: 15000 },
+    );
+    await page.click('#clear');
+    await page.setInputFiles('#file-input', {
+      name: 'empty.log',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(''),
+    });
+    await waitDone();
+    const emptyMsg = (await page.textContent('#progress')) ?? '';
+    if (!/empty\.log: the file is empty/.test(emptyMsg) || /0 checks/.test(emptyMsg))
+      fail(`check page: empty log reported as: ${emptyMsg}`);
+
     const axeZip = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
       .analyze();
@@ -530,6 +639,107 @@ try {
       fail(`check page zip (${v.width}-${v.scheme}): axe ${x.impact} ${x.id}`);
     if (external.length)
       fail(`check page zip made external requests: ${external.slice(0, 3).join(', ')}`);
+    await ctx.close();
+  }
+
+  // ---- References online, network mocked: DataCite DOIs and arXiv ids ----
+  // doi.org redirects a DataCite DOI (Zenodo, figshare, software, arXiv's 10.48550)
+  // to data.crosscite.org; the page's CSP must allow it, or the lookup fails.
+  {
+    console.log('\nDataCite lookups (mocked)');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+    const csl = (doi, title) => ({
+      DOI: doi,
+      type: 'article',
+      title,
+      author: [{ given: 'Ada', family: 'Lovelace' }],
+      issued: { 'date-parts': [[2020]] },
+    });
+    const records = {
+      '10.5281/zenodo.4242424': csl('10.5281/zenodo.4242424', 'A Dataset of Proof Sheets'),
+      '10.48550/arxiv.2001.01234': csl('10.48550/arXiv.2001.01234', 'Learning to Typeset'),
+    };
+    // Playwright's page.route does not see the request a redirect leads to, so the
+    // lookups are answered through the DevTools Fetch domain, which does; the CSP is
+    // enforced on the redirect as in a real browser.
+    const asked = [];
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Fetch.enable', {
+      patterns: ['doi.org', 'data.crosscite.org', 'api.crossref.org', 'api.openalex.org'].map(
+        (h) => ({ urlPattern: `https://${h}/*` }),
+      ),
+    });
+    cdp.on('Fetch.requestPaused', async (e) => {
+      const u = new URL(e.request.url);
+      const reply = (status, headers = {}, body) =>
+        cdp.send('Fetch.fulfillRequest', {
+          requestId: e.requestId,
+          responseCode: status,
+          responseHeaders: Object.entries({
+            'access-control-allow-origin': '*',
+            'content-type': 'application/json',
+            ...headers,
+          }).map(([name, value]) => ({ name, value })),
+          ...(body === undefined
+            ? {}
+            : { body: Buffer.from(JSON.stringify(body)).toString('base64') }),
+        });
+      if (u.hostname === 'doi.org') {
+        const doi = decodeURIComponent(u.pathname.slice(1)).toLowerCase();
+        asked.push(`doi.org ${doi}`);
+        if (!records[doi]) return reply(404, {}, {});
+        return reply(302, {
+          location: `https://data.crosscite.org/application/vnd.citationstyles.csl+json/${doi}`,
+        });
+      }
+      if (u.hostname === 'data.crosscite.org') {
+        const doi = decodeURIComponent(u.pathname.split('/').slice(3).join('/')).toLowerCase();
+        asked.push(`data.crosscite.org ${doi}`);
+        return reply(records[doi] ? 200 : 404, {}, records[doi] ?? {});
+      }
+      asked.push(u.hostname);
+      return reply(
+        200,
+        {},
+        u.hostname === 'api.crossref.org' ? { message: { items: [] } } : { results: [] },
+      );
+    });
+    await page.goto(`${root}check/`, { waitUntil: 'networkidle' });
+    const csp = await page.$eval('meta[http-equiv="content-security-policy"]', (m) => m.content);
+    for (const host of ['https://data.crosscite.org', 'https://api.datacite.org'])
+      if (!csp.includes(host)) fail(`CSP connect-src does not allow ${host}`);
+    for (const host of ['export.arxiv.org', 'dblp.org'])
+      if (csp.includes(host)) fail(`CSP still allows ${host}, which the page never calls`);
+    await page.setInputFiles('#file-input', {
+      name: 'datacite.bib',
+      mimeType: 'text/plain',
+      buffer:
+        Buffer.from(`@misc{zenodo, author = {Lovelace, Ada}, title = {A Dataset of Proof Sheets},
+  year = {2020}, doi = {10.5281/zenodo.4242424}}
+@misc{arxiv, author = {Lovelace, Ada}, title = {Learning to Typeset}, year = {2020},
+  eprint = {2001.01234}, archiveprefix = {arXiv}}`),
+    });
+    await page.waitForFunction(
+      () => /Done\./.test(document.querySelector('#progress')?.textContent ?? ''),
+      null,
+      { timeout: 20000 },
+    );
+    const refs =
+      (await page.textContent('#sheet-view section[aria-labelledby="sheet-references"]')) ?? '';
+    const status = await page.getAttribute(
+      '#sheet-view section[aria-labelledby="sheet-references"]',
+      'class',
+    );
+    console.log(`  references: ${status}; asked ${[...new Set(asked)].join(', ')}`);
+    if (!/st-pass/.test(status ?? ''))
+      fail(`DataCite lookups: references not verified (${status}): ${refs.slice(0, 300)}`);
+    if (!asked.some((a) => a.startsWith('data.crosscite.org 10.48550/')))
+      fail('DataCite lookups: the arXiv id was not resolved through doi.org');
+    const blocked = errors.filter((e) => /Content Security Policy|Refused to connect/i.test(e));
+    if (blocked.length) fail(`DataCite lookups: CSP blocked: ${blocked[0]}`);
     await ctx.close();
   }
 } catch (err) {

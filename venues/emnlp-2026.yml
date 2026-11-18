@@ -6,6 +6,7 @@ source:
   - https://aclrollingreview.org/cfp
   - https://acl-org.github.io/ACLPUB/formatting.html
 checkedOn: 2026-11-10
+deadline: 2026-05-25
 extends: double-blind
 paper: a4
 pageLimit:
@@ -15,6 +16,9 @@ pageLimit:
   excludes: [Limitations (required section), Ethical considerations, References]
 anonymous: true
 disclosure: recommended
+anonymizedByClass:
+  package: acl
+  withOptions: [review]
 notes: >-
   Papers go through ACL Rolling Review and follow all ARR submission requirements; the
   EMNLP page lists long papers (8 pages) and short papers (4 pages). Final versions get
@@ -22,3 +26,5 @@ notes: >-
   are from the ARR call and the ACL formatting guidelines it links. Writing-assistance
   disclosure follows the ARR policy. No style file name or hash is recorded because the
   official style repository was not reachable from this session.
+  acl.sty prints "Anonymous ACL submission" with the review option
+  (https://github.com/acl-org/acl-style-files, read on 2026-11-17).

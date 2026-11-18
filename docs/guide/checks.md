@@ -83,9 +83,10 @@ looks good. Use `overfull pages` to look.
 
 ## references
 
-Looks up every cited entry in your bibliography in CrossRef and doi.org (for
-DOIs), the arXiv API (for arXiv ids), and otherwise by title in CrossRef, DBLP
-and arXiv, plus OpenAlex when `OPENALEX_API_KEY` is set. Each entry ends up
+Looks up every cited entry in your bibliography: by its DOI, arXiv, ACL
+Anthology, PubMed or PubMed Central id when it has one, otherwise by title in
+CrossRef, DBLP, arXiv, OpenAlex, Semantic Scholar and Europe PMC. Which service
+receives what: [What leaves your machine](./references.md#what-leaves-your-machine). Each entry ends up
 `verified`, `mismatch`, `not-found`, `unverifiable` or, if the lookup itself
 failed, `error`. The rule ids are `reference-not-found`,
 `reference-metadata-mismatch`, `reference-unverifiable` and
@@ -129,9 +130,10 @@ Applies the rules of the profile in `overfull.yml`:
 - presence of an AI-use disclosure, and whether it is still a placeholder
   (`disclosure-missing`, `disclosure-placeholder`);
 - arXiv rules: absolute paths, file names with spaces, `.eps` figures when the
-  log shows pdfLaTeX, `minted` or shell-escape, the `.bbl` file
+  log shows pdfLaTeX, `minted` or shell-escape, the `.bib` or `.bbl` files and the
+  biblatex `.bbl` format
   (`arxiv-absolute-path`, `arxiv-filename-space`, `arxiv-eps-pdflatex`,
-  `arxiv-shell-escape`, `arxiv-missing-bbl`).
+  `arxiv-shell-escape`, `arxiv-missing-bbl`, `arxiv-bbl-version`).
 
 It cannot read a venue's call for papers. The rules are what you configure. It
 cannot detect every way to de-anonymise a paper, such as links to your own

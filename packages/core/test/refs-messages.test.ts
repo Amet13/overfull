@@ -104,11 +104,29 @@ describe('lookup-incomplete messages', () => {
   });
 
   it('renders in the human format', () => {
-    expect(formatHuman(report(), { color: false } as never)).toMatchSnapshot();
-    expect(formatHuman(report(), { color: false, verbose: true } as never)).toMatchSnapshot();
+    const short = formatHuman(report(), { color: false });
+    expect(short).toContain(
+      '  ! `lost` could not be checked because CrossRef and dblp did not answer  reference-lookup-failed',
+    );
+    expect(short).toContain('1 to fix · 2 to review · 1 note · 0 passed');
+    expect(short).not.toContain('why:');
+    expect(short).toMatchSnapshot();
+    const verbose = formatHuman(report(), { color: false, verbose: true });
+    // Detail lines join into one line in the terminal.
+    expect(verbose).toContain(
+      '    why: The lookup was incomplete. dblp: answered HTTP 503 (repeatedly; skipped for the rest of this run). CrossRef: timed out after 4000 ms.',
+    );
+    expect(verbose).toContain('    fix: Check this entry by hand; add a DOI where one exists.');
+    expect(verbose).toMatchSnapshot();
   });
 
   it('renders in Markdown', () => {
-    expect(formatMarkdown(report())).toMatchSnapshot();
+    const md = formatMarkdown(report());
+    expect(md).toMatch(/^## Overfull preflight: WARN\n/);
+    expect(md).toContain('| references | fail | 1 of 5 references verified');
+    // Angle brackets and pipes in fixes are escaped for GitHub Markdown.
+    expect(md).toContain('<code>overfull cite &lt;doi &#124; arXiv:id&gt;</code>');
+    expect(md).toContain('<sub>reference-unverifiable</sub>');
+    expect(md).toMatchSnapshot();
   });
 });

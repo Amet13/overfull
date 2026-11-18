@@ -1,18 +1,12 @@
-import { type Dirent, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import {
-  formatHtml,
-  formatHuman,
-  formatJson,
-  formatMarkdown,
-  formatSarif,
-  githubAnnotations,
-} from '@overfull/core';
+import { type Dirent, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { formatHuman, type RefResult } from '@overfull/core';
 import { list, type Parsed, parse, str } from '../args.js';
-import { exitCodeFor, runCheck, sarifFallbackFile } from '../check.js';
-import { parseChecks } from '../config.js';
-import { type Io, progressLine, UsageError, useColor } from '../io.js';
-import { isCI } from '../safety.js';
+import { exitCodeFor, runCheck } from '../check.js';
+import { loadConfig, locateProject, parseChecks } from '../config.js';
+import { type Io, noteProject, progressLine, UsageError, useColor } from '../io.js';
+import { REPORT_FORMATS, type ReportFormat, renderReport } from '../report.js';
+import { isCI, type ReportTarget, reportTarget, writeReport } from '../safety.js';
 
 const checkHelp = `Usage: overfull check [file...] [options]
 
@@ -34,18 +28,25 @@ Options:
   --offline           Do not look references up online
   --refresh           Ignore cached reference answers and look everything up again
                       (the new answers are still cached)
+  --project-cache     Cache reference answers in .overfull/cache/refs.json instead of
+                      your user cache folder (also OVERFULL_REFS_CACHE=project). Never
+                      used in CI. references.cache in overfull.yml cannot turn it on.
   --fail-on level     error (default), warning or never
   --json              Print the report as JSON (stable, for agents and scripts)
   --markdown          Print a Markdown summary (GitHub job summary / PR comment)
   --annotations       Print GitHub workflow annotations
   --sarif             Print a SARIF 2.1.0 log (GitHub code scanning upload)
   --html              Print a self-contained HTML page of the report (to share or attach)
-  --write fmt=file    Also write the report to a file: json, markdown, annotations, sarif
-                      or html. Repeat it to get several formats from one run, e.g.
+  --gcc               Print one line per problem for editors (VS Code tasks, Vim
+                      quickfix, Emacs): file:line:col: error|warning|note: message [rule]
+  --write fmt=file    Also write the report to a file: json, markdown, annotations, sarif,
+                      html or gcc. Repeat it to get several formats from one run, e.g.
                       --write json=report.json --write markdown=summary.md
+                      A relative file must stay inside the project and not be a symlink.
   --verbose, -v       Show why and how to fix each problem
   --watch             Check again whenever the log, PDF, .aux or a .bib file changes
-                      (references are looked up again only when a .bib changed);
+                      (references are looked up again only when a .bib changed;
+                      otherwise each entry keeps its last answer);
                       stop with Ctrl-C. Human output only.
   --pdf file          PDF to check (default <jobname>.pdf)
   --log file          Build log (default <jobname>.log)
@@ -74,18 +75,23 @@ interface FileArgs {
 }
 
 /** Sorts positional files by extension and merges them with the --main/--pdf/--log/--aux/--bib flags. */
-function classifyFiles(positionals: string[], values: Parsed['values']): FileArgs {
+function classifyFiles(
+  positionals: string[],
+  values: Parsed['values'],
+  rebase: (p: string) => string = (p) => p,
+): FileArgs {
   const out: FileArgs = {
-    bib: list(values.bib) ?? [],
+    bib: (list(values.bib) ?? []).map(rebase),
     onlyBib: false,
   };
   for (const k of ['main', 'pdf', 'log', 'aux'] as const) {
     const v = str(values[k]);
-    if (v) out[k] = v;
+    if (v) out[k] = rebase(v);
   }
   const positionalBib: string[] = [];
   let others = 0;
-  for (const p of positionals) {
+  for (const typed of positionals) {
+    const p = rebase(typed);
     const ext = /\.([A-Za-z0-9]+)$/.exec(p)?.[1]?.toLowerCase();
     if (ext === 'bib') {
       positionalBib.push(p);
@@ -95,7 +101,7 @@ function classifyFiles(positionals: string[], values: Parsed['values']): FileArg
       ext === 'tex' ? 'main' : ext === 'pdf' || ext === 'log' || ext === 'aux' ? ext : undefined;
     if (!key)
       throw new UsageError(
-        `Cannot check "${p}": expected a .tex, .bib, .log, .pdf or .aux file.\nRun \`overfull check --help\` for usage.`,
+        `Cannot check "${typed}": expected a .tex, .bib, .log, .pdf or .aux file.\nRun \`overfull check --help\` for usage.`,
       );
     if (out[key])
       throw new UsageError(
@@ -115,22 +121,26 @@ function classifyFiles(positionals: string[], values: Parsed['values']): FileArg
   return out;
 }
 
-const WRITE_FORMATS = ['json', 'markdown', 'annotations', 'sarif', 'html'] as const;
-type WriteFormat = (typeof WRITE_FORMATS)[number];
-
-/** `--write format=file` (repeatable): the extra report files one run writes. */
-function writeTargets(value: unknown, cwd: string): { format: WriteFormat; path: string }[] {
+/**
+ * `--write format=file` (repeatable): the extra report files one run writes. A
+ * file inside the project must not be, or go through, a symlink (`reportTarget`).
+ */
+function writeTargets(
+  value: unknown,
+  cwd: string,
+  rebase: (p: string) => string = (p) => p,
+): { format: ReportFormat; target: ReportTarget }[] {
   const items = Array.isArray(value) ? value : [];
   return items.map((item) => {
     const at = item.indexOf('=');
-    const format = item.slice(0, at) as WriteFormat;
+    const format = item.slice(0, at) as ReportFormat;
     const file = item.slice(at + 1);
-    if (at < 1 || !file || !WRITE_FORMATS.includes(format)) {
+    if (at < 1 || !file || !REPORT_FORMATS.includes(format)) {
       throw new UsageError(
-        `--write takes format=file with format one of ${WRITE_FORMATS.join(', ')}; got "${item}"`,
+        `--write takes format=file with format one of ${REPORT_FORMATS.join(', ')}; got "${item}"`,
       );
     }
-    return { format, path: resolve(cwd, file) };
+    return { format, target: reportTarget(cwd, rebase(file), '--write file') };
   });
 }
 
@@ -142,12 +152,14 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
       profile: { type: 'string' },
       offline: { type: 'boolean' },
       refresh: { type: 'boolean' },
+      'project-cache': { type: 'boolean' },
       'fail-on': { type: 'string' },
       json: { type: 'boolean' },
       markdown: { type: 'boolean' },
       annotations: { type: 'boolean' },
       sarif: { type: 'boolean' },
       html: { type: 'boolean' },
+      gcc: { type: 'boolean' },
       write: { type: 'string', multiple: true },
       verbose: { type: 'boolean', short: 'v' },
       watch: { type: 'boolean' },
@@ -172,7 +184,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
   if (!['error', 'warning', 'never'].includes(failOn)) {
     throw new UsageError(`--fail-on must be error, warning or never, got "${failOn}"`);
   }
-  const formats = ['json', 'markdown', 'annotations', 'sarif', 'html'].filter((f) => values[f]);
+  const formats = REPORT_FORMATS.filter((f) => values[f]);
   if (formats.length > 1)
     throw new UsageError(
       `Choose one output format, not ${formats.map((f) => `--${f}`).join(' and ')}`,
@@ -180,18 +192,25 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
   const engine = str(values.engine) ?? 'auto';
   if (!['auto', 'local', 'docker'].includes(engine))
     throw new UsageError(`--engine must be auto, local or docker, got "${engine}"`);
-  const files = classifyFiles(positionals, values);
+  // Run from a subfolder, the project is the folder of the nearest overfull.yml above.
+  const location = locateProject(io.cwd, str(values.config));
+  const cwd = location.root;
+  const files = classifyFiles(positionals, values, location.rebase);
   const checksArg = list(values.checks) ?? (files.onlyBib ? ['references'] : undefined);
   const machine = formats.length > 0;
-  const writes = writeTargets(values.write, io.cwd);
+  const writes = writeTargets(values.write, cwd, location.rebase);
+  noteProject(io, location);
   if (values.watch && machine)
     throw new UsageError(
-      '--watch prints the human report; leave out --json, --markdown, --annotations and --sarif',
+      '--watch prints the human report; leave out --json, --markdown, --annotations, --sarif, --html and --gcc',
     );
   const progress = machine || isCI(io.env) ? undefined : progressLine(io, 'references');
+  // check --watch keeps each entry's last answer, so an offline re-run does not forget them.
+  const refsMemo = values.watch ? new Map<string, RefResult>() : undefined;
   const runOnce = async (offline: boolean) => {
     const report = await runCheck({
-      cwd: io.cwd,
+      ...(refsMemo ? { refsMemo } : {}),
+      cwd,
       env: io.env,
       ...(io.fetch ? { fetch: io.fetch } : {}),
       ...(str(values.config) ? { config: str(values.config) } : {}),
@@ -205,6 +224,7 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
       ...(str(values.mailto) ? { mailto: str(values.mailto) } : {}),
       offline,
       ...(values.refresh ? { refresh: true } : {}),
+      ...(values['project-cache'] ? { projectCache: true } : {}),
       ...(progress ? { progress } : {}),
       verapdf: values['no-verapdf'] !== true,
       engine: engine as 'auto' | 'local' | 'docker',
@@ -220,33 +240,38 @@ export async function checkCommand(args: string[], io: Io): Promise<number> {
         `No overfull.yml: assuming main ${a.main}${a.mainSource === 'detected' ? ' (the only document here)' : ''}, profile ${a.profile}. Run \`overfull init --here\` to save these settings.\n`,
       );
     }
-    const render = (format: WriteFormat): string => {
-      if (format === 'json') return formatJson(report);
-      if (format === 'markdown') return formatMarkdown(report);
-      if (format === 'html') return formatHtml(report);
-      if (format === 'sarif') {
-        const fallbackFile = sarifFallbackFile(io.cwd, io.env, str(values.config), files.main);
-        return formatSarif(report, fallbackFile ? { fallbackFile } : {});
-      }
-      const lines = githubAnnotations(report);
-      return lines.length ? `${lines.join('\n')}\n` : '';
-    };
-    for (const w of writes) {
-      mkdirSync(dirname(w.path), { recursive: true });
-      writeFileSync(w.path, render(w.format));
-    }
-    const stdoutFormat = formats[0] as WriteFormat | undefined;
+    const configPath = str(values.config);
+    const render = (format: ReportFormat): string =>
+      renderReport(report, format, {
+        cwd,
+        env: io.env,
+        ...(configPath ? { configPath } : {}),
+        ...(files.main ? { main: files.main } : {}),
+      });
+    for (const w of writes) writeReport(w.target, render(w.format));
+    const stdoutFormat = formats[0];
     if (stdoutFormat) io.stdout(render(stdoutFormat));
     else io.stdout(formatHuman(report, { color: useColor(io), verbose: values.verbose === true }));
     return exitCodeFor(report, failOn as 'error' | 'warning' | 'never');
   };
   const offline = values.offline === true;
   if (!values.watch) return runOnce(offline);
-  return watch(io, runOnce, offline);
+  let dirs: string[] = [];
+  try {
+    const config = loadConfig(cwd, str(values.config), io.env);
+    dirs = [config.build.outDir, config.build.auxDir];
+  } catch {
+    /* runOnce reports a bad config */
+  }
+  return watch(io, cwd, dirs, runOnce, offline);
 }
 
-/** Files whose change starts a new check, as path → "mtime:size". */
-export function watchedState(root: string): Map<string, string> {
+/**
+ * Files whose change starts a new check, as path → "mtime:size". Folders whose name
+ * starts with a dot are skipped, except the build folders in `dirs` (relative to
+ * `root`, such as a `.build` outDir).
+ */
+export function watchedState(root: string, dirs: string[] = []): Map<string, string> {
   const out = new Map<string, string>();
   const walk = (dir: string, depth: number) => {
     let entries: Dirent[];
@@ -271,6 +296,9 @@ export function watchedState(root: string): Map<string, string> {
     }
   };
   walk(root, 0);
+  for (const d of new Set(dirs)) {
+    if (d !== '.' && d.split('/').some((part) => part.startsWith('.'))) walk(join(root, d), 0);
+  }
   return out;
 }
 
@@ -293,6 +321,8 @@ export function changes(
 
 async function watch(
   io: Io,
+  root: string,
+  dirs: string[],
   runOnce: (offline: boolean) => Promise<number>,
   offline: boolean,
 ): Promise<number> {
@@ -305,23 +335,28 @@ async function watch(
     signal = stop.signal;
   }
   let code = await runOnce(offline);
-  let state = watchedState(io.cwd);
+  let state = watchedState(root, dirs);
   io.stderr('Watching the log, PDF, .aux and .bib files. Press Ctrl-C to stop.\n');
   while (!signal.aborted) {
     await new Promise<void>((done) => {
-      const t = setTimeout(done, intervalMs);
-      signal.addEventListener('abort', () => {
+      const onAbort = () => {
         clearTimeout(t);
         done();
-      });
+      };
+      const t = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort);
+        done();
+      }, intervalMs);
+      signal.addEventListener('abort', onAbort, { once: true });
     });
     if (signal.aborted) break;
-    const next = watchedState(io.cwd);
+    const next = watchedState(root, dirs);
     const c = changes(state, next);
     state = next;
     if (!c.any) continue;
     io.stderr(`\n— ${new Date().toLocaleTimeString()} —\n`);
-    // Reference lookups only when a bibliography changed; otherwise the cached answers stand.
+    // Reference lookups only when a bibliography changed; otherwise each entry keeps its
+    // last answer (refsMemo), and entries never answered are reported as not checked.
     code = await runOnce(offline || !c.bib);
   }
   return code;

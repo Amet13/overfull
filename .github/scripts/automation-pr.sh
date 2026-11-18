@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Commits the working-tree changes to an automation branch and opens (or updates) a pull
-# request labelled `automerge`. CI is started explicitly, because pull requests and pushes
-# made with GITHUB_TOKEN start no workflows; automerge.yml merges the PR when CI passes.
+# request labelled `automerge`. CI and CodeQL are started explicitly, because pull requests
+# and pushes made with GITHUB_TOKEN start no workflows; the ci run merges the PR when every
+# check passed (ci.yml, `automation` job).
 #
 #   .github/scripts/automation-pr.sh <branch> <title> <body file>
 #
@@ -24,11 +25,15 @@ git commit -q -m "$title" -m "Opened by the $GITHUB_WORKFLOW workflow (run $GITH
 git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$branch"
 
 gh label create automerge --color 0e8a16 --description "Merged automatically when CI passes" 2>/dev/null || true
-number="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')"
+# `--head` matches any repository's branch of that name: a fork PR from `automation/...`
+# would be retitled and labelled instead of ours. Only a PR from this repository counts.
+number="$(gh pr list --head "$branch" --state open --json number,isCrossRepository |
+  jq -r 'map(select(.isCrossRepository == false)) | .[0].number // empty')"
 if [ -n "$number" ]; then
   gh pr edit "$number" --title "$title" --body-file "$body_file" --add-label automerge
 else
   gh pr create --base main --head "$branch" --title "$title" --body-file "$body_file" --label automerge
 fi
+gh workflow run codeql.yml --ref "$branch"
 gh workflow run ci.yml --ref "$branch"
-echo "Pull request for $branch is open; CI started."
+echo "Pull request for $branch is open; CI and CodeQL started."

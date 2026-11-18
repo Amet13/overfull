@@ -18,7 +18,7 @@ export {
   provenanceOf,
   sanitizeTexValue,
 } from './entry.js';
-export { type EntryKind, entryKind, identifiersOf } from './kind.js';
+export { type EntryKind, entryKind, identifiersOf, unescapeTexId } from './kind.js';
 export {
   AmbiguousLookupError,
   LOOKUP_MIN_CONFIDENCE,

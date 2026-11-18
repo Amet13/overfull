@@ -1,5 +1,5 @@
 import { outputSummary } from '../log/analyze.js';
-import { type CheckResult, statusOf } from '../types.js';
+import { type CheckResult, type Problem, statusOf } from '../types.js';
 
 /**
  * Removes findings that two checks report about the same thing, so each problem
@@ -26,4 +26,21 @@ export function mergeDuplicateFindings(checks: CheckResult[]): CheckResult[] {
     output.summary = outputSummary(kept);
   }
   return checks;
+}
+
+/**
+ * Adds the PDF's "??"/"[?]" findings to the output check, except those the log
+ * already explains (an undefined reference or citation), to avoid double counting.
+ */
+export function mergeOutput(output: CheckResult, pdfProblems: Problem[]): CheckResult {
+  const has = (re: RegExp) => output.problems.some((p) => re.test(p.rule));
+  const extra = pdfProblems.filter((p) =>
+    p.rule === 'pdf-unresolved-reference'
+      ? !has(/undefined-reference|reference-undefined/)
+      : !has(/undefined-citation|citation-undefined/),
+  );
+  if (extra.length === 0) return output;
+  const problems = [...output.problems, ...extra];
+  // The log's summary ("No problems found…") no longer describes the merged list.
+  return { ...output, status: statusOf(problems), problems, summary: outputSummary(problems) };
 }

@@ -9,6 +9,8 @@
 //   shared/agents/.claude/settings.json (hooks) -> .claude-plugin/plugin.json "hooks"
 //                                (the Claude Code plugin ships the same guard hook; the plugin
 //                                 uses the repository's skills/ directly, so skills need no copy)
+//   shared/agent-files.json      the shared/agents files of the last sync, so a file deleted
+//                                from shared/agents is deleted from the templates too
 //
 // Usage:
 //   node scripts/sync-templates.mjs           write changes
@@ -33,6 +35,7 @@ const check = process.argv.includes('--check');
 const templatesDir = join(root, 'templates');
 const skillsDir = join(root, 'skills');
 const agentsDir = join(root, 'shared', 'agents');
+const manifestFile = join(root, 'shared', 'agent-files.json');
 const LINK_TARGET = '../.agents/skills';
 
 const drift = [];
@@ -72,6 +75,20 @@ function syncFile(src, dest) {
 function removeExtra(path) {
   drift.push(`extra: ${rel(path)}`);
   if (!check) rmSync(path, { recursive: true, force: true });
+}
+
+/** Removes `path` and then its parent folders while they are empty, up to `stop`. */
+function removeWithEmptyParents(path, stop) {
+  removeExtra(path);
+  if (check) return;
+  for (
+    let d = dirname(path);
+    d.startsWith(`${stop}/`) || d.startsWith(`${stop}\\`);
+    d = dirname(d)
+  ) {
+    if (!isDir(d) || readdirSync(d).length > 0) break;
+    rmSync(d, { recursive: true });
+  }
 }
 
 /** Make dest an exact copy of src (adds, updates and removes files). */
@@ -117,12 +134,25 @@ const skills = isDir(skillsDir)
   : [];
 if (skills.length === 0) warn('no skills found in skills/*/SKILL.md; skipping skills');
 
-const agentFiles = listFiles(agentsDir);
+const agentFiles = listFiles(agentsDir).map((f) => f.split('\\').join('/'));
 if (!agentFiles.includes('AGENTS.md')) warn('shared/agents/AGENTS.md not found');
+
+// Files synced last time that are no longer in shared/agents: delete their copies.
+let previous = [];
+try {
+  previous = JSON.parse(readFileSync(manifestFile, 'utf8'));
+} catch (err) {
+  if (err.code !== 'ENOENT') throw err;
+}
+const removed = Array.isArray(previous) ? previous.filter((f) => !agentFiles.includes(f)) : [];
 
 for (const t of templates) {
   const tdir = join(templatesDir, t);
   for (const f of agentFiles) syncFile(join(agentsDir, f), join(tdir, f));
+  for (const f of removed) {
+    const p = join(tdir, ...f.split('/'));
+    if (existsSync(p)) removeWithEmptyParents(p, tdir);
+  }
 
   if (skills.length > 0) {
     const destSkills = join(tdir, '.agents', 'skills');
@@ -135,6 +165,18 @@ for (const t of templates) {
     }
     syncLink(join(tdir, '.claude', 'skills'), LINK_TARGET);
   }
+}
+
+const manifest = `${JSON.stringify(agentFiles, null, 2)}\n`;
+let haveManifest = null;
+try {
+  haveManifest = readFileSync(manifestFile, 'utf8');
+} catch {
+  // missing
+}
+if (haveManifest !== manifest) {
+  drift.push(`${haveManifest === null ? 'missing' : 'changed'}: ${rel(manifestFile)}`);
+  if (!check) writeFileSync(manifestFile, manifest);
 }
 
 // The Claude Code plugin (repository root) declares the same hook as the template settings.

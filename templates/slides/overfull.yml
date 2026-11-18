@@ -2,13 +2,21 @@
 # Docs: https://github.com/amet13/overfull
 main: main.tex
 jobname: slides            # output: slides.pdf / slides.log
-bib: []
+bib: [references.bib]
 profile: generic
-# No "accessibility" check: Beamer cannot produce tagged PDF (the LaTeX
-# Tagging Project lists it as "no support", and beamer rejects
-# \DocumentMetadata), so a PDF/UA check would always fail. Share the
-# accessible thesis PDF alongside the slides, or move to the ltx-talk class.
-checks: [build, output]
+# Beamer cannot produce a tagged PDF (the LaTeX Tagging Project lists it as
+# "no support", and beamer rejects \DocumentMetadata), so the deck is not
+# PDF/UA. The accessibility check still runs the basic rules: document title,
+# language and alt text on every image. It reports `pdf-not-tagged` as a
+# warning; that one is expected for Beamer. Share the accessible thesis PDF
+# alongside the slides, or move to the ltx-talk class for a tagged deck.
+checks: [build, output, references, accessibility]
+references:
+  # mailto: you@example.org
+  ignore: []
+  requireCite: true
+venue:
+  accessibility: recommended   # warnings, not errors: the deck cannot be tagged
 build:
   engine: auto             # local latexmk if installed, otherwise Docker
-  image: ghcr.io/amet13/overfull:3
+  image: ghcr.io/amet13/overfull:3-slim  # the image CI builds with; :3 is all of TeX Live

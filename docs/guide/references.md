@@ -1,6 +1,6 @@
 ---
 title: References
-description: How Overfull verifies bibliography entries against CrossRef, doi.org, arXiv, DBLP and (with an API key) OpenAlex, the outcomes, false positives, opting out, configuration, offline use, and why it never calls a reference fake.
+description: How Overfull verifies bibliography entries against CrossRef, doi.org, arXiv, DBLP, OpenAlex, Semantic Scholar, Europe PMC and the ACL Anthology, what each service receives, the outcomes, false positives, opting out, configuration, offline use, and why it never calls a reference fake.
 order: 31
 section: Checks
 ---
@@ -16,9 +16,14 @@ For each entry that your document cites (keys come from the `.aux` or `.bcf`; if
 neither exists, every entry is checked):
 
 1. If it has a DOI, resolve it through doi.org and CrossRef (DataCite DOIs for
-   datasets and software resolve through doi.org too).
+   datasets and software resolve through doi.org too). TeX escapes in the field
+   (`10.1007/978-3-030-58452-8\_13`) are read as the plain DOI. When doi.org
+   cannot be reached, OpenAlex is asked for the record of that one DOI.
 2. Else, if it has an arXiv id (`eprint` with `archivePrefix = {arXiv}`, or an
-   arXiv URL), query the arXiv API.
+   arXiv URL), query the arXiv API. When arXiv may not be asked (the browser
+   check), arXiv's DOI of the paper (`10.48550/arXiv.<id>`) is resolved through
+   doi.org, which passes it to DataCite. When that or arXiv cannot answer,
+   OpenAlex is asked for the same DOI.
 3. Else, if it names an ACL Anthology id or URL (`2020.acl-main.1`,
    `aclanthology.org/P19-1001`), fetch the record from the ACL Anthology; if it
    has a PubMed or PubMed Central id (`pmid`, `pmcid`, or a PubMed URL), fetch it
@@ -48,13 +53,25 @@ not found; open the link to confirm it.
 
 Entries that are websites, software, datasets, standards or manuals are not
 looked up. An entry with a DOI or arXiv id is judged by that identifier alone.
+When doi.org could not check the DOI and the work was found another way, the
+entry is verified only if the record found carries the same DOI. A record with
+another DOI is a mismatch; a record without a DOI leaves the DOI unchecked, and
+the entry "could not be checked".
+
+Titles in any script are compared by their own letters: Cyrillic, Greek,
+Arabic, Chinese, Japanese and so on (diacritics are ignored, and each Chinese or
+Japanese character counts as a word). A title with no letter or digit at all
+(`title = {???}`) cannot be searched; such an entry is never reported as not
+found.
 
 Results are cached in your user cache folder (`~/.cache/overfull`, see
 [Configuration](./config.md#cache)), so repeat runs are fast and make few
 network requests. The cache is kept outside the project so it cannot be
 committed: a committed cache could make a made-up reference look verified.
-`references.cache: project` moves it into `.overfull/cache/refs.json`; that
-opt-in is ignored in CI and when the cache path goes through a symlink.
+`overfull check --project-cache` (or `OVERFULL_REFS_CACHE=project`) moves it
+into `.overfull/cache/refs.json`; that opt-in is ignored in CI and when the
+cache path goes through a symlink. `references.cache: project` in `overfull.yml`
+is ignored: a project cannot choose to trust its own cache.
 
 A found record is reused for 30 days and a "not found" answer for 1 day (new
 DOIs and new indexing appear quickly). A timeout, a server error or a bot wall
@@ -66,6 +83,57 @@ skipped for the rest of the run, so one slow service cannot stall the check. A
 request must start answering within 4 seconds and finish within 10. The
 indexes for one entry are asked at the same time, with the per-host spacing
 unchanged.
+
+Requests to CrossRef are spaced to stay inside its limits: one at a time,
+about 1.1 seconds apart, in the public pool; up to three at a time, about 0.35
+seconds apart, with a `mailto` (see [Configuration](#configuration)). arXiv
+requests are 3 seconds apart, as arXiv asks.
+
+## What leaves your machine
+
+This is the one list of what Overfull sends to outside services. Only the
+references check, `overfull cite`, `overfull guard --staged` and the MCP
+`check` and `cite` tools send anything, and only about the entries they look
+up. Your `.tex` sources, PDF, log and the rest of the `.bib` file never leave
+your machine. `--offline` sends nothing. Each service also sees your IP address,
+as with any web request, and caches mean a repeat run asks again only for what
+changed or expired.
+
+Command line, Action and MCP server:
+
+| Service | Host | What it receives | When |
+| --- | --- | --- | --- |
+| doi.org | `doi.org` | The DOI | An entry with a DOI; `cite <doi>`; `cite` of a preprint whose published version has a DOI. doi.org passes the request on to the DOI's registration agency (for example CrossRef, or DataCite through `data.crosscite.org`), which then sees the DOI too. |
+| CrossRef | `api.crossref.org` | Title, first author's surname and year; the DOIs of matched works; your `mailto` if set | Title search for an entry without a DOI or other identifier, and `cite "<title>"` (with `--author` and `--year`). The retraction check asks for the DOIs of the works that matched, up to 40 per request. |
+| DBLP | `dblp.org` | Title | Title search. |
+| arXiv | `export.arxiv.org` | arXiv ids; title | An entry with an arXiv id (one request for many ids), `cite arXiv:<id>`, and the second wave of a title search. |
+| OpenAlex | `api.openalex.org` | Title; a DOI, or arXiv's DOI `10.48550/arXiv.<id>`; your `mailto` and `OPENALEX_API_KEY` if set | A DOI or arXiv id when doi.org or arXiv cannot answer. Title search when `OPENALEX_API_KEY` is set, and without a key when DBLP gave no answer. |
+| Semantic Scholar | `api.semanticscholar.org` | Title; `SEMANTIC_SCHOLAR_API_KEY` if set | Title search, only when the indexes above found nothing. |
+| Europe PMC | `www.ebi.ac.uk` | PubMed id or PubMed Central id; title | An entry or `cite` with a PMID or PMCID, and the last title search fallback. |
+| ACL Anthology | `aclanthology.org` | ACL Anthology id | An entry or `cite` with an Anthology id or URL. |
+
+The browser check on the website reads your files in the browser and never
+uploads them. With "Verify references online" on, it asks only the services
+that accept requests from web pages:
+
+| Service | Host | What it receives |
+| --- | --- | --- |
+| doi.org | `doi.org` | The DOI, or arXiv's DOI of a preprint. doi.org passes it on to the registration agency: CrossRef, or DataCite at `data.crosscite.org`. |
+| CrossRef | `api.crossref.org` | Title, first author's surname and year. |
+| OpenAlex | `api.openalex.org` | Title; a DOI or arXiv's DOI of a preprint. |
+
+The page may only connect to these hosts (its Content Security Policy). So it
+resolves DOIs registered with CrossRef and DataCite (Zenodo, figshare, arXiv,
+many datasets and software), but not DOIs from other registration agencies,
+such as mEDRA, JaLC or KISTI: doi.org sends those to the agency's own host,
+which the page may not reach, and the entry is reported as not checked. Run
+`overfull check` for them: the command line is not limited to these hosts. The page does
+not ask arXiv, DBLP, Semantic Scholar, Europe PMC or the ACL Anthology either.
+
+Other commands that use the network send nothing about your paper:
+`overfull doctor` asks `api.crossref.org` for an empty result to see whether it
+answers; `overfull build` with Docker pulls the image from `ghcr.io` and, when a
+TeX package is missing from the image, downloads it from a CTAN mirror.
 
 ## The outcomes
 
@@ -91,7 +159,7 @@ that contains it, or move it in), `reference-unproven` and
 `reference-not-reverified` (see [Provenance](#provenance)), and
 `refs-cache-ignored` (info, see [Configuration](./config.md#cache)).
 
-Four more rules look at the entries themselves:
+Five more rules look at the entries themselves:
 
 | Rule id | Severity | Meaning |
 | --- | --- | --- |
@@ -99,6 +167,7 @@ Four more rules look at the entries themselves:
 | `reference-published-version` | info | An arXiv entry whose arXiv record names a published DOI. Cite the published version with `overfull cite <doi>` if your venue prefers it. |
 | `reference-duplicate` | warning | Two entries with the same DOI, the same arXiv id, or the same title and year. Works offline. |
 | `reference-uncited` | info | No `\cite` uses the entry. Off by default: set `references.reportUncited: true`. Needs the cited keys from the `.aux`, `.bcf` or sources. |
+| `reference-retraction-unchecked` | info | CrossRef could not be asked about some matched works (a request failed). The ones it answered for were checked; the message names the reason and the entries. |
 
 ## Why it never says "fake"
 
@@ -202,13 +271,19 @@ references:
   mailto: you@example.org   # sent to CrossRef (and OpenAlex) as a contact address
   ignore: [rfc9110]
   requireCite: true         # unverified entries need an `overfull cite` marker or an author-provided note
-  cache: user               # or `project`: .overfull/cache/refs.json (never read in CI)
   reportUncited: false      # true: report entries that nothing cites (reference-uncited)
 ```
 
 `mailto` puts your requests in CrossRef's "polite pool", which is faster and more
-reliable. You can also set it with the `OVERFULL_MAILTO` environment variable or
-`--mailto`. It is sent only to CrossRef and OpenAlex. `mailto` does not turn
+reliable. CrossRef counts requests per contact address, and without one every
+user shares the slower public pool, so Overfull has to wait longer between
+requests (see [How it works](#how-it-works)). You can also set it with the
+`OVERFULL_MAILTO` environment variable or `--mailto`.
+
+`overfull init` (for a new project and with `--here`) offers to fill in
+`mailto` from `git config user.email`. It asks on a terminal and writes the
+address only when you answer yes; without a terminal it writes nothing and
+prints a one-line hint. It is sent only to CrossRef and OpenAlex. `mailto` does not turn
 OpenAlex on. OpenAlex title search runs only when the `OPENALEX_API_KEY`
 environment variable is set; it is not an `overfull.yml` key, so the key stays out
 of your repository.

@@ -1,12 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Report } from '@overfull/core';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -29,35 +22,10 @@ import {
 } from '../src/safety.js';
 import { imageUnavailable, quoteWindowsArg } from '../src/tools.js';
 import { runVeraPdf, verapdfFlavour } from '../src/verapdf.js';
-import { memIo, tempCopy, tempDir } from './helpers.js';
+import { fakeBin, git, memIo, tempCopy, tempDir } from './helpers.js';
 
 /** Shell-script fakes on PATH and FIFOs do not exist on Windows; these tests run on Linux and macOS. */
 const POSIX_ONLY = process.platform === 'win32';
-
-const git = (cwd: string, ...args: string[]) =>
-  execFileSync('git', args, {
-    cwd,
-    env: {
-      ...process.env,
-      GIT_AUTHOR_NAME: 't',
-      GIT_AUTHOR_EMAIL: 't@example.org',
-      GIT_COMMITTER_NAME: 't',
-      GIT_COMMITTER_EMAIL: 't@example.org',
-    },
-  })
-    .toString()
-    .trim();
-
-/** A directory with fake executables, put first on PATH for the test. */
-function fakeBin(scripts: Record<string, string>): string {
-  const dir = tempDir();
-  for (const [name, body] of Object.entries(scripts)) {
-    const p = join(dir, name);
-    writeFileSync(p, `#!/bin/sh\n${body}\n`);
-    chmodSync(p, 0o755);
-  }
-  return dir;
-}
 
 const savedPath = process.env.PATH;
 afterEach(() => {
@@ -186,7 +154,7 @@ describe('S3: reference cache location', () => {
       cwd: dir,
       checks: ['references'],
       offline: true,
-      env: { PATH: process.env.PATH, CI: 'true' },
+      env: { PATH: process.env.PATH, CI: 'true', OVERFULL_REFS_CACHE: 'project' },
     });
     const rules = report.checks.flatMap((c) => c.problems.map((p) => p.rule));
     expect(rules).toContain('refs-cache-ignored');
@@ -194,7 +162,7 @@ describe('S3: reference cache location', () => {
       cwd: dir,
       checks: ['references'],
       offline: true,
-      env: { PATH: process.env.PATH },
+      env: { PATH: process.env.PATH, OVERFULL_REFS_CACHE: 'project' },
     });
     expect(local.checks.flatMap((c) => c.problems.map((p) => p.rule))).not.toContain(
       'refs-cache-ignored',
@@ -256,6 +224,66 @@ describe('C1: veraPDF flavour follows the PDF/UA claim', () => {
   });
 });
 
+describe.skipIf(POSIX_ONLY)('runVeraPdf fallbacks and errors', () => {
+  const OK =
+    '{"report":{"jobs":[{"validationResult":[{"compliant":true,"details":{"ruleSummaries":[]}}]}]}}';
+
+  it('returns null without a local veraPDF or Docker', async () => {
+    expect(await runVeraPdf('/tmp/x.pdf', { PATH: tempDir() })).toBeNull();
+  });
+
+  it('without a claim, tries UA-1 when UA-2 cannot run', async () => {
+    const log = join(tempDir(), 'args');
+    const bin = fakeBin({
+      verapdf: `echo "$@" >> ${log}\ncase "$*" in *ua2*) echo 'PDF 1.7 is not PDF 2.0' >&2; exit 1 ;; esac\necho '${OK}'`,
+    });
+    const res = await runVeraPdf('/tmp/x.pdf', { PATH: bin });
+    expect(res).toMatchObject({ compliant: true });
+    expect(res?.error).toBeUndefined();
+    const calls = readFileSync(log, 'utf8').trim().split('\n');
+    expect(calls.map((c) => c.split(' ')[1])).toEqual(['ua2', 'ua1']);
+  });
+
+  it('keeps the UA-2 error when UA-1 fails too, and does not retry a claimed part', async () => {
+    const bin = fakeBin({ verapdf: 'echo "$2 cannot open the file" >&2; exit 1' });
+    const res = await runVeraPdf('/tmp/x.pdf', { PATH: bin });
+    expect(res?.error).toBe('ua2 cannot open the file');
+    const log = join(tempDir(), 'args');
+    const claimed = fakeBin({ verapdf: `echo "$@" >> ${log}\nexit 1` });
+    expect((await runVeraPdf('/tmp/x.pdf', { PATH: claimed }, { pdfuaPart: 2 }))?.error).toBe(
+      'veraPDF produced no output',
+    );
+    expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
+  });
+
+  it('a PDF path that starts with a dash is passed as ./-name', async () => {
+    const log = join(tempDir(), 'args');
+    const bin = fakeBin({ verapdf: `echo "$@" >> ${log}\necho '${OK}'` });
+    await runVeraPdf('-x.pdf', { PATH: bin }, { pdfuaPart: 2 });
+    expect(readFileSync(log, 'utf8').trim()).toBe('--flavour ua2 --format json ./-x.pdf');
+  });
+
+  it('reports a Docker image that cannot start (exit 125)', async () => {
+    const root = tempDir();
+    const bin = fakeBin({
+      docker: "echo 'Unable to find image' >&2\necho 'pull access denied' >&2\nexit 125",
+    });
+    const res = await runVeraPdf(
+      join(root, 'paper.pdf'),
+      { PATH: bin },
+      {
+        pdfuaPart: 2,
+        docker: { image: 'img:1', root },
+      },
+    );
+    expect(res).toEqual({
+      compliant: false,
+      failures: [],
+      error: 'docker could not run img:1: pull access denied',
+    });
+  });
+});
+
 describe('C2: \\nocite{*} verifies every entry', () => {
   it('looks up uncited entries when the aux has \\citation{*}', async () => {
     const dir = tempDir();
@@ -272,7 +300,13 @@ describe('C2: \\nocite{*} verifies every entry', () => {
       urls.push(String(u));
       return new Response('', { status: 404 });
     }) as typeof globalThis.fetch;
-    await runCheck({ cwd: dir, checks: ['references'], fetch, cache: false, env: {} });
+    await runCheck({
+      cwd: dir,
+      checks: ['references'],
+      fetch,
+      cache: false,
+      env: { OVERFULL_TEST_NO_SPACING: '1' },
+    });
     const joined = decodeURIComponent(urls.join(' '));
     for (const k of ['a', 'b', 'c']) expect(joined).toContain(`10.9999/${k}`);
   });

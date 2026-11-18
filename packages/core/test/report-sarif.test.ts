@@ -126,6 +126,12 @@ describe('formatSarif', () => {
   });
 
   it('matches the snapshot', () => {
-    expect(formatSarif(report, { fallbackFile: 'main.tex' })).toMatchSnapshot();
+    const text = formatSarif(report, { fallbackFile: 'main.tex' });
+    expect(JSON.parse(text)).toMatchObject({
+      $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
+      runs: [{ tool: { driver: { informationUri: 'https://amet13.github.io/overfull/' } } }],
+    });
+    expect(text.endsWith('\n')).toBe(true);
+    expect(text).toMatchSnapshot();
   });
 });

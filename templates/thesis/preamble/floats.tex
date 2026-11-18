@@ -25,8 +25,8 @@
 \counterwithin{table}{section}
 \counterwithin{equation}{section}
 
-% The float package defines the extra "Listing" float type below.
-% Note: its [H] placement is not tagged correctly yet; use [htbp].
+% The float package defines the extra "Listing" float type below (float is
+% listed as compatible on the LaTeX tagging status page). Prefer [htbp] to [H].
 \usepackage{float}
 
 % Tables: booktabs rules and siunitx number alignment (both compatible).
@@ -46,9 +46,10 @@
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18, compat/show suggested version=false}
 
-% Code listings. The listings package is not yet compatible with tagging in
-% TeX Live 2026 (it breaks the structure tree), so code is typeset with the
-% kernel's verbatim environment inside a numbered "Listing" float.
+% Code listings. The tagging status page lists the listings package as only
+% partially compatible (open questions about frames and mathescape), so code
+% is typeset with the kernel's verbatim environment, which is fully tagged,
+% inside a numbered "Listing" float.
 % Keep code lines under ~70 characters.
 % Captions go above listings, as for tables (plaintop).
 \floatstyle{plaintop}

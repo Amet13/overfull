@@ -3,10 +3,8 @@ import { parseBib } from '../src/bib/index.js';
 import { markCited, refsCheck, refsRules, verifyEntries } from '../src/refs/index.js';
 import { entryKind, identifiersOf, isStandard } from '../src/refs/kind.js';
 import { handlerFetch, json } from './fixtures/refs/fake-fetch.js';
+import { atom, fast } from './helpers.js';
 
-const fast = { arxivIntervalMs: 0, retryDelayMs: 0 };
-const atom = (body: string) =>
-  new Response(body, { headers: { 'content-type': 'application/atom+xml' } });
 const one = (bib: string) => parseBib(bib)[0] as NonNullable<ReturnType<typeof parseBib>[0]>;
 
 describe('R7: standards are recognized by type and issuer, not by title words', () => {

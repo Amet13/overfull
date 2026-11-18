@@ -8,12 +8,31 @@
 #   OVERFULL_BASE_URL     download base URL (for tests; overrides the release URL)
 #
 # The download is checked against the release's SHA256SUMS. Nothing is
-# installed when the checksum does not match or is missing.
+# installed when the checksum does not match or is missing. When the GitHub CLI
+# (gh) is installed and logged in, the build provenance is also checked with
+# `gh attestation verify`; without gh that step is skipped.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 function Fail([string]$Message) {
   throw "overfull install: $Message"
+}
+
+# True when gh is installed, logged in and has `attestation verify`. Native
+# commands run with ErrorActionPreference Continue: in Windows PowerShell 5.1 a
+# line on stderr would otherwise stop the script.
+function Test-GhAttestation {
+  if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { return $false }
+  $saved = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    & gh auth status *> $null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    & gh attestation verify --help *> $null
+    return ($LASTEXITCODE -eq 0)
+  } finally {
+    $ErrorActionPreference = $saved
+  }
 }
 
 $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
@@ -48,7 +67,7 @@ try {
   $want = $sums[$asset]
   if (-not $want) { Fail "SHA256SUMS has no entry for $asset" }
 
-  # Releases since 3.2 also ship the executable gzip-compressed (about a third of the
+  # Releases since 3.1.1 also ship the executable gzip-compressed (about a third of the
   # size). Both the compressed download and the unpacked file are checked.
   $wantGz = $sums["$asset.gz"]
   if ($wantGz) {
@@ -69,6 +88,23 @@ try {
   }
   $got = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $tmp $asset)).Hash.ToLowerInvariant()
   if ($got -ne $want) { Fail "checksum mismatch for $asset (expected $want, got $got); nothing installed" }
+
+  # SHA256SUMS comes from the same release as the file. With gh, also check that the
+  # file was built by this repository's release workflow (its signed attestation).
+  if (Test-GhAttestation) {
+    Write-Host 'Checking the build provenance with gh attestation verify'
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+      & gh attestation verify (Join-Path $tmp $asset) --repo amet13/overfull | Out-Null
+      $verified = ($LASTEXITCODE -eq 0)
+    } finally {
+      $ErrorActionPreference = $saved
+    }
+    if (-not $verified) { Fail "gh attestation verify failed for $asset (not built by amet13/overfull, or gh could not reach GitHub); nothing installed" }
+  } else {
+    Write-Host 'Skipped the provenance check (needs the GitHub CLI, logged in); the checksum matched.'
+  }
 
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
   $exe = Join-Path $dir 'overfull.exe'

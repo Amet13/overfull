@@ -9,7 +9,9 @@
 #   OVERFULL_BASE_URL     download base URL (for tests; overrides the release URL)
 #
 # The download is checked against the release's SHA256SUMS. Nothing is
-# installed when the checksum does not match or cannot be checked. No sudo.
+# installed when the checksum does not match or cannot be checked. When the
+# GitHub CLI (gh) is installed and logged in, the build provenance is also
+# checked with `gh attestation verify`; without gh that step is skipped. No sudo.
 set -eu
 
 repo="amet13/overfull"
@@ -73,7 +75,7 @@ sum_of() { awk -v f="$1" '{ n = $2; sub(/^\*/, "", n); if (n == f) { print $1; e
 want="$(sum_of "$asset")"
 [ -n "$want" ] || err "SHA256SUMS has no entry for $asset"
 
-# Releases since 3.2 also ship each executable gzip-compressed (about a third of the
+# Releases since 3.1.1 also ship each executable gzip-compressed (about a third of the
 # size). Both the compressed download and the unpacked file are checked.
 want_gz="$(sum_of "$asset.gz")"
 if [ -n "$want_gz" ] && command -v gzip >/dev/null 2>&1; then
@@ -88,6 +90,17 @@ else
 fi
 got="$(hash_of "$tmp/$asset")"
 [ "$got" = "$want" ] || err "checksum mismatch for $asset (expected $want, got $got); nothing installed"
+
+# SHA256SUMS comes from the same release as the file. With gh, also check that the
+# file was built by this repository's release workflow (its signed attestation).
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1 &&
+  gh attestation verify --help >/dev/null 2>&1; then
+  printf 'Checking the build provenance with gh attestation verify\n'
+  gh attestation verify "$tmp/$asset" --repo "$repo" >/dev/null ||
+    err "gh attestation verify failed for $asset (not built by $repo, or gh could not reach GitHub); nothing installed"
+else
+  printf 'Skipped the provenance check (needs the GitHub CLI, logged in); the checksum matched.\n'
+fi
 
 mkdir -p "$dir"
 chmod +x "$tmp/$asset"

@@ -20,8 +20,12 @@
 *.xdv
 *-luamml-mathml.html
 
-# Build outputs (CI uploads them as artifacts)
-*.pdf
+# Build outputs in the project root (CI uploads them as artifacts). PDFs in
+# figures/ and other folders are sources: they stay tracked.
+/*.pdf
+
+# Reviews are confidential: keep them on your machine (respond-to-reviewers)
+notes/reviews.md
 
 # Overfull working files (diff builds, rendered pages); latexdiff output
 .overfull/

@@ -1,11 +1,25 @@
 % metadata.tex — the ONE place for title, authors and keywords.
 % Used by \maketitle (main.tex) and by the PDF metadata (preamble.tex).
 % Keep the values plain text; put affiliations in \PaperAffiliations.
-% For double-blind review, set anonymous: true in overfull.yml and replace
-% the authors with "Anonymous".
 
 \newcommand\PaperTitle{A Generic Research Paper Title}
 \newcommand\PaperAuthors{First Author, Second Author}
 \newcommand\PaperAffiliations{Your Institution, Your City, Country}
 \newcommand\PaperEmail{first.author@example.org}
 \newcommand\PaperKeywords{keyword one, keyword two, keyword three}
+
+% ---- Submission or camera-ready -------------------------------------------
+% Anonymous mode, for double-blind review: hides the authors, affiliations
+% and e-mail on the title, the PDF author, and the acknowledgments. Turn it
+% on with \PaperAnonymoustrue and also set venue.anonymous: true in
+% overfull.yml, so `overfull check` looks for names left in the text.
+% If you use the venue's own style file, its review option does this instead.
+\newif\ifPaperAnonymous
+\PaperAnonymousfalse
+
+% Camera-ready: the final version after acceptance. It always shows the
+% authors and the acknowledgments (anonymous mode is ignored) and prints
+% \PaperVenueNote, if set, under the title, e.g. "Accepted at ...".
+\newif\ifPaperCameraReady
+\PaperCameraReadyfalse
+\newcommand\PaperVenueNote{}

@@ -2,7 +2,7 @@ import { oneLine, type RefsOptions } from '@overfull/core';
 import { parse } from '../args.js';
 import { HOOK_HARNESSES, type HookHarness, MAX_PAYLOAD_BYTES, runHook } from '../guard/hook.js';
 import { guardStaged } from '../guard/staged.js';
-import { type Io, UsageError } from '../io.js';
+import { type Io, testRefsTiming, UsageError } from '../io.js';
 
 const guardHelp = `Usage: overfull guard --staged [--offline] [--json]
        overfull guard --hook [claude|gemini|codex]
@@ -18,9 +18,12 @@ Blocks hand-written bibliography entries at the moment they happen.
            is refused and, per entry, the \`overfull cite\` command to use is printed.
            Works before the first commit.
 --hook     For an AI agent's pre-tool-use hook. Reads the hook payload (JSON) from
-           stdin and denies direct writes and edits of .bib files by the agent's file
-           tools, with a reason that points to \`overfull cite\`. Everything else is
-           allowed. A payload that is not recognised is allowed (exit 0, no output).
+           stdin and denies writes and edits by the agent's file tools that add or
+           change entries in a .bib file, with a reason that points to \`overfull cite\`.
+           Removing whole entries is allowed, and so is every write outside an
+           Overfull project (no overfull.yml in the file's folder or above).
+           Everything else is allowed. A payload that is not recognised is allowed
+           (exit 0, no output).
            Supported: claude (Claude Code), gemini (Gemini CLI), codex (Codex CLI). Without a name the
            harness is detected from the payload. A shell command that writes a .bib
            file is not detected; the pre-commit guard and \`overfull check\` catch it.
@@ -94,7 +97,10 @@ export async function guardCommand(
     return 0;
   }
 
-  const refs: RefsOptions = io.fetch ? { fetch: io.fetch } : {};
+  const refs: RefsOptions = {
+    ...(io.fetch ? { fetch: io.fetch } : {}),
+    ...testRefsTiming(io.env),
+  };
   let report: Awaited<ReturnType<typeof guardStaged>>;
   try {
     report = await guardStaged({ cwd: io.cwd, offline: values.offline === true, refs });

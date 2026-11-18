@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseBib } from '../src/bib/index.js';
 import { neutralizeWorkflowCommands, oneLine } from '../src/report/shared.js';
 import { allRules } from '../src/rules.js';
-
-const _fast = { arxivIntervalMs: 0, retryDelayMs: 0 };
-const _atom = (body: string) =>
-  new Response(body, { headers: { 'content-type': 'application/atom+xml' } });
-const _one = (bib: string) => parseBib(bib)[0] as NonNullable<ReturnType<typeof parseBib>[0]>;
 
 describe('R4: neutralizer and oneLine', () => {
   it('neutralizes markers after any Unicode whitespace and after CR', () => {

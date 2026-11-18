@@ -16,17 +16,30 @@ In a project made from a template:
 make build    # compile the PDF (local latexmk if installed, otherwise Docker)
 make watch    # rebuild whenever you save a .tex or .bib file
 make check    # run all checks and print a report
+make cite ARGS=10.1145/2890784   # add a verified reference
 make help     # list every target
 ```
 
 New to Docker? See [Install](./install.md#docker-only) for what to install and how big the first download is.
 
-`make build` and `make watch` run `latexmk` directly (local, or in the Docker
-image if `latexmk` is not installed). `make check` runs `overfull check`. The
-Makefile has more targets: `make pages PAGES=4-6` renders pages to PNG,
-`make diff` builds a PDF of the changes against `origin/main` (set `BASE=` to
-change it), and `make clean` removes build files. The paper template adds
-`make arxiv`, which builds with pdfLaTeX as arXiv does. You can call the `overfull`
+`make build` runs `overfull build`, and `make check` runs `overfull check`: the
+installed `overfull` if there is one, otherwise the same command in the Docker
+image (`ghcr.io/amet13/overfull:3-slim`; `IMAGE=` picks another). `make watch`
+runs `latexmk` directly. The Makefile has more targets: `make cite ARGS=...`
+adds a verified reference, `make explain RULE=...` explains a rule,
+`make doctor` shows what is installed, `make pages PAGES=4-6` renders pages to
+PNG, `make diff` builds a PDF of the changes against `origin/main` (set `BASE=`
+to change it), and `make clean` removes build files. `ARGS=` passes options, for
+example `make check ARGS=--json`. The paper template adds `make arxiv`, which
+builds `paper-arxiv.pdf` with pdfLaTeX as arXiv does and keeps `paper.pdf`.
+
+The templates' `.gitignore` ignores PDFs in the project folder only (build
+output); PDF figures in `figures/` are committed. It also ignores
+`notes/reviews.md`, because reviews are confidential.
+
+The paper template has two switches in `metadata.tex`: `\PaperAnonymoustrue`
+for double-blind review (it hides authors, affiliations, e-mail, the PDF author
+and the acknowledgments) and `\PaperCameraReadytrue` for the final version. You can call the `overfull`
 commands directly too; see the [CLI reference](./cli.md).
 
 ## Project layout

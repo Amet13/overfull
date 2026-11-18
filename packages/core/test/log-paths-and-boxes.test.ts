@@ -1,14 +1,8 @@
 /** Windows paths in logs, \input file errors and overfull-box advice. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parseBib } from '../src/bib/index.js';
 import { analyzeLog, parseLog } from '../src/log/index.js';
 import { normalizePath } from '../src/log/paths.js';
-
-const _fast = { arxivIntervalMs: 0, retryDelayMs: 0 };
-const _atom = (body: string) =>
-  new Response(body, { headers: { 'content-type': 'application/atom+xml' } });
-const _one = (bib: string) => parseBib(bib)[0] as NonNullable<ReturnType<typeof parseBib>[0]>;
 
 describe('R12: Windows paths in logs', () => {
   it('a C:\\…\\file.tex:12: line starts fresh (not glued to the previous line)', () => {

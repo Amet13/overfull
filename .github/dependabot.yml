@@ -5,6 +5,10 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    # Wait before proposing a new version: a hijacked release is usually found and
+    # pulled within days. Security updates are not delayed.
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns: ["*"]
@@ -13,6 +17,8 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
     groups:
       docker:
         patterns: ["*"]
@@ -21,6 +27,9 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
     ignore:
       # astro check (site) does not support TypeScript 7 yet; review majors by hand.
       - dependency-name: "typescript"
@@ -28,6 +37,12 @@ updates:
       # pnpm is pinned twice (packageManager and docker/pnpm) and must match;
       # maintenance.yml (update-pins) bumps both together.
       - dependency-name: "pnpm"
+    # Minor and patch updates in one pull request (merged automatically), majors in
+    # another that waits for a person, so one major never holds back the rest.
     groups:
       npm:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+      npm-major:
+        patterns: ["*"]
+        update-types: ["major"]

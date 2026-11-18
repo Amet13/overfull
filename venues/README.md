@@ -19,6 +19,7 @@ year: 2027                  # or: rolling
 source:                     # required: official pages the values were read from
   - https://example.org/cfp
 checkedOn: 2026-11-10       # required: the day you read those pages (YYYY-MM-DD)
+deadline: 2027-01-31        # optional: full-paper submission deadline, only if a source states it
 extends: paper              # optional built-in profile: generic (default), thesis, paper, arxiv, double-blind
 paper: letter               # a4 | letter | any
 pageLimit:
@@ -36,8 +37,15 @@ textBlock:                  # from the official style file, in millimetres (opti
   widthMm: 139.7            # \textwidth
   heightMm: 228.6           # \textheight (with topMm: also checks top and bottom)
   topMm: 25.4               # distance from the top edge of the page
+anonymizedByClass:          # the class prints "Anonymous" itself in review mode (optional)
+  package: example_2027     # class or package name, without .sty/.cls
+  withOptions: [review]     # review mode needs one of these options (leave out if it is the default)
+  unlessOptions: [final]    # any of these options turns review mode off
+  unlessCommands: [examplefinalcopy]  # any of these commands in a .tex file turns it off
 notes: Free text.
 ```
 
 Required: `id`, `name`, `year`, `source`, `checkedOn`. A profile whose `checkedOn`
-is more than 14 months old gets an info note that it may be out of date.
+is more than 14 months old gets an info note that it may be out of date, and so
+does one whose `deadline` passed more than 30 days ago. Leave `deadline` out when
+the sources do not state it.

@@ -11,16 +11,16 @@ exports[`lookup-incomplete messages > renders in Markdown 1`] = `
 
 <details open><summary><b>references</b>: 4 items</summary>
 
-- **error** \\\`wrongdoi\\\`: the DOI 10.1/x points to a different paper, “Another Paper” <sub>reference-doi-wrong-work</sub>
+- **error** <code>wrongdoi</code>: the DOI 10.1/x points to a different paper, “Another Paper” <sub>reference-doi-wrong-work</sub>
   - Why: doi.org resolves 10.1/x to “Another Paper”, not to the cited work
   - Fix: Find the correct DOI for the cited title on the publisher page, or re-add the entry with <code>overfull cite "&lt;title&gt;"</code>. Do not re-add it from this DOI: that would cite the unrelated paper.
-- **warning** \\\`year\\\`: year differs from the CrossRef record <sub>reference-metadata-mismatch</sub>
+- **warning** <code>year</code>: year differs from the CrossRef record <sub>reference-metadata-mismatch</sub>
   - Why: year: bib “1981”, record “1978”
   - Fix: Compare the entry with the record and correct it, or replace it with <code>overfull cite &lt;doi&gt;</code>.
-- **warning** \\\`lost\\\` could not be checked because CrossRef and dblp did not answer <sub>reference-lookup-failed</sub>
+- **warning** <code>lost</code> could not be checked because CrossRef and dblp did not answer <sub>reference-lookup-failed</sub>
   - Why: CrossRef: timed out after 4000 ms. dblp: answered HTTP 503. A network problem is not evidence against the reference.
   - Fix: CrossRef and dblp could not answer. Add the DOI or arXiv id to the entry (doi.org and arXiv can confirm it even when the title search fails), or re-add it with <code>overfull cite &lt;doi &#124; arXiv:id&gt;</code>.
-- **info** \\\`book1\\\` could not be checked automatically: no match found, but books are often not indexed <sub>reference-unverifiable</sub>
+- **info** <code>book1</code> could not be checked automatically: no match found, but books are often not indexed <sub>reference-unverifiable</sub>
   - Why: The lookup was incomplete. dblp: answered HTTP 503 (repeatedly; skipped for the rest of this run). CrossRef: timed out after 4000 ms.
   - Fix: Check this entry by hand; add a DOI where one exists.
 

@@ -234,80 +234,204 @@ const DROP_FIELDS = new Set([
 ]);
 
 /**
- * TeX primitives and macros that read or write files, run code, or change how
- * TeX reads input. A .bib value is typeset by LaTeX, so a registration agency's
- * metadata (DataCite titles are free text) must not carry them into the paper.
+ * Control words a publisher's BibTeX value may keep: accents and special letters,
+ * font and formatting commands, and text symbols. Every one only typesets text.
+ * Anything else (`\input`, `\pdfextension`, `\directlua`, `\csname`, any
+ * engine primitive) loses its backslash. An allowlist, because TeX engines have
+ * hundreds of primitives that read, write or embed files, and a denylist misses some.
  */
-const DANGEROUS_MACROS = new Set(
-  [
-    'input',
-    'include',
-    'includeonly',
-    'inputiffileexists',
-    'iffileexists',
-    'endinput',
-    'write',
-    'immediate',
-    'openout',
-    'openin',
-    'read',
-    'readline',
-    'closeout',
-    'closein',
-    'catcode',
-    'def',
-    'edef',
-    'gdef',
-    'xdef',
-    'let',
-    'futurelet',
-    'newcommand',
-    'renewcommand',
-    'providecommand',
-    'declarerobustcommand',
-    'csname',
-    'endcsname',
-    'expandafter',
-    'scantokens',
-    'everyeof',
-    'everypar',
-    'everyjob',
-    'output',
-    'shipout',
-    'special',
-    'directlua',
-    'latelua',
-    'luaexec',
-    'luadirect',
-    'usepackage',
-    'requirepackage',
-    'documentclass',
-    'shellescape',
-    'pdfshellescape',
-    'outer',
-    'uppercase',
-    'lowercase',
-    'detokenize',
-    'unexpanded',
-    'begingroup',
-    'aftergroup',
-    'afterassignment',
-    'globaldefs',
-  ].map((m) => m.toLowerCase()),
-);
+const TEXT_MACROS = new Set([
+  // Accents and special letters (`\c{c}`, `\v{s}`, `{\ss}`, `{\o}`).
+  'c',
+  'd',
+  'b',
+  'H',
+  'k',
+  'r',
+  't',
+  'u',
+  'v',
+  'i',
+  'j',
+  'l',
+  'L',
+  'o',
+  'O',
+  'ae',
+  'AE',
+  'oe',
+  'OE',
+  'aa',
+  'AA',
+  'ss',
+  'SS',
+  'dh',
+  'DH',
+  'dj',
+  'DJ',
+  'th',
+  'TH',
+  'ng',
+  'NG',
+  // Fonts and formatting.
+  'textit',
+  'textbf',
+  'textsc',
+  'textrm',
+  'textsf',
+  'texttt',
+  'textup',
+  'textsl',
+  'textmd',
+  'textnormal',
+  'emph',
+  'textsuperscript',
+  'textsubscript',
+  'mathrm',
+  'mathit',
+  'mathbf',
+  'mathsf',
+  'mathtt',
+  'mathcal',
+  'mathbb',
+  'mathfrak',
+  'it',
+  'bf',
+  'em',
+  'sc',
+  'rm',
+  'sf',
+  'tt',
+  'sl',
+  'upshape',
+  'itshape',
+  'bfseries',
+  'scshape',
+  // Text symbols (CrossRef writes many of these).
+  'textendash',
+  'textemdash',
+  'textquoteright',
+  'textquoteleft',
+  'textquotedblleft',
+  'textquotedblright',
+  'textquotesingle',
+  'textregistered',
+  'texttrademark',
+  'textcopyright',
+  'textdegree',
+  'textasciitilde',
+  'textasciicircum',
+  'textbackslash',
+  'textunderscore',
+  'textbar',
+  'textless',
+  'textgreater',
+  'textbullet',
+  'textperiodcentered',
+  'textellipsis',
+  'textmu',
+  'ldots',
+  'dots',
+  'S',
+  'P',
+  'dag',
+  'ddag',
+  'pounds',
+  'copyright',
+  'guillemotleft',
+  'guillemotright',
+  'TeX',
+  'LaTeX',
+]);
+
+/** Control words allowed inside `$…$` on top of `TEXT_MACROS`: symbols and math layout. */
+const MATH_MACROS = new Set([
+  ...'alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu nu xi pi varpi rho varrho sigma varsigma tau upsilon phi varphi chi psi omega'.split(
+    ' ',
+  ),
+  ...'Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi Omega'.split(' '),
+  ...'upalpha upbeta upgamma updelta upepsilon upmu uppi upsigma uptau upphi upomega'.split(' '),
+  ...'times cdot pm mp div ast star circ bullet leq geq le ge neq ne approx sim simeq cong equiv propto ll gg'.split(
+    ' ',
+  ),
+  ...'infty partial nabla sum prod int oint sqrt frac dfrac tfrac binom log ln exp sin cos tan lim sup inf max min det'.split(
+    ' ',
+  ),
+  ...'to rightarrow leftarrow Rightarrow Leftarrow leftrightarrow Leftrightarrow mapsto uparrow downarrow'.split(
+    ' ',
+  ),
+  ...'in notin ni subset subseteq supset supseteq cup cap setminus emptyset varnothing forall exists neg lnot land lor wedge vee'.split(
+    ' ',
+  ),
+  ...'ell hbar imath jmath prime cdots vdots ddots langle rangle lbrace rbrace lfloor rfloor lceil rceil mid vert Vert parallel perp'.split(
+    ' ',
+  ),
+  ...'hat tilde bar vec dot ddot breve check acute grave overline underline widehat widetilde overrightarrow'.split(
+    ' ',
+  ),
+  ...'left right big Big bigl bigr Bigl Bigr text mathnormal operatorname boldsymbol quad qquad'.split(
+    ' ',
+  ),
+  // CrossRef's spelling of punctuation in math (`$\mathsemicolon$`, `$\less$`).
+  ...'less greater mathsemicolon mathcolon mathplus mathhyphen mathslash'.split(' '),
+]);
 
 /**
- * Makes a publisher-supplied BibTeX value safe to typeset: dangerous control
- * sequences lose their backslash (`\input{x}` → `\textbackslash{}input{x}`) and
- * `^^` (TeX's way of writing any character, such as `^^5c` for a backslash) is
- * escaped. Accents and formatting (`\"o`, `\textit{…}`, `$x^2$`) are kept.
+ * Control symbols (backslash and one non-letter) that are kept: accents
+ * (`\"o`, `\'e`), escaped specials (`\&`, `\%`, `\_`, `\$`, `\{`), spacing and
+ * line breaks. `\@` and `\^^` forms are not among them.
+ */
+const CONTROL_SYMBOLS = new Set([...'"\'`^~=.&%#_{},;:!-/ |\\$'.split(''), '\n', '\t']);
+
+/**
+ * Makes a publisher-supplied BibTeX value safe to typeset with an allowlist.
+ * A .bib value is typeset by LaTeX, and DOI metadata is free text (any Zenodo
+ * record can carry `\pdfextension obj file{…}`), so only the control sequences
+ * in `TEXT_MACROS` (and `MATH_MACROS` inside `$…$`) and harmless control
+ * symbols keep their backslash; every other `\name` becomes
+ * `\textbackslash{}name`. `^^` (TeX's way of writing any character, such as
+ * `^^5c` for a backslash) is escaped. Accents and formatting (`\"o`,
+ * `\textit{…}`, `$x^2$`) are kept.
  */
 export function sanitizeTexValue(value: string): string {
-  return value
-    .replace(/\^\^/g, '\\textasciicircum{}\\textasciicircum{}')
-    .replace(/\\([A-Za-z@]+)/g, (whole, name: string) =>
-      DANGEROUS_MACROS.has(name.toLowerCase()) ? `\\textbackslash{}${name}` : whole,
-    );
+  let out = '';
+  let math = false;
+  let endsInWord = false;
+  for (let i = 0; i < value.length; ) {
+    const c = value[i] as string;
+    endsInWord = false;
+    if (c === '^' && value[i + 1] === '^') {
+      out += '\\textasciicircum{}\\textasciicircum{}';
+      i += 2;
+      continue;
+    }
+    if (c === '$') math = !math;
+    if (c !== '\\') {
+      out += c;
+      i++;
+      continue;
+    }
+    const word = /^[A-Za-z]+/.exec(value.slice(i + 1))?.[0];
+    if (word) {
+      const allowed = TEXT_MACROS.has(word) || (math && MATH_MACROS.has(word));
+      out += allowed ? `\\${word}` : `\\textbackslash{}${word}`;
+      endsInWord = allowed;
+      i += 1 + word.length;
+      continue;
+    }
+    const next = value[i + 1];
+    const caretPair = next === '^' && value[i + 2] === '^';
+    if (next !== undefined && CONTROL_SYMBOLS.has(next) && !caretPair) {
+      out += `\\${next}`;
+      i += 2;
+      continue;
+    }
+    // A lone backslash (at the end, before `^^`, or before a symbol not allowed).
+    out += '\\textbackslash{}';
+    i++;
+  }
+  // `\i` at the very end must not merge with the letters that follow in the .bbl.
+  return endsInWord ? `${out}{}` : out;
 }
 
 /**

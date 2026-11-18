@@ -27,6 +27,7 @@ import {
   verifyEntries,
 } from '../src/refs/index.js';
 import { handlerFetch, json } from './fixtures/refs/fake-fetch.js';
+import { atom, fast } from './helpers.js';
 
 const RAFT = `@inproceedings{ongaro2014search,
   author = {Ongaro, Diego and Ousterhout, John},
@@ -70,8 +71,6 @@ const raftDblp = {
 const emptyCrossref = { message: { items: [] } };
 const emptyDblp = { result: { hits: { '@total': '0' } } };
 const emptyAtom = '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>';
-const atom = (body: string) =>
-  new Response(body, { headers: { 'content-type': 'application/atom+xml' } });
 
 /** Routes by host; each route returns a Response. */
 function router(routes: Partial<Record<string, (u: URL) => Response>>) {
@@ -88,7 +87,6 @@ const allEmpty = {
   'export.arxiv.org': () => atom(emptyAtom),
 };
 
-const fast = { arxivIntervalMs: 0, retryDelayMs: 0 };
 const results = (r: RefResult | undefined): RefResult[] => (r ? [r] : []);
 
 describe('identifiers and query parsing', () => {
@@ -496,7 +494,8 @@ describe('verifyEntries', () => {
     expect(callsAfterFirst).toBeGreaterThan(0);
     expect([...map.keys()].sort()).toEqual([
       'doi:10.1145/359545.359563',
-      'title:in search of an understandable consensus algorithm|2014',
+      // CrossRef is asked with the first author, so the author is part of the key.
+      'title:in search of an understandable consensus algorithm|2014|author:ongaro',
     ]);
     const second = await verifyEntries(bib, { fetch: f.fetch, cache, ...fast });
     expect(f.calls.length).toBe(callsAfterFirst);
@@ -597,7 +596,8 @@ describe('verifyEntries', () => {
   it('passes mailto to CrossRef', async () => {
     const f = router(allEmpty);
     await verifyEntries(parseBib(RAFT), { fetch: f.fetch, mailto: 'me@example.org', ...fast });
-    expect(f.calls[0]).toContain('mailto=me%40example.org');
+    const crossref = f.calls.find((c) => c.startsWith('https://api.crossref.org/'));
+    expect(crossref).toContain('mailto=me%40example.org');
   });
 });
 
@@ -877,7 +877,11 @@ describe('sources allow-list', () => {
   eprint = {2401.99999}}`;
 
   it('with CrossRef alone allowed, no match is unverifiable (info), not reference-not-found', async () => {
-    const f = router({ 'api.crossref.org': () => json(emptyCrossref) });
+    // doi.org is asked for the arXiv DOI (10.48550/arXiv.2401.99999) and does not know it.
+    const f = router({
+      'api.crossref.org': () => json(emptyCrossref),
+      'doi.org': () => json({}, 404),
+    });
     const entries = parseBib(FAKE);
     const [r] = await verifyEntries(entries, {
       fetch: f.fetch,
@@ -886,7 +890,9 @@ describe('sources allow-list', () => {
     });
     expect(r?.status).toBe('unverifiable');
     expect(r?.reason).toBe('could not be checked here (OpenAlex and dblp were not searched)');
-    expect(f.calls.every((c) => new URL(c).hostname === 'api.crossref.org')).toBe(true);
+    expect(
+      f.calls.every((c) => ['api.crossref.org', 'doi.org'].includes(new URL(c).hostname)),
+    ).toBe(true);
     const problems = refsCheck(r ? [r] : [], { entries }).problems;
     expect(problems.map((p) => p.severity)).toEqual(['info']);
     expect(problems.map((p) => p.rule)).not.toContain('reference-not-found');

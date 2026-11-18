@@ -8,13 +8,21 @@ name: release
 #   - SHA256SUMS                        checksums, plus build provenance attestations
 #   - overfull.intoto.sigstore.json     the signed provenance (Sigstore bundle) for every file
 #   - overfull.intoto.jsonl             the same provenance as an in-toto DSSE envelope (SLSA)
+#   - overfull.rb, overfull.json        Homebrew formula and Scoop manifest
+# After the release, a pull request updates Formula/, bucket/, flake.nix and server.json
+# (package-manifests). Listing in the MCP Registry is a separate, manual workflow
+# (mcp-registry.yml).
 #
 # Two ways to release the version in package.json (bump it first with
 # scripts/bump-version.mjs):
 #   - Actions → release → Run workflow on main, with "publish" ticked. It checks
-#     that CI passed on that commit, builds everything, creates the vX.Y.Z tag
-#     and release, moves the major tag (v3) and publishes the Docker image.
-#   - Or push a vX.Y.Z tag; image.yml then publishes the image itself.
+#     that CI passed on that commit, builds everything, makes sure this commit's
+#     images exist (built on main by image.yml, or built here), then, after the
+#     `release` environment's approval, tags the images with the version, creates
+#     the vX.Y.Z tag and release and moves the major tag (v3). Nothing is published
+#     until everything it needs is built, so a failed run can simply run again.
+#   - Or push a vX.Y.Z tag; image.yml then publishes the image itself. Both ways
+#     check that ci passed on the commit.
 # Run workflow without "publish" is a dry run from any branch: every asset is
 # built and kept as a workflow artifact, nothing is published.
 
@@ -63,14 +71,16 @@ jobs:
           done
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Publishing is allowed
-        if: inputs.publish
+        if: inputs.publish || startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.v.outputs.version }}
         run: |
-          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::publish only from main (this run is on $GITHUB_REF_NAME)"; exit 1; }
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$VERSION" > /dev/null 2>&1; then
-            echo "::error::v$VERSION is already released; bump the version first (scripts/bump-version.mjs)"; exit 1
+          if [ "$GITHUB_EVENT_NAME" != push ]; then
+            [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::publish only from main (this run is on $GITHUB_REF_NAME)"; exit 1; }
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$VERSION" > /dev/null 2>&1; then
+              echo "::error::v$VERSION is already released; bump the version first (scripts/bump-version.mjs)"; exit 1
+            fi
           fi
           # A merge made by automation starts ci with workflow_dispatch, not push.
           ci="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA" --jq '[.workflow_runs[] | select(.conclusion == "success" and (.event == "push" or .event == "workflow_dispatch"))] | length')"
@@ -159,13 +169,88 @@ jobs:
           name: assets-cli-${{ matrix.target }}
           path: assets/*
 
-  github-release:
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
-    needs: [version, pdfs, cli]
+  # This commit's three images (sha-<short>), which the release tags with its version.
+  # image.yml builds them on main; while it is still running for this commit, wait for
+  # it. When it is not running and they are missing (main skipped them, or the build
+  # failed), they never come: the image job below builds them at once.
+  images:
+    name: Images for this commit
+    if: inputs.publish
+    needs: version
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+    outputs:
+      ready: ${{ steps.find.outputs.ready }}
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Find or wait for them
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ghcr.io/amet13/overfull
+        run: |
+          sha="sha-${GITHUB_SHA::7}"
+          for _ in $(seq 1 80); do
+            # Asked before looking, so a build that ends in between is not missed.
+            running="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/image.yml/runs?head_sha=$GITHUB_SHA" \
+              --jq '[.workflow_runs[] | select(.status != "completed")] | length')"
+            missing=""
+            for sfx in "" -check -slim; do
+              docker buildx imagetools inspect "$IMAGE:$sha$sfx" > /dev/null 2>&1 || missing="$missing $sha$sfx"
+            done
+            if [ -z "$missing" ]; then
+              echo "All three images exist for $sha."
+              echo "ready=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            if [ "$running" -eq 0 ]; then
+              echo "::notice::Missing:$missing, and image.yml is not running for this commit; building them."
+              echo "ready=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            echo "image.yml is still running for this commit (missing:$missing); waiting."
+            sleep 30
+          done
+          echo "::notice::image.yml did not finish in 40 minutes; building the images here."
+          echo "ready=false" >> "$GITHUB_OUTPUT"
+
+  image:
+    if: inputs.publish && needs.images.outputs.ready != 'true'
+    needs: [version, images]
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/image.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  github-release:
+    # Runs only once everything is built: the assets, and for Run workflow the images.
+    needs: [version, pdfs, cli, images, image]
+    if: >-
+      !cancelled() && needs.version.result == 'success' &&
+      needs.pdfs.result == 'success' && needs.cli.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') ||
+       (inputs.publish && needs.images.result == 'success' &&
+        (needs.images.outputs.ready == 'true' || needs.image.result == 'success')))
+    # Tags the images, creates the tag and release and moves v3. Add a required reviewer
+    # under Settings → Environments → release to approve each publish (MAINTAINING.md).
+    environment: release
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
     permissions:
       contents: write
+      packages: write
       id-token: write
       attestations: write
     steps:
@@ -200,6 +285,57 @@ jobs:
           # Scorecard (Signed-Releases) recognise as provenance.
           jq -c '.dsseEnvelope' "$BUNDLE" > assets/overfull.intoto.jsonl
           test -s assets/overfull.intoto.jsonl
+      # The images of this commit (the same platform images, no rebuild) get the version
+      # tags, before the release exists. Their index says which version they are: images
+      # built on main are labelled "edge". A new index has a new digest, so it is attested.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: inputs.publish
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: inputs.publish
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag this commit's images with the release version
+        id: retag
+        if: inputs.publish
+        env:
+          IMAGE: ghcr.io/amet13/overfull
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          sha="sha-${GITHUB_SHA::7}"
+          major="${VERSION%%.*}"; minor="${VERSION%.*}"
+          for name in full check slim; do
+            sfx="-$name"; [ "$name" = full ] && sfx=""
+            args=(-t "$IMAGE:$VERSION$sfx" -t "$IMAGE:$minor$sfx" -t "$IMAGE:$major$sfx")
+            if [ "$name" = slim ]; then
+              args+=(-t "$IMAGE:$VERSION-medium" -t "$IMAGE:$minor-medium" -t "$IMAGE:$major-medium")
+            fi
+            while IFS= read -r label; do args+=(--annotation "index:$label"); done \
+              < <(bash src/.github/scripts/image-labels.sh "$name" "$VERSION$sfx")
+            docker buildx imagetools create "${args[@]}" "$IMAGE:$sha$sfx"
+            digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION$sfx" --format '{{json .Manifest}}' | jq -r .digest)"
+            echo "$name=$digest" >> "$GITHUB_OUTPUT"
+            echo "$IMAGE:$VERSION$sfx → $digest"
+          done
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: inputs.publish
+        with:
+          subject-name: ghcr.io/amet13/overfull
+          subject-digest: ${{ steps.retag.outputs.full }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: inputs.publish
+        with:
+          subject-name: ghcr.io/amet13/overfull
+          subject-digest: ${{ steps.retag.outputs.check }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: inputs.publish
+        with:
+          subject-name: ghcr.io/amet13/overfull
+          subject-digest: ${{ steps.retag.outputs.slim }}
+          push-to-registry: true
       - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           # Creates the tag at this commit when the release comes from Run workflow.
@@ -221,67 +357,45 @@ jobs:
           fi
           echo "$major → $GITHUB_SHA"
 
-  # A tag pushed by hand starts image.yml itself. A release made with Run workflow
-  # retags the images image.yml already built and attested for this commit on main
-  # (sha-<short>): same digests, no rebuild, a minute instead of a quarter of an hour.
-  # Only when they are not there (main skipped them, or they failed) are they built.
-  image-retag:
-    if: inputs.publish
+  # This repository is also the Homebrew tap, the Scoop bucket and the Nix flake. Once the
+  # release exists, its SHA256SUMS gives the new Formula/overfull.rb, bucket/overfull.json,
+  # flake.nix and server.json, which go to main through an automation pull request
+  # (merged by ci when it passes, like the other automation pull requests).
+  package-manifests:
+    name: Package manifests pull request
     needs: [version, github-release]
+    if: >-
+      !cancelled() && needs.github-release.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') || inputs.publish)
     runs-on: ubuntu-26.04
-    timeout-minutes: 45
+    timeout-minutes: 10
     permissions:
-      contents: read
-      packages: write
-    outputs:
-      done: ${{ steps.retag.outputs.done }}
+      contents: write
+      pull-requests: write
+      actions: write
     steps:
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Retag this commit's images with the release version
-        id: retag
+          persist-credentials: false
+          ref: main
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Write the manifests from the release's SHA256SUMS
         env:
-          IMAGE: ghcr.io/amet13/overfull
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          sha="sha-${GITHUB_SHA::7}"
-          suffixes=("" "-check" "-slim")
-          # image.yml may still be running for this commit: wait for it (up to 40 minutes).
-          for i in $(seq 1 80); do
-            missing=0
-            for sfx in "${suffixes[@]}"; do
-              docker buildx imagetools inspect "$IMAGE:$sha$sfx" > /dev/null 2>&1 || missing=1
-            done
-            [ "$missing" = 0 ] && break
-            sleep 30
-          done
-          if [ "$missing" = 1 ]; then
-            echo "::notice::No images for $sha; building them instead."
-            echo "done=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          major="${VERSION%%.*}"; minor="${VERSION%.*}"
-          for sfx in "${suffixes[@]}"; do
-            args=(-t "$IMAGE:$VERSION$sfx" -t "$IMAGE:$minor$sfx" -t "$IMAGE:$major$sfx")
-            if [ "$sfx" = -slim ]; then
-              args+=(-t "$IMAGE:$VERSION-medium" -t "$IMAGE:$minor-medium" -t "$IMAGE:$major-medium")
-            fi
-            docker buildx imagetools create "${args[@]}" "$IMAGE:$sha$sfx"
-          done
-          echo "done=true" >> "$GITHUB_OUTPUT"
-
-  image:
-    if: inputs.publish && needs.image-retag.outputs.done != 'true'
-    needs: [version, image-retag]
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/image.yml
-    with:
-      version: ${{ needs.version.outputs.version }}
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir "$RUNNER_TEMP"
+          node packaging/generate.mjs --version "$VERSION" --sums "$RUNNER_TEMP/SHA256SUMS" --repo .
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          {
+            echo "Package manifests for v$VERSION, written by packaging/generate.mjs from the"
+            echo "release's SHA256SUMS: Homebrew (Formula/overfull.rb), Scoop (bucket/overfull.json),"
+            echo "Nix (flake.nix) and the MCP Registry entry (server.json)."
+          } > "$RUNNER_TEMP/body.md"
+          bash .github/scripts/automation-pr.sh packaging "Package manifests for v$VERSION" "$RUNNER_TEMP/body.md"

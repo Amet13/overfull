@@ -14,10 +14,7 @@ import { formatBibEntry, markCited, parseBib } from '@overfull/core';
 import { describe, expect, it } from 'vitest';
 import { adoptCommand } from '../src/commands/init.js';
 import { main } from '../src/main.js';
-import { memIo, tempDir } from './helpers.js';
-
-const git = (cwd: string, ...args: string[]) =>
-  execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+import { git, memIo, tempDir } from './helpers.js';
 
 function repoWith(files: Record<string, string> = {}, commit = false): string {
   const dir = tempDir();
@@ -182,7 +179,10 @@ describe('init --here --hooks and --agents', () => {
     expect(await adoptCommand(['--hooks'], memIo(dir))).toBe(0);
     const fd = openSync(join(dir, '.git/hooks/pre-commit'), 'r');
     try {
-      expect(readFileSync(fd, 'utf8')).toContain('overfull guard --staged');
+      const script = readFileSync(fd, 'utf8');
+      expect(script).toContain('overfull guard --staged');
+      // Without overfull on PATH it says so instead of passing silently.
+      expect(script).toContain('overfull is not on PATH');
       // Windows has no execute bits; git for Windows runs hooks regardless.
       if (process.platform !== 'win32') expect(fstatSync(fd).mode & 0o111).not.toBe(0);
     } finally {

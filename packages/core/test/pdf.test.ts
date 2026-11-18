@@ -221,6 +221,22 @@ describe('accessibilityCheck', () => {
     expect(req.problems[0]?.fix).toMatch(/--engine docker/);
   });
 
+  it('reports verapdf-error, as a warning, when veraPDF could not validate the file', () => {
+    const r = accessibilityCheck(facts(), {
+      verapdf: { compliant: false, failures: [], error: 'PDF parse error' },
+      level: 'required',
+    });
+    expect(r.status).toBe('warn');
+    expect(r.problems).toEqual([
+      expect.objectContaining({
+        rule: 'verapdf-error',
+        severity: 'warning',
+        message: 'veraPDF could not validate the PDF: PDF parse error',
+      }),
+    ]);
+    expect(r.problems[0]?.fix).toContain('verapdf --flavour ua2');
+  });
+
   it('does not call a non-compliant veraPDF report with no failures valid', () => {
     const r = accessibilityCheck(facts(), {
       verapdf: { compliant: false, failures: [] },
@@ -327,6 +343,18 @@ describe('parseVeraPdfReport', () => {
   it('parses a compliant JSON report', () => {
     const r = parseVeraPdfReport(readText('verapdf-compliant.json'));
     expect(r).toMatchObject({ compliant: true, failures: [] });
+  });
+
+  it('decodes out-of-range numeric entities without throwing', () => {
+    const xml = readText('verapdf-ua1.xml').replace(
+      /(<description>)/,
+      '$1Bad &#99999999; and &#xD800; entities ',
+    );
+    const r = parseVeraPdfReport(xml);
+    expect(r.error).toBeUndefined();
+    expect(r.failures.some((f) => f.description.includes('Bad \uFFFD and \uFFFD entities'))).toBe(
+      true,
+    );
   });
 
   it('reports errors instead of throwing', () => {

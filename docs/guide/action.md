@@ -31,7 +31,7 @@ The rest of this page covers the Action and the template workflow.
 - **The Action** (`amet13/overfull@v3`) checks files your workflow already
   produced: the log, the PDF, the bibliography. Use it to add Overfull to an
   existing LaTeX workflow.
-- **The template workflow** (`.github/workflows/paper.yml` in each template)
+- **The template workflow** (`.github/workflows/preflight.yml` in each template)
   builds the PDF in the Overfull Docker image, runs every check including
   veraPDF, and builds a highlighted-changes PDF for pull requests. The slides
   template runs only the checks its `overfull.yml` lists.
@@ -108,7 +108,7 @@ Actions.
 | `mailto` | `references.mailto`, else `$OVERFULL_MAILTO` | Contact address for CrossRef's polite pool. |
 | `annotations` | `true` | Write problems as file annotations. |
 | `summary` | `true` | Write a Markdown report to the job summary. |
-| `sarif` | empty (off) | Path to write a SARIF 2.1.0 file, relative to the workspace. See [Code scanning](#code-scanning-sarif). |
+| `sarif` | empty (off) | Path to write a SARIF 2.1.0 file, relative to the workspace. It must stay inside the workspace and must not be a symlink (the step fails otherwise). See [Code scanning](#code-scanning-sarif). |
 
 Inputs you leave out come from `overfull.yml` in `working-directory`, where
 present. Checks whose default inputs are missing are reported as `skipped`;
@@ -174,7 +174,8 @@ in the same image as `make build`, a PDF that builds locally builds in CI.
 
 ## Reference lookups in CI
 
-The references check queries CrossRef, doi.org, arXiv and DBLP from the runner.
+The references check queries the public indexes from the runner (see
+[What leaves your machine](./references.md#what-leaves-your-machine)).
 Set `mailto` so CrossRef requests go to its polite pool. To add OpenAlex title
 search, pass the key as an environment variable on the step:
 

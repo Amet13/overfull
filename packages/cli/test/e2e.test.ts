@@ -1,6 +1,6 @@
 /**
  * End-to-end: builds a tiny project with `overfull build` (Docker) and checks it.
- * Run with OVERFULL_E2E=1 (uses $OVERFULL_IMAGE, e.g. overfull-tex:dev).
+ * Run with OVERFULL_E2E=1 (uses $OVERFULL_IMAGE, e.g. overfull:dev).
  */
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,7 +30,7 @@ describe.skipIf(process.env.OVERFULL_E2E !== '1')('e2e: build then check in Dock
       join(dir, 'overfull.yml'),
       'main: main.tex\nprofile: thesis\nbuild:\n  engine: docker\n',
     );
-    const env = { OVERFULL_IMAGE: process.env.OVERFULL_IMAGE ?? 'overfull-tex:dev' };
+    const env = { OVERFULL_IMAGE: process.env.OVERFULL_IMAGE ?? 'overfull:dev' };
     const build = memIo(dir, env);
     expect(await main(['build'], build), build.stderrText()).toBe(0);
     expect(build.stdoutText()).toMatch(/^overfull main\.pdf/);

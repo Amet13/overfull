@@ -27,6 +27,13 @@ describe('shipped venue profiles', () => {
         expect(data.checkedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       });
 
+      it("has a deadline only for a yearly edition, in that edition's cycle", () => {
+        if (data.deadline === undefined) return;
+        expect(data.year).not.toBe('rolling');
+        const year = Number(data.deadline.slice(0, 4));
+        expect([Number(data.year) - 1, Number(data.year)]).toContain(year);
+      });
+
       it('records a sha256 only as 64 hex digits', () => {
         for (const f of data.styleFiles ?? [])
           if (f.sha256 !== undefined) expect(f.sha256).toMatch(/^[0-9a-f]{64}$/);

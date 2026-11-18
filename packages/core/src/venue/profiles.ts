@@ -37,7 +37,7 @@ export const builtinProfiles: Record<string, VenueProfile> = {
     id: 'arxiv',
     name: 'arXiv',
     description:
-      'arXiv submission: no absolute paths, no shell escape, .bbl included, pdfLaTeX-safe figures.',
+      'arXiv submission: no absolute paths, no shell escape, .bib or a matching .bbl included, pdfLaTeX-safe figures.',
     paper: 'any',
     disclosure: 'off',
     accessibility: 'recommended',

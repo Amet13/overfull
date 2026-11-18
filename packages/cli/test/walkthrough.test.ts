@@ -1,14 +1,14 @@
 /** Regressions from the round-4 persona walkthroughs (CLI and Action side). */
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { formatHuman, type Problem, type Report } from '@overfull/core';
+import { formatHuman, type Problem } from '@overfull/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readInputs } from '../../../action/src/inputs.js';
 import { mergeOutput, runCheck } from '../src/check.js';
 import { loadConfig } from '../src/config.js';
 import { main } from '../src/main.js';
-import { memIo, tempCopy, tempDir } from './helpers.js';
+import { fakeBin, memIo, problems, tempCopy, tempDir } from './helpers.js';
 
 /** Shell-script fakes on PATH do not exist on Windows. */
 const POSIX_ONLY = process.platform === 'win32';
@@ -16,18 +16,6 @@ const savedPath = process.env.PATH;
 afterEach(() => {
   process.env.PATH = savedPath;
 });
-
-function fakeBin(scripts: Record<string, string>): string {
-  const dir = tempDir();
-  for (const [name, body] of Object.entries(scripts)) {
-    const p = join(dir, name);
-    writeFileSync(p, `#!/bin/sh\n${body}\n`);
-    chmodSync(p, 0o755);
-  }
-  return dir;
-}
-
-const problems = (r: Report) => r.checks.flatMap((c) => c.problems);
 
 describe('explicit inputs that do not exist fail with exit 2', () => {
   it('--pdf names the path and the jobname from overfull.yml', async () => {
@@ -163,38 +151,42 @@ describe('help and exit codes', () => {
     expect(io.stdoutText()).toContain('{pdf, base, sha, complete}');
   });
 
-  it.skipIf(POSIX_ONLY)('diff --json exits 1 when the diff PDF is incomplete', async () => {
-    const bin = fakeBin({
-      // latexdiff-vc ... -r <sha> <main.tex> → writes main-diff<sha>.tex
-      'latexdiff-vc':
-        'sha=""; while [ $# -gt 0 ]; do if [ "$1" = -r ]; then sha="$2"; fi; shift; done\necho x > "main-diff$sha.tex"',
-      // latexmk with errors still writes a PDF (nonstopmode) and exits 12
-      latexmk: 'mkdir -p .overfull/diff; echo pdf > .overfull/diff/overfull-diff.pdf; exit 12',
-    });
-    process.env.PATH = `${bin}:${savedPath}`;
-    const dir = tempDir();
-    const git = (...args: string[]) =>
-      execFileSync('git', args, {
-        cwd: dir,
-        env: {
-          ...process.env,
-          GIT_AUTHOR_NAME: 't',
-          GIT_AUTHOR_EMAIL: 't@example.org',
-          GIT_COMMITTER_NAME: 't',
-          GIT_COMMITTER_EMAIL: 't@example.org',
-        },
+  it.skipIf(POSIX_ONLY)(
+    'diff exits 1 when the diff PDF is incomplete, with or without --json',
+    async () => {
+      const bin = fakeBin({
+        // latexdiff-vc ... -r <sha> <main.tex> → writes main-diff<sha>.tex
+        'latexdiff-vc':
+          'sha=""; while [ $# -gt 0 ]; do if [ "$1" = -r ]; then sha="$2"; fi; shift; done\necho x > "main-diff$sha.tex"',
+        // latexmk with errors still writes a PDF (nonstopmode) and exits 12
+        latexmk: 'mkdir -p .overfull/diff; echo pdf > .overfull/diff/overfull-diff.pdf; exit 12',
       });
-    git('init', '-q', '-b', 'main');
-    writeFileSync(join(dir, 'main.tex'), '1');
-    git('add', '-A');
-    git('commit', '-qm', 'one');
-    writeFileSync(join(dir, 'main.tex'), '2');
-    git('commit', '-qam', 'two');
-    const io = memIo(dir, { PATH: process.env.PATH });
-    expect(await main(['diff', '--engine', 'local', '--json'], io)).toBe(1);
-    expect(JSON.parse(io.stdoutText())).toMatchObject({ complete: false });
-    expect(existsSync(join(dir, 'overfull-diff.pdf'))).toBe(true);
-    const plain = memIo(dir, { PATH: process.env.PATH });
-    expect(await main(['diff', '--engine', 'local'], plain)).toBe(0);
-  });
+      process.env.PATH = `${bin}:${savedPath}`;
+      const dir = tempDir();
+      const git = (...args: string[]) =>
+        execFileSync('git', args, {
+          cwd: dir,
+          env: {
+            ...process.env,
+            GIT_AUTHOR_NAME: 't',
+            GIT_AUTHOR_EMAIL: 't@example.org',
+            GIT_COMMITTER_NAME: 't',
+            GIT_COMMITTER_EMAIL: 't@example.org',
+          },
+        });
+      git('init', '-q', '-b', 'main');
+      writeFileSync(join(dir, 'main.tex'), '1');
+      git('add', '-A');
+      git('commit', '-qm', 'one');
+      writeFileSync(join(dir, 'main.tex'), '2');
+      git('commit', '-qam', 'two');
+      const io = memIo(dir, { PATH: process.env.PATH });
+      expect(await main(['diff', '--engine', 'local', '--json'], io)).toBe(1);
+      expect(JSON.parse(io.stdoutText())).toMatchObject({ complete: false });
+      expect(existsSync(join(dir, 'overfull-diff.pdf'))).toBe(true);
+      const plain = memIo(dir, { PATH: process.env.PATH });
+      expect(await main(['diff', '--engine', 'local'], plain)).toBe(1);
+      expect(plain.stderrText()).toContain('the PDF may be incomplete');
+    },
+  );
 });

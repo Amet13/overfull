@@ -46,7 +46,15 @@ overfull check
 
 On Windows: `irm https://amet13.github.io/overfull/install.ps1 | iex`. The
 installer verifies the download against the release's `SHA256SUMS` and needs no
-administrator rights. Other ways to install, including Docker and single-file
+administrator rights. Or use a package manager:
+
+```bash
+brew tap amet13/overfull https://github.com/Amet13/overfull && brew install amet13/overfull/overfull
+scoop bucket add overfull https://github.com/Amet13/overfull; scoop install overfull/overfull
+nix run github:Amet13/overfull -- check
+```
+
+Other ways to install, including Docker and single-file
 downloads: [Install](https://amet13.github.io/overfull/docs/install/).
 
 `overfull check` finds the main file, reads the build log, the PDF and the
@@ -81,7 +89,8 @@ Codex CLI and Gemini CLI). In Claude Code, the plugin installs the skills, the h
 MCP server in one step:
 
 ```text
-/plugin install overfull --marketplace Amet13/overfull
+/plugin marketplace add amet13/overfull
+/plugin install overfull@overfull
 ```
 
 Agents without a shell can use `overfull mcp`. See
@@ -100,17 +109,18 @@ framework (`id: overfull-guard`).
 
 ## How good is the reference check
 
-The benchmark in `bench/refs/` runs the check over 124 real entries and 90
-fabricated ones every month. No measured run has been published yet;
-[How accurate is the reference check](https://amet13.github.io/overfull/docs/accuracy/)
-describes the method and what the check cannot do.
+No measured run has been published yet. The benchmark in `bench/refs/` (124
+real entries and 90 fabricated ones) is set to run every month, and measured
+runs will be published in
+[How accurate is the reference check](https://amet13.github.io/overfull/docs/accuracy/),
+which describes the method and what the check cannot do.
 
 ## Templates
 
 For a new document, start from a template that already passes every check:
 
 ```bash
-overfull init paper my-paper     # or thesis, slides; or "Use this template" on GitHub
+overfull init paper my-paper     # or thesis, slides
 ```
 
 | Template | For | Accessible by default |
@@ -126,21 +136,23 @@ from the venue's author kit and run `overfull init --here` in it.
 ## Commands
 
 ```text
-overfull check [files] [--json|--markdown|--sarif]   run the checks
-overfull init --here [--all]                         add Overfull to this project
-overfull init [thesis|paper|slides] [dir]            start from a template
-overfull build [main.tex]                            compile (local TeX or Docker)
-overfull cite <doi | arXiv:id | ACL id | PMID | "title">  add a verified reference
-overfull guard --staged | --hook                     block hand-written .bib entries
-overfull mcp                                         Model Context Protocol server
-overfull pages <range>                               render pages to PNG
-overfull diff [--base ref]                           PDF with changes highlighted
-overfull explain <rule> | --list                     what a rule means and how to fix it
-overfull doctor                                      check your setup
+overfull check [files]          run the checks
+overfull init --here            add Overfull to this project
+overfull init [template] [dir]  start from a template
+overfull build [main.tex]       compile (local TeX or Docker)
+overfull cite <doi | arXiv:id | ACL id | PMID | PMCID | "title">
+                                add a verified reference
+overfull guard --staged         block hand-written .bib entries (also --hook for agents)
+overfull mcp                    Model Context Protocol server
+overfull pages <range>          render pages to PNG
+overfull diff [--base ref]      PDF with changes highlighted
+overfull explain <rule>         what a rule means and how to fix it
+overfull doctor                 check your setup
 ```
 
-Every command takes `--help` and `--json`. Full reference:
-[CLI](https://amet13.github.io/overfull/docs/cli/).
+Every command takes `--help`, and all but `mcp` print JSON with `--json`. Every
+flag, the exit codes and the JSON shapes:
+[CLI reference](https://amet13.github.io/overfull/docs/cli/).
 
 ## Contributing
 

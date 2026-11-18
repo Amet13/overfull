@@ -11,6 +11,9 @@ styleFiles:
   - name: acmart.cls
 textBlock:
   widthMm: 177.9
+anonymizedByClass:
+  package: acmart
+  withOptions: [anonymous]
 notes: >-
   Each ACM conference sets its own page limit and review rules; set them in overfull.yml
   (`venue:`) from the call for papers, and use the class option `anonymous` for double-blind
@@ -18,3 +21,4 @@ notes: >-
   inner and outer margins, so the text block is 8.5 in minus 108 pt wide. acmart.cls is
   generated from acmart.dtx, so no hash is recorded. ACM's own pages
   (acm.org/publications) could not be read from the build machine.
+  acmart.cls hides the authors with the anonymous option (acmart.dtx v2.21).

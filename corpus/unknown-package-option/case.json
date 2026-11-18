@@ -1,0 +1,7 @@
+{
+  "title": "Misspelled package option",
+  "engine": "pdflatex",
+  "check": "build",
+  "expect": ["unknown-package-option"],
+  "run": "once"
+}

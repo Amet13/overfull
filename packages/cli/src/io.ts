@@ -6,6 +6,10 @@ export interface Io {
   stderr: (s: string) => void;
   /** True when stdout is an interactive terminal. */
   isTTY: boolean;
+  /** True when stdin is an interactive terminal. Questions are asked only when stdin and stdout both are. */
+  stdinIsTTY?: boolean;
+  /** Asks a yes/no question (default no). Tests inject it; the CLI reads stdin. */
+  ask?: (question: string) => Promise<boolean>;
   /** True when stderr is an interactive terminal (progress lines). Absent means no. */
   stderrIsTTY?: boolean;
   /** Overrides `globalThis.fetch` (tests, proxies). */
@@ -21,6 +25,7 @@ export function processIo(): Io {
     stdout: (s) => process.stdout.write(s),
     stderr: (s) => process.stderr.write(s),
     isTTY: Boolean(process.stdout.isTTY),
+    stdinIsTTY: Boolean(process.stdin.isTTY),
     stderrIsTTY: Boolean(process.stderr.isTTY),
   };
 }
@@ -31,6 +36,33 @@ export class UsageError extends Error {
     super(message);
     this.name = 'UsageError';
   }
+}
+
+/**
+ * Request spacing for the reference indexes in the CLI's own tests: with
+ * OVERFULL_TEST_NO_SPACING=1 the arXiv and CrossRef intervals and the retry
+ * delay are 0. Honoured only inside a test runner (VITEST or NODE_ENV=test in
+ * the real process environment), so a stray variable never makes the CLI
+ * impolite to the indexes.
+ */
+export function testRefsTiming(env: Record<string, string | undefined>): {
+  arxivIntervalMs?: number;
+  crossrefIntervalMs?: number;
+  retryDelayMs?: number;
+} {
+  const testRun = Boolean(process.env.VITEST) || process.env.NODE_ENV === 'test';
+  if (!testRun || env.OVERFULL_TEST_NO_SPACING !== '1') return {};
+  return { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
+}
+
+/** Says on stderr which overfull.yml above the current folder a command uses. */
+export function noteProject(io: Io, location: { above?: string }): void {
+  if (location.above) io.stderr(`Using ${location.above}.\n`);
+}
+
+/** True when a person can answer a question: stdin and stdout are both terminals. */
+export function canAsk(io: Io): boolean {
+  return io.isTTY && io.stdinIsTTY === true;
 }
 
 export function useColor(io: Io): boolean {

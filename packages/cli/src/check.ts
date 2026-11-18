@@ -12,12 +12,13 @@ import {
   citedKeys,
   citesAll,
   mergeDuplicateFindings,
+  mergeOutput,
   missingKeys,
-  outputSummary,
   type PdfFacts,
   type Problem,
   parseBibWithIssues,
   pdfOutputProblems,
+  type RefResult,
   type Report,
   refsCheck,
   reportStatus,
@@ -30,9 +31,9 @@ import {
   venueCheck,
   verifyEntries,
 } from '@overfull/core';
-import { FileCache, MemoryCache, refsCachePath, symlinkOnPath } from './cache.js';
+import { FileCache, MemoryCache, refsCacheMode, refsCachePath, symlinkOnPath } from './cache.js';
 import { type Config, DEFAULT_IMAGE, loadConfig, requireMain } from './config.js';
-import { UsageError } from './io.js';
+import { testRefsTiming, UsageError } from './io.js';
 import { readPdfFacts } from './pdf.js';
 import { listFiles, readAux, readIfExists, readTexFiles, requireRegularFile } from './project.js';
 import { insideRoot, insideRootOrUndefined, isCI, safeImage } from './safety.js';
@@ -57,10 +58,23 @@ export interface CheckOptions {
   mailto?: string;
   /** Run veraPDF when installed (default true). */
   verapdf?: boolean;
-  /** Cache reference lookups (default true): in the user cache dir, or `.overfull/cache` with `references.cache: project`. */
+  /** Cache reference lookups (default true): in the user cache dir, or `.overfull/cache` with `projectCache`. */
   cache?: boolean;
+  /**
+   * Keep the reference cache in `.overfull/cache/refs.json` (`--project-cache`).
+   * Also on with `OVERFULL_REFS_CACHE=project`. `references.cache: project` in the
+   * project's own overfull.yml is ignored: a project must not vouch for itself.
+   */
+  projectCache?: boolean;
   /** Skip cached reference answers and ask the indexes again; fresh answers are still stored (`--refresh`). */
   refresh?: boolean;
+  /**
+   * Reference answers kept between runs (`check --watch`), by entry text. An entry
+   * whose text has not changed takes its last answer instead of a lookup, even
+   * offline; new definitive answers are added. Offline answers and failed lookups
+   * are not kept.
+   */
+  refsMemo?: Map<string, RefResult>;
   /** Called after each entry is looked up. The CLI passes it only on an interactive stderr. */
   progress?: (done: number, total: number) => void;
   /**
@@ -221,19 +235,8 @@ function missingPdfReason(inp: Inputs): string {
   return missingReason(inp, inp.pdfPath);
 }
 
-/** Drops PDF "??"/"[?]" findings the log already explains, to avoid double counting. */
-export function mergeOutput(output: CheckResult, pdfProblems: Problem[]): CheckResult {
-  const has = (re: RegExp) => output.problems.some((p) => re.test(p.rule));
-  const extra = pdfProblems.filter((p) =>
-    p.rule === 'pdf-unresolved-reference'
-      ? !has(/undefined-reference|reference-undefined/)
-      : !has(/undefined-citation|citation-undefined/),
-  );
-  if (extra.length === 0) return output;
-  const problems = [...output.problems, ...extra];
-  // The log's summary ("No problems found…") no longer describes the merged list.
-  return { ...output, status: statusOf(problems), problems, summary: outputSummary(problems) };
-}
+/** Shared with the browser check, which runs in core only. */
+export { mergeOutput };
 
 /**
  * Points errors from typeset bibliography entries at the .bib entry (see core's
@@ -242,6 +245,7 @@ export function mergeOutput(output: CheckResult, pdfProblems: Problem[]): CheckR
 export function bibliographyAttribution(
   config: Config,
   bib: string[] = config.bib,
+  texFiles?: TexFile[],
 ): (problems: Problem[]) => Problem[] {
   const root = config.root;
   const bblRel = join(config.build.auxDir, `${config.jobname}.bbl`).split('\\').join('/');
@@ -264,7 +268,9 @@ export function bibliographyAttribution(
     }
   }
   const bbl = { path: bblRel.replace(/^\.\//, ''), text: bblText };
-  return (problems) => attributeBibliography(problems, { bbl, bibs });
+  // The .tex sources tell where the bibliography is printed (biblatex reports that line).
+  const tex = texFiles ?? readTexFiles(root, listFiles(root));
+  return (problems) => attributeBibliography(problems, { bbl, bibs, texFiles: tex });
 }
 
 function buildAndOutput(inp: Inputs, wanted: Set<CheckId>): CheckResult[] {
@@ -288,7 +294,7 @@ function buildAndOutput(inp: Inputs, wanted: Set<CheckId>): CheckResult[] {
     return out;
   }
   const analyzed = analyzeLog(inp.log, { root: inp.root });
-  const attribute = bibliographyAttribution(inp.config);
+  const attribute = bibliographyAttribution(inp.config, inp.config.bib, sourcesOf(inp).texFiles);
   const build = { ...analyzed.build, problems: attribute(analyzed.build.problems) };
   const output = { ...analyzed.output, problems: attribute(analyzed.output.problems) };
   if (wanted.has('build')) out.push(build);
@@ -379,8 +385,19 @@ async function references(inp: Inputs, opts: CheckOptions): Promise<CheckResult>
   const env = opts.env ?? process.env;
   let cache: FileCache | MemoryCache | undefined;
   if (opts.cache !== false) {
-    const path = refsCachePath(root, config.references.cache, env);
-    const project = config.references.cache === 'project';
+    const mode = refsCacheMode(opts.projectCache, env);
+    const path = refsCachePath(root, mode, env);
+    const project = mode === 'project';
+    if (config.references.cache === 'project' && !project) {
+      extra.push({
+        rule: 'refs-cache-ignored',
+        check: 'references',
+        severity: 'info',
+        message:
+          'Ignored `references.cache: project` in overfull.yml: a project cannot choose to trust its own cache',
+        fix: 'Use `--project-cache` or set OVERFULL_REFS_CACHE=project in your environment if you want the cache in .overfull/.',
+      });
+    }
     const link = project ? symlinkOnPath(root, path) : undefined;
     if (project && isCI(env)) {
       // A project-located cache is repository content: in CI (a pull request, an
@@ -402,7 +419,7 @@ async function references(inp: Inputs, opts: CheckOptions): Promise<CheckResult>
         check: 'references',
         severity: 'info',
         message: `Ignored ${rel(root, path)}: ${rel(root, link)} is a symlink, so the cache may be a file from the repository`,
-        fix: 'Replace the symlink with a real directory, or drop `references.cache: project`.',
+        fix: 'Replace the symlink with a real directory, or drop `--project-cache` / OVERFULL_REFS_CACHE=project.',
       });
     } else cache = new FileCache(path);
   }
@@ -422,8 +439,9 @@ async function references(inp: Inputs, opts: CheckOptions): Promise<CheckResult>
     ...(config.references.requireCite ? { requireProvenance: true } : {}),
     // The CLI asks CrossRef about retractions; the core library leaves it off by default.
     checkRetractions: true,
+    ...testRefsTiming(env),
   };
-  const results = await verifyEntries(toVerify, refsOptions);
+  const results = await verifyWithMemo(toVerify, refsOptions, opts.refsMemo);
   cache?.save();
   const result = refsCheck(results, {
     entries: toVerify,
@@ -442,6 +460,41 @@ async function references(inp: Inputs, opts: CheckOptions): Promise<CheckResult>
     return { ...result, status: statusOf(result.problems) };
   }
   return result;
+}
+
+/** The memo key of an entry: its file and its text exactly as written. */
+const memoKey = (e: BibEntry) => JSON.stringify([e.file ?? '', e.raw]);
+
+/** An answer worth keeping for the next run: not offline, not a failed or partial lookup. */
+const keepable = (r: RefResult) =>
+  r.reason !== 'offline' &&
+  r.status !== 'error' &&
+  (r.status !== 'unverifiable' || r.reason === 'skipped by author');
+
+/**
+ * `verifyEntries`, taking the answers in `memo` for entries whose text has not changed
+ * (with the entry's current line) and storing the new answers there.
+ */
+async function verifyWithMemo(
+  entries: BibEntry[],
+  refsOptions: Parameters<typeof verifyEntries>[1],
+  memo: Map<string, RefResult> | undefined,
+): Promise<RefResult[]> {
+  if (!memo) return verifyEntries(entries, refsOptions);
+  const todo = entries.filter((e) => !memo.has(memoKey(e)));
+  const fresh = todo.length ? await verifyEntries(todo, refsOptions) : [];
+  todo.forEach((e, i) => {
+    const r = fresh[i];
+    if (r && keepable(r)) memo.set(memoKey(e), r);
+  });
+  let next = 0;
+  return entries.map((e) => {
+    if (todo[next] === e) return fresh[next++] as RefResult;
+    const { location: _old, ...kept } = memo.get(memoKey(e)) as RefResult;
+    return e.line
+      ? { ...kept, location: { line: e.line, ...(e.file ? { file: e.file } : {}) } }
+      : kept;
+  });
 }
 
 /** True when the build log has errors (veraPDF findings on such a PDF are follow-on noise). */
@@ -490,6 +543,20 @@ async function accessibility(
   });
 }
 
+/** `<main>.bbl` for the arXiv checks (its biblatex format line), when the project has it. */
+function arxivBbl(config: Config, files: string[]): { bbl?: { path: string; text: string } } {
+  if (!config.profile.arxiv) return {};
+  const path = config.main.replace(/\.tex$/i, '.bbl');
+  if (!files.includes(path)) return {};
+  const abs = insideRootOrUndefined(config.root, path);
+  try {
+    const text = abs ? readIfExists(abs) : undefined;
+    return text === undefined ? {} : { bbl: { path, text } };
+  } catch {
+    return {};
+  }
+}
+
 function venue(inp: Inputs): CheckResult {
   const { config } = inp;
   // Without the PDF and without the main file there is no document to judge: .tex files
@@ -504,6 +571,7 @@ function venue(inp: Inputs): CheckResult {
     texFiles,
     files,
     main: config.main,
+    ...arxivBbl(config, files),
   });
   if (result.status === 'skipped' && !inp.facts) return skipped('venue', missingPdfReason(inp));
   if (skippedFiles.length) {

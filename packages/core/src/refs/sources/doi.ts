@@ -1,4 +1,4 @@
-import { type HttpClient, SourceUnavailableError } from '../http.js';
+import { type HttpClient, isObject, readAnswer, SourceUnavailableError } from '../http.js';
 import type { WorkRecord } from '../types.js';
 import { type CslLike, fromCsl } from './csl.js';
 
@@ -48,13 +48,14 @@ export async function resolveDoi(client: HttpClient, doi: string): Promise<DoiRe
   if (res.status < 200 || res.status >= 300) {
     throw new SourceUnavailableError('doi.org', `doi.org answered HTTP ${res.status}`);
   }
-  let item: CslLike;
+  let item: unknown;
   try {
-    item = JSON.parse(res.body) as CslLike;
+    item = JSON.parse(res.body);
   } catch {
     return { kind: 'no-metadata' };
   }
-  const record = fromCsl(item, 'doi.org');
+  if (!isObject(item)) return { kind: 'no-metadata' };
+  const record = readAnswer('doi.org', () => fromCsl(item as CslLike, 'doi.org'));
   if (!record) return { kind: 'no-metadata' };
   if (!record.doi) record.doi = doi;
   return { kind: 'found', record };

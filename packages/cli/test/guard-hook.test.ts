@@ -1,21 +1,49 @@
 /** `overfull guard --hook`: payload fixtures per harness, fail-open behaviour, settings wiring. */
 
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { guardCommand } from '../src/commands/guard.js';
-import { detectHarness, MAX_PAYLOAD_BYTES, runHook } from '../src/guard/hook.js';
+import { onlyRemovesEntries } from '../src/guard/entries.js';
+import { decide, detectHarness, MAX_PAYLOAD_BYTES, runHook } from '../src/guard/hook.js';
 import { mergeHookSettings } from '../src/guard/settings.js';
 import { main } from '../src/main.js';
-import { memIo } from './helpers.js';
+import { memIo, tempDir } from './helpers.js';
+
+const BIB = `@article{doe2020,
+  title = {A Real Title},
+  author = {Doe, Jane},
+  year = {2020},
+}
+
+@book{roe2019,
+  title = {Another Book},
+  author = {Roe, Rick},
+  year = {2019},
+}
+`;
+
+// The fixtures name /work/paper; tests run them against a real project folder.
+let project = '';
+beforeAll(() => {
+  project = tempDir();
+  writeFileSync(join(project, 'overfull.yml'), 'main: main.tex\n');
+  writeFileSync(join(project, 'references.bib'), BIB);
+  mkdirSync(join(project, 'refs'));
+  writeFileSync(join(project, 'refs', 'Library.BIB'), BIB);
+});
 
 const fixture = (name: string) =>
-  readFileSync(new URL(`./fixtures/guard/${name}`, import.meta.url), 'utf8');
+  readFileSync(new URL(`./fixtures/guard/${name}`, import.meta.url), 'utf8').replaceAll(
+    '/work/paper',
+    // The path goes into JSON text: escape it (Windows paths have backslashes).
+    JSON.stringify(project).slice(1, -1),
+  );
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 
 async function hook(args: string[], stdin: string) {
-  const io = memIo('/work/paper');
+  const io = memIo(project);
   const code = await guardCommand(['--hook', ...args], io, async () => stdin);
   return { code, out: io.stdoutText(), err: io.stderrText() };
 }
@@ -98,7 +126,7 @@ describe('guard --hook, general', () => {
   });
 
   it('resolves relative paths against the payload cwd, and the extension in any case', () => {
-    const p = (file_path: string, cwd = '/work/paper') =>
+    const p = (file_path: string, cwd = project) =>
       JSON.stringify({
         hook_event_name: 'PreToolUse',
         tool_name: 'Write',
@@ -155,12 +183,15 @@ describe('hook settings files', () => {
   const claude = readFileSync(join(repo, 'shared/agents/.claude/settings.json'), 'utf8');
   const gemini = readFileSync(join(repo, 'shared/agents/.gemini/settings.json'), 'utf8');
 
-  it('call overfull guard --hook, and do nothing when overfull is not installed', () => {
+  it('call overfull guard --hook, and say so when overfull is not installed', () => {
     const c = JSON.parse(claude).hooks.PreToolUse[0];
     expect(c.matcher).toBe('Write|Edit|MultiEdit');
     expect(c.hooks[0].command).toContain('command -v overfull');
     expect(c.hooks[0].command).toContain('overfull guard --hook claude');
-    expect(c.hooks[0].command).toMatch(/\|\| exit 0$/);
+    // Without overfull: a notice (JSON systemMessage) for a .bib write in an Overfull project.
+    expect(c.hooks[0].command).toContain('[ -f overfull.yml ]');
+    expect(c.hooks[0].command).toContain('systemMessage');
+    expect(c.hooks[0].command).toMatch(/; fi$/);
     const g = JSON.parse(gemini).hooks.BeforeTool[0];
     expect(g.matcher).toBe('write_file|replace');
     expect(g.hooks[0].command).toContain('overfull guard --hook gemini');
@@ -197,7 +228,7 @@ describe('guard --hook, Codex CLI', () => {
   const patch = (body: string) =>
     JSON.stringify({
       session_id: 's1',
-      cwd: '/work/paper',
+      cwd: project,
       hook_event_name: 'PreToolUse',
       turn_id: 't1',
       tool_name: 'apply_patch',
@@ -216,15 +247,38 @@ describe('guard --hook, Codex CLI', () => {
     }
   });
 
-  it('denies adding, deleting or moving a file to a .bib, anywhere in the patch', async () => {
+  it('denies adding, changing or moving a .bib entry or file, anywhere in the patch', async () => {
     for (const body of [
-      '*** Add File: refs/new.BIB\n+@misc{x}',
-      '*** Delete File: references.bib',
+      '*** Add File: refs/new.BIB\n+@misc{x, title={Invented}}',
       '*** Update File: main.tex\n@@\n-a\n+b\n*** Update File: notes.txt\n*** Move to: refs.bib',
-      '  *** Update File:   /abs/path/references.bib  ',
+      `  *** Update File:   ${project}/references.bib  \n@@\n+@misc{y, title={Invented}}`,
+      '*** Update File: references.bib\n@@\n-  year = {2020},\n+  year = {2021},',
+      '*** Update File: references.bib\n@@\n-  year = {1999},',
+      // Removing a field changes the entry.
+      '*** Update File: references.bib\n@@\n @book{roe2019,\n-  title = {Another Book},',
+      '*** Update File: references.bib\n@@ no such line\n-  year = {2020},',
+      '*** Update File: references.bib\n@@\n?bad line',
+      '*** Update File: missing.bib\n@@\n-x',
     ]) {
       const r = await hook(['codex'], patch(body));
-      expect(JSON.parse(r.out).hookSpecificOutput.permissionDecision).toBe('deny');
+      expect(JSON.parse(r.out).hookSpecificOutput.permissionDecision, body).toBe('deny');
+    }
+  });
+
+  it('allows a patch that only removes whole entries, or the whole file', async () => {
+    const removeRoe = [
+      '*** Update File: references.bib',
+      '@@ year = {2020},',
+      ' }',
+      ' ',
+      '-@book{roe2019,',
+      '-  title = {Another Book},',
+      '-  author = {Roe, Rick},',
+      '-  year = {2019},',
+      '-}',
+    ].join('\n');
+    for (const body of [removeRoe, '*** Delete File: references.bib']) {
+      expect(await hook(['codex'], patch(body)), body).toEqual({ code: 0, out: '', err: '' });
     }
   });
 
@@ -242,5 +296,123 @@ describe('guard --hook, Codex CLI', () => {
       tool_input: { command: 'echo >> refs.bib' },
     });
     expect(await hook([], bash)).toEqual({ code: 0, out: '', err: '' });
+  });
+});
+
+describe('guard --hook, removing entries and other projects', () => {
+  const claude = (tool: string, tool_input: Record<string, unknown>, cwd = project) =>
+    JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: tool, cwd, tool_input });
+  const gemini = (tool: string, tool_input: Record<string, unknown>) =>
+    JSON.stringify({ hook_event_name: 'BeforeTool', tool_name: tool, cwd: project, tool_input });
+  const roe = BIB.slice(BIB.indexOf('@book'));
+  const allowed = async (text: string) => (await hook([], text)).out === '';
+
+  it('allows edits and writes that only remove whole entries', async () => {
+    const bib = join(project, 'references.bib');
+    expect(await allowed(claude('Edit', { file_path: bib, old_string: roe, new_string: '' }))).toBe(
+      true,
+    );
+    expect(
+      await allowed(
+        claude('MultiEdit', {
+          file_path: 'references.bib',
+          edits: [{ old_string: roe, new_string: '' }],
+        }),
+      ),
+    ).toBe(true);
+    expect(await allowed(claude('Write', { file_path: bib, content: roe }))).toBe(true);
+    expect(await allowed(claude('Write', { file_path: bib, content: '' }))).toBe(true);
+    // Whitespace and field order do not count as a change.
+    const reordered = roe.replace('  title = {Another Book},\n', '').replace('}\n', '');
+    expect(
+      await allowed(
+        claude('Write', {
+          file_path: bib,
+          content: `${reordered.trimEnd()}\n  title   =   {Another Book},\n}\n`,
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      await allowed(gemini('replace', { file_path: bib, old_string: roe, new_string: '' })),
+    ).toBe(true);
+    expect(await allowed(gemini('write_file', { file_path: bib, content: roe }))).toBe(true);
+  });
+
+  it('denies edits that add, change or duplicate an entry, or cannot be worked out', async () => {
+    const bib = join(project, 'references.bib');
+    for (const text of [
+      claude('Edit', { file_path: bib, old_string: '2019', new_string: '2018' }),
+      claude('Edit', { file_path: bib, old_string: '2019', new_string: '2018', replace_all: true }),
+      claude('Edit', { file_path: bib, old_string: 'not in the file', new_string: '' }),
+      claude('Edit', { file_path: bib, old_string: '', new_string: '' }),
+      claude('Edit', { file_path: bib, old_string: 7, new_string: '' }),
+      claude('MultiEdit', { file_path: bib, edits: [] }),
+      claude('MultiEdit', { file_path: bib, edits: [roe] }),
+      claude('MultiEdit', { file_path: bib, edits: 'x' }),
+      claude('Write', { file_path: bib, content: `${BIB}${roe}` }),
+      claude('Write', { file_path: bib, content: `${roe}@misc{broken, title = {x}\n` }),
+      claude('NotebookEdit', { notebook_path: bib }),
+      claude('Write', { file_path: join(project, 'new.bib'), content: '@misc{x, title={New}}' }),
+      gemini('replace', { file_path: bib, old_string: 'Rick', new_string: 'Rik' }),
+      gemini('replace', {
+        file_path: bib,
+        old_string: '20',
+        new_string: '19',
+        expected_replacements: 2,
+      }),
+    ]) {
+      expect(await allowed(text), text).toBe(false);
+    }
+  });
+
+  it('allows creating an empty .bib, and an edit that creates one with no entries', async () => {
+    const file = join(project, 'empty.bib');
+    expect(await allowed(claude('Write', { file_path: file, content: '% none\n' }))).toBe(true);
+    expect(await allowed(claude('Edit', { file_path: file, old_string: '', new_string: '' }))).toBe(
+      true,
+    );
+  });
+
+  it('does nothing outside an Overfull project (no overfull.yml found upward)', async () => {
+    const other = tempDir();
+    const text = claude(
+      'Write',
+      { file_path: join(other, 'references.bib'), content: '@misc{x, title={Invented}}' },
+      other,
+    );
+    expect(await allowed(text)).toBe(true);
+    // A subfolder of the project is still guarded.
+    mkdirSync(join(project, 'sub'), { recursive: true });
+    const sub = claude('Write', {
+      file_path: join(project, 'sub', 'more.bib'),
+      content: '@misc{x, title={Invented}}',
+    });
+    expect(await allowed(sub)).toBe(false);
+  });
+
+  it('denies when the file cannot be read', () => {
+    const payload = JSON.parse(
+      claude('Edit', { file_path: 'references.bib', old_string: roe, new_string: '' }),
+    );
+    const fs = {
+      read: () => {
+        throw new Error('EACCES');
+      },
+      inProject: () => true,
+    };
+    expect(decide(payload, 'claude', project, fs).allow).toBe(false);
+    expect(decide(payload, 'claude', project, { ...fs, inProject: () => false }).allow).toBe(true);
+  });
+
+  it('compares entries, not text', () => {
+    expect(onlyRemovesEntries(BIB, BIB)).toBe(true);
+    expect(onlyRemovesEntries(BIB, '')).toBe(true);
+    expect(onlyRemovesEntries('', '@misc{x, title={y}}')).toBe(false);
+    expect(onlyRemovesEntries(BIB, BIB.replace('Doe, Jane', 'Doe, J.'))).toBe(false);
+    expect(onlyRemovesEntries(BIB, BIB.replace('@article{doe2020', '@misc{doe2020'))).toBe(false);
+    // @string macros are expanded: changing one changes the entries that use it.
+    const macro = (v: string) => `@string{R = {${v}}}\n@misc{k, author = R}\n`;
+    expect(onlyRemovesEntries(macro('Roe'), macro('Roe'))).toBe(true);
+    expect(onlyRemovesEntries(macro('Roe'), macro('Invented'))).toBe(false);
   });
 });

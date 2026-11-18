@@ -13,6 +13,7 @@ const run = async () => {
   const results = await verifyEntries(entries, {
     fetch: f.fetch,
     arxivIntervalMs: 0,
+    crossrefIntervalMs: 0,
     retryDelayMs: 0,
   });
   return { f, entries, results };

@@ -7,7 +7,7 @@
 import { type CheckResult, type Problem, statusOf } from '../types.js';
 import { type ExplainContext, explainError } from './explain.js';
 import { parseLog } from './parse.js';
-import { extension } from './paths.js';
+import { basename, extension } from './paths.js';
 import type { LogError, LogWarning, ParsedLog } from './types.js';
 
 export interface AnalyzeLogOptions {
@@ -29,7 +29,8 @@ const MAX_EVIDENCE_LINES = 40;
 const DEFAULT_OVERFULL_PT = 10;
 
 const code = (text: string): string => `\`${text}\``;
-const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+/** `1 page`, `2 pages`; pass `many` for words whose plural is not word + s. */
+const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 
 function location(file?: string, line?: number, page?: number): Problem['location'] | undefined {
   const loc: NonNullable<Problem['location']> = {};
@@ -294,15 +295,31 @@ function undefinedReferences(list: LogWarning[]): Problem[] {
 interface StaleState {
   bibliography: 'missing' | 'stale' | undefined;
   bibTool: 'Biber' | 'BibTeX';
+  /** The job name to pass to Biber or BibTeX (the .bbl or PDF name without extension). */
+  job: string;
   references: boolean;
 }
 
-function staleState(parsed: ParsedLog, w: WarningsByKind): StaleState {
-  const noBbl = w.get('no-file').some((x) => extension(String(x.data.file)) === 'bbl');
+/** File name without folder and extension. */
+function stem(path: string): string {
+  return basename(path).replace(/\.[^.]*$/, '');
+}
+
+function staleState(parsed: ParsedLog, w: WarningsByKind, packages: Set<string>): StaleState {
+  const bbl = w.get('no-file').find((x) => extension(String(x.data.file)) === 'bbl');
   const stale = parsed.rerunNeeded.biber || parsed.rerunNeeded.bibtex;
+  // Biber only when biblatex asks for it, or when biblatex is loaded and did not ask for
+  // BibTeX (backend=bibtex); natbib and plain \bibliography projects use BibTeX.
+  const biber =
+    parsed.rerunNeeded.biber || (packages.has('biblatex') && !parsed.rerunNeeded.bibtex);
+  const rerunFile = [...w.get('rerun-biber'), ...w.get('rerun-bibtex')]
+    .map((x) => /\bon the file(?:\(s\))?:?\s+([^\s,]+)/.exec(x.message)?.[1])
+    .find((f) => f !== undefined);
+  const named = bbl ? String(bbl.data.file) : (rerunFile ?? parsed.outputFile?.name);
   return {
-    bibliography: noBbl ? 'missing' : stale ? 'stale' : undefined,
-    bibTool: parsed.rerunNeeded.bibtex && !parsed.rerunNeeded.biber ? 'BibTeX' : 'Biber',
+    bibliography: bbl ? 'missing' : stale ? 'stale' : undefined,
+    bibTool: biber ? 'Biber' : 'BibTeX',
+    job: (named && stem(named)) || 'main',
     references: parsed.rerunNeeded.latex,
   };
 }
@@ -310,7 +327,7 @@ function staleState(parsed: ParsedLog, w: WarningsByKind): StaleState {
 function bibliographyProblem(state: StaleState, citations: LogWarning[], raw: string[]): Problem {
   const keys = [...new Set(citations.map((c) => String(c.data.key)))];
   const tool = state.bibTool;
-  const command = tool === 'Biber' ? '`biber main`' : '`bibtex main`';
+  const command = code(`${tool === 'Biber' ? 'biber' : 'bibtex'} ${state.job}`);
   const missing = state.bibliography === 'missing';
   const suffix =
     keys.length > 0
@@ -333,8 +350,20 @@ function bibliographyProblem(state: StaleState, citations: LogWarning[], raw: st
   });
 }
 
-function rerunProblem(references: LogWarning[], raw: string[]): Problem {
+function rerunProblem(references: LogWarning[], raw: string[], labelsChanged: boolean): Problem {
   const labels = [...new Set(references.map((r) => String(r.data.label)))];
+  if (!labelsChanged) {
+    return compact({
+      rule: 'rerun-needed',
+      check: 'output' as const,
+      severity: 'warning' as const,
+      message: 'LaTeX needs another run',
+      detail:
+        'A package reported that its data changed during this run (for example the PDF bookmarks or table widths), so the PDF is not final until LaTeX runs again.',
+      fix: 'Build with `latexmk`, which reruns LaTeX as needed, or run LaTeX once more.',
+      evidence: evidence(raw),
+    });
+  }
   return compact({
     rule: 'rerun-needed',
     check: 'output' as const,
@@ -390,8 +419,21 @@ function boxText(raw: string): string {
 function overlapsError(box: LogWarning, errors: LogError[]): boolean {
   const lines = box.data.lines as [number, number] | undefined;
   if (!lines) return false;
+  const [from, to] = lines;
+  if (box.data.spansFiles) {
+    // "lines 13--1": the paragraph began at line 13 of `fromFile` and ended at line 1 of
+    // the current file.
+    const fromFile = box.data.fromFile as string | undefined;
+    return errors.some(
+      (e) =>
+        e.line !== undefined &&
+        e.logLine < box.logLine &&
+        ((e.file === box.file && e.line <= to) ||
+          (fromFile !== undefined && e.file === fromFile && e.line >= from)),
+    );
+  }
   return errors.some(
-    (e) => e.file === box.file && e.line !== undefined && e.line >= lines[0] && e.line <= lines[1],
+    (e) => e.file === box.file && e.line !== undefined && e.line >= from && e.line <= to,
   );
 }
 
@@ -426,7 +468,7 @@ function overfullBoxes(list: LogWarning[], thresholdPt: number, errors: LogError
       severity: 'warning' as const,
       message: vertical
         ? `Content is ${amount.toFixed(1)}pt too tall for the page${where ? ` (${where})` : ''}`
-        : `Text sticks ${amount.toFixed(1)}pt into the margin${where ? ` (${where})` : ''}${others > 0 ? `; ${plural(others, 'more overfull box')} in this file` : ''}`,
+        : `Text sticks ${amount.toFixed(1)}pt into the margin${where ? ` (${where})` : ''}${others > 0 ? `; ${plural(others, 'more overfull box', 'more overfull boxes')} in this file` : ''}`,
       location: location(worst.file, worst.line, worst.page),
       detail: vertical
         ? 'A page or box holds more material than fits vertically.'
@@ -568,9 +610,14 @@ function missingIncludes(w: WarningsByKind): Problem[] {
     );
 }
 
-function warningProblems(parsed: ParsedLog, buildFailed: boolean, thresholdPt: number): Problem[] {
+function warningProblems(
+  parsed: ParsedLog,
+  buildFailed: boolean,
+  thresholdPt: number,
+  packages: Set<string>,
+): Problem[] {
   const w = indexWarnings(parsed.warnings);
-  const state = staleState(parsed, w);
+  const state = staleState(parsed, w, packages);
   const problems: Problem[] = [];
   const notInBib = new Set(w.get('bib-entry-not-found').map((x) => String(x.data.key)));
 
@@ -586,22 +633,27 @@ function warningProblems(parsed: ParsedLog, buildFailed: boolean, thresholdPt: n
   problems.push(...undefinedCitations(citations, notInBib));
 
   let references = w.get('undefined-reference');
+  // Undefined references are folded into the rerun only when labels changed in this run;
+  // a rerun for other reasons (bookmarks, table widths) does not define missing labels.
+  const labelsChanged = state.references && w.get('labels-changed').length > 0;
   if (state.references) {
     const raw = [...w.get('labels-changed'), ...w.get('rerun-latex')].map((x) => x.raw);
-    if (!buildFailed) problems.push(rerunProblem(references, raw));
+    if (!buildFailed) {
+      problems.push(rerunProblem(labelsChanged ? references : [], raw, labelsChanged));
+    }
     // Intentional: with a failed build these undefined references are dropped, not
     // reported. latexmk stopped early, so they are usually forward references that resolve
     // on the next successful run; reporting them would push the author (or an agent) to
     // "fix" things that are not broken instead of fixing the first error first. A label
     // that is really missing still surfaces once the build error is fixed (the next log,
     // and the PDF "??" check).
-    references = [];
+    if (labelsChanged || buildFailed) references = [];
   }
   problems.push(...undefinedReferences(references));
 
   const anyUndefined = w.get('undefined-citation').length + w.get('undefined-reference').length > 0;
   const summary = w.get('undefined-references-summary')[0];
-  if (summary && !anyUndefined && !state.bibliography && !state.references) {
+  if (summary && !anyUndefined && !state.bibliography && !labelsChanged) {
     problems.push({
       rule: 'undefined-reference',
       check: 'output',
@@ -685,7 +737,8 @@ export function analyzeLog(text: string, opts: AnalyzeLogOptions = {}): LogAnaly
     };
   }
   const threshold = opts.overfullThresholdPt ?? DEFAULT_OVERFULL_PT;
-  const fromErrors = errorProblems(parsed, { packages: packagesOf(parsed) });
+  const packages = packagesOf(parsed);
+  const fromErrors = errorProblems(parsed, { packages });
   const buildProblems = [
     ...fromErrors.filter((p) => p.check === 'build'),
     ...fatalWithoutError(parsed, fromErrors),
@@ -693,7 +746,7 @@ export function analyzeLog(text: string, opts: AnalyzeLogOptions = {}): LogAnaly
   const buildFailed = buildProblems.length > 0;
   const outputProblems = [
     ...fromErrors.filter((p) => p.check === 'output'),
-    ...warningProblems(parsed, buildFailed, threshold),
+    ...warningProblems(parsed, buildFailed, threshold, packages),
   ];
   const build: CheckResult = {
     check: 'build',

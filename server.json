@@ -1,0 +1,50 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Amet13/overfull",
+  "title": "Overfull",
+  "description": "LaTeX preflight: build log, PDF, references, PDF/UA and venue rules, with rule ids and fixes",
+  "version": "3.1.2",
+  "websiteUrl": "https://amet13.github.io/overfull/",
+  "repository": {
+    "url": "https://github.com/Amet13/overfull",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/amet13/overfull:3.1.2-check",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "docker",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--mount",
+          "value": "type=bind,src={project_dir},dst=/work",
+          "description": "The LaTeX project folder, mounted where the server works",
+          "isRequired": true,
+          "variables": {
+            "project_dir": {
+              "description": "The LaTeX project folder (the one with overfull.yml)",
+              "format": "filepath",
+              "isRequired": true
+            }
+          }
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "valueHint": "program",
+          "value": "overfull"
+        },
+        {
+          "type": "positional",
+          "valueHint": "command",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

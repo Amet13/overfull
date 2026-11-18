@@ -35,6 +35,7 @@ const KEYS = [
   'year',
   'source',
   'checkedOn',
+  'deadline',
   'paper',
   'pageLimit',
   'anonymous',
@@ -43,6 +44,7 @@ const KEYS = [
   'arxiv',
   'styleFiles',
   'textBlock',
+  'anonymizedByClass',
   'notes',
 ];
 const REQUIRED = ['id', 'name', 'year', 'source', 'checkedOn'];
@@ -104,6 +106,11 @@ export function validateProfile(raw, file) {
     if (!validDate(s)) err('"checkedOn" must be a date like 2026-11-10');
     else if (s > new Date().toISOString().slice(0, 10)) err('"checkedOn" is in the future');
     data.checkedOn = s;
+  }
+  if (raw.deadline !== undefined && raw.deadline !== null) {
+    const s = raw.deadline instanceof Date ? raw.deadline.toISOString().slice(0, 10) : raw.deadline;
+    if (!validDate(s)) err('"deadline" must be a date like 2027-05-15');
+    data.deadline = s;
   }
   if (raw.paper !== undefined) {
     if (!['a4', 'letter', 'any'].includes(raw.paper)) err('"paper" must be a4, letter or any');
@@ -186,6 +193,30 @@ export function validateProfile(raw, file) {
         }
       }
       data.textBlock = o;
+    }
+  }
+  if (raw.anonymizedByClass !== undefined) {
+    const a = raw.anonymizedByClass;
+    const name = /^[A-Za-z0-9_@.-]+$/;
+    if (!isObj(a) || !isStr(a.package) || !name.test(a.package)) {
+      err('"anonymizedByClass" must be a mapping with a class or package name in "package"');
+    } else {
+      const o = { package: a.package };
+      for (const k of Object.keys(a)) {
+        if (k === 'package') continue;
+        if (!['withOptions', 'unlessOptions', 'unlessCommands'].includes(k)) {
+          err(`unknown anonymizedByClass field "${k}"`);
+        } else if (
+          !Array.isArray(a[k]) ||
+          !a[k].length ||
+          !a[k].every((x) => isStr(x) && /^[A-Za-z@][\w@-]*$/.test(x))
+        ) {
+          err(`"anonymizedByClass.${k}" must be a list of option or command names`);
+        } else {
+          o[k] = a[k];
+        }
+      }
+      data.anonymizedByClass = o;
     }
   }
   if (raw.notes !== undefined) {

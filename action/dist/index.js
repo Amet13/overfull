@@ -1164,6 +1164,9 @@ function spacedPathLength(text2, start) {
   const m = SPACED_PATH_AT.exec(text2.slice(start, start + 1100));
   return m ? m[0].length : 0;
 }
+function isDistributionPath(path) {
+  return DISTRIBUTION_DIR.test(path.trim().replace(/\\/g, "/"));
+}
 function basename(path) {
   const parts = path.split("/");
   return parts[parts.length - 1] || path;
@@ -2029,7 +2032,9 @@ function classifyWarning(source, message) {
   }
   m = /^Label [`']([^']+)' multiply defined/.exec(message);
   if (m) return { kind: "duplicate-label", data: { label: m[1] } };
-  if (/^Label\(s\) may have changed/.test(message)) return { kind: "labels-changed", data: {} };
+  if (/^Label\(s\) may have changed/.test(message) || /Rerun to get cross-references right/.test(message)) {
+    return { kind: "labels-changed", data: {} };
+  }
   if (/Please \(re\)run Biber/i.test(message)) return { kind: "rerun-biber", data: {} };
   if (/Please \(re\)run BibTeX/i.test(message)) return { kind: "rerun-bibtex", data: {} };
   m = /^The following entry could not be found in the database: (\S+)/.exec(message);
@@ -2080,7 +2085,11 @@ var init_parse2 = __esm({
     HAS_TEX_EXTENSION = new RegExp(`\\.${TEX_EXTENSION_GROUP}$`, "i");
     PLAIN_MESSAGE = /^(?:Package: |File: |Document Class: |Language: |Dictionary: |\\[A-Za-z@]+=\\|\\openout\d+ = |\([\w@.-]+\) {2,})/;
     FileStack = class {
-      /** `null` marks a parenthesis that did not open a file. */
+      /**
+       * One entry per open parenthesis: `path` is `null` for a parenthesis that did not open
+       * a file; `innermost` is the innermost file open at that depth, so `current()` is O(1)
+       * even under many unmatched `(`.
+       */
       entries = [];
       lastClosed;
       opened = [];
@@ -2091,11 +2100,16 @@ var init_parse2 = __esm({
         this.root = root;
       }
       current() {
-        for (let i = this.entries.length - 1; i >= 0; i--) {
-          const entry = this.entries[i];
-          if (entry) return entry;
-        }
-        return this.lastClosed;
+        return this.entries[this.entries.length - 1]?.innermost ?? this.lastClosed;
+      }
+      /**
+       * When the innermost open file belongs to the TeX distribution (a package raised the
+       * error while loading), the innermost project file that loaded it; else undefined.
+       */
+      loader() {
+        const top = this.entries[this.entries.length - 1];
+        if (!top || top.innermost === top.project) return void 0;
+        return top.project;
       }
       scan(text2) {
         for (let i = 0; i < text2.length; i++) {
@@ -2121,16 +2135,19 @@ var init_parse2 = __esm({
         const unquoted = token.startsWith('"') ? token.slice(1, -1) : token;
         if (isFileToken(unquoted)) {
           const path = normalizePath(unquoted, this.root);
-          this.entries.push(path);
+          const below2 = this.entries[this.entries.length - 1];
+          const project = isDistributionPath(unquoted) ? below2?.project : path;
+          this.entries.push({ path, innermost: path, project });
           this.opened.push(path);
           return end;
         }
-        this.entries.push(null);
+        const below = this.entries[this.entries.length - 1];
+        this.entries.push({ path: null, innermost: below?.innermost, project: below?.project });
         return start;
       }
       close() {
         const entry = this.entries.pop();
-        if (entry) this.lastClosed = entry;
+        if (entry?.path) this.lastClosed = entry.path;
       }
       maybePage(text2, i) {
         const before = i === 0 ? " " : text2[i - 1] ?? " ";
@@ -2272,7 +2289,11 @@ var init_parse2 = __esm({
           error.line = Number(fle[2]);
         } else {
           const file = this.stack.current();
-          if (file) error.file = file;
+          const loader = this.stack.loader();
+          if (loader) {
+            error.file = loader;
+            delete error.line;
+          } else if (file) error.file = file;
         }
         if (/^(?:Emergency stop|==> Fatal error occurred|TeX capacity exceeded|Interruption)/.test(
           message
@@ -2372,7 +2393,12 @@ var init_parse2 = __esm({
         if (lines) {
           const [from, to] = [Number(lines[1]), Number(lines[2] ?? lines[1])];
           warning.line = Math.min(from, to);
-          if (from > to) data.spansFiles = true;
+          if (from > to) {
+            data.spansFiles = true;
+            if (this.stack.lastClosed && this.stack.lastClosed !== warning.file) {
+              data.fromFile = this.stack.lastClosed;
+            }
+          }
         }
         warning.page = this.stack.page + 1;
       }
@@ -2554,19 +2580,26 @@ function undefinedReferences(list2) {
     });
   });
 }
-function staleState(parsed, w) {
-  const noBbl = w.get("no-file").some((x) => extension(String(x.data.file)) === "bbl");
+function stem(path) {
+  return basename(path).replace(/\.[^.]*$/, "");
+}
+function staleState(parsed, w, packages) {
+  const bbl = w.get("no-file").find((x) => extension(String(x.data.file)) === "bbl");
   const stale = parsed.rerunNeeded.biber || parsed.rerunNeeded.bibtex;
+  const biber = parsed.rerunNeeded.biber || packages.has("biblatex") && !parsed.rerunNeeded.bibtex;
+  const rerunFile = [...w.get("rerun-biber"), ...w.get("rerun-bibtex")].map((x) => /\bon the file(?:\(s\))?:?\s+([^\s,]+)/.exec(x.message)?.[1]).find((f) => f !== void 0);
+  const named = bbl ? String(bbl.data.file) : rerunFile ?? parsed.outputFile?.name;
   return {
-    bibliography: noBbl ? "missing" : stale ? "stale" : void 0,
-    bibTool: parsed.rerunNeeded.bibtex && !parsed.rerunNeeded.biber ? "BibTeX" : "Biber",
+    bibliography: bbl ? "missing" : stale ? "stale" : void 0,
+    bibTool: biber ? "Biber" : "BibTeX",
+    job: named && stem(named) || "main",
     references: parsed.rerunNeeded.latex
   };
 }
 function bibliographyProblem(state, citations, raw) {
   const keys = [...new Set(citations.map((c) => String(c.data.key)))];
   const tool = state.bibTool;
-  const command = tool === "Biber" ? "`biber main`" : "`bibtex main`";
+  const command = code2(`${tool === "Biber" ? "biber" : "bibtex"} ${state.job}`);
   const missing = state.bibliography === "missing";
   const suffix = keys.length > 0 ? ` (${plural(keys.length, "citation")} ${keys.length === 1 ? "shows" : "show"} as [?])` : "";
   return compact({
@@ -2581,8 +2614,19 @@ function bibliographyProblem(state, citations, raw) {
     data: keys.length > 0 ? { tool, keys } : { tool }
   });
 }
-function rerunProblem(references2, raw) {
+function rerunProblem(references2, raw, labelsChanged) {
   const labels = [...new Set(references2.map((r) => String(r.data.label)))];
+  if (!labelsChanged) {
+    return compact({
+      rule: "rerun-needed",
+      check: "output",
+      severity: "warning",
+      message: "LaTeX needs another run",
+      detail: "A package reported that its data changed during this run (for example the PDF bookmarks or table widths), so the PDF is not final until LaTeX runs again.",
+      fix: "Build with `latexmk`, which reruns LaTeX as needed, or run LaTeX once more.",
+      evidence: evidence(raw)
+    });
+  }
   return compact({
     rule: "rerun-needed",
     check: "output",
@@ -2619,8 +2663,15 @@ function boxText(raw) {
 function overlapsError(box, errors) {
   const lines = box.data.lines;
   if (!lines) return false;
+  const [from, to] = lines;
+  if (box.data.spansFiles) {
+    const fromFile = box.data.fromFile;
+    return errors.some(
+      (e) => e.line !== void 0 && e.logLine < box.logLine && (e.file === box.file && e.line <= to || fromFile !== void 0 && e.file === fromFile && e.line >= from)
+    );
+  }
   return errors.some(
-    (e) => e.file === box.file && e.line !== void 0 && e.line >= lines[0] && e.line <= lines[1]
+    (e) => e.file === box.file && e.line !== void 0 && e.line >= from && e.line <= to
   );
 }
 function overfullBoxes(list2, thresholdPt, errors) {
@@ -2648,7 +2699,7 @@ function overfullBoxes(list2, thresholdPt, errors) {
       rule: "overfull-box",
       check: "output",
       severity: "warning",
-      message: vertical ? `Content is ${amount.toFixed(1)}pt too tall for the page${where ? ` (${where})` : ""}` : `Text sticks ${amount.toFixed(1)}pt into the margin${where ? ` (${where})` : ""}${others > 0 ? `; ${plural(others, "more overfull box")} in this file` : ""}`,
+      message: vertical ? `Content is ${amount.toFixed(1)}pt too tall for the page${where ? ` (${where})` : ""}` : `Text sticks ${amount.toFixed(1)}pt into the margin${where ? ` (${where})` : ""}${others > 0 ? `; ${plural(others, "more overfull box", "more overfull boxes")} in this file` : ""}`,
       location: location(worst.file, worst.line, worst.page),
       detail: vertical ? "A page or box holds more material than fits vertically." : `TeX could not break the line without exceeding the text width${text2 ? `: ${code2(text2)}` : ""}. Long URLs, code, file names and unhyphenated words are the usual cause.`,
       fix: vertical ? "Shrink the float or table, allow it to break across pages, or move material." : "Rephrase or allow a break: use `\\url{}`/`\\path{}` for URLs and identifiers, `\\-` to suggest hyphenation, or load `microtype` for finer spacing. Wide tables and figures: scale them to `\\linewidth`.",
@@ -2774,9 +2825,9 @@ function missingIncludes(w) {
     })
   );
 }
-function warningProblems(parsed, buildFailed2, thresholdPt) {
+function warningProblems(parsed, buildFailed2, thresholdPt, packages) {
   const w = indexWarnings(parsed.warnings);
-  const state = staleState(parsed, w);
+  const state = staleState(parsed, w, packages);
   const problems = [];
   const notInBib = new Set(w.get("bib-entry-not-found").map((x) => String(x.data.key)));
   let citations = w.get("undefined-citation");
@@ -2787,15 +2838,18 @@ function warningProblems(parsed, buildFailed2, thresholdPt) {
   }
   problems.push(...undefinedCitations(citations, notInBib));
   let references2 = w.get("undefined-reference");
+  const labelsChanged = state.references && w.get("labels-changed").length > 0;
   if (state.references) {
     const raw = [...w.get("labels-changed"), ...w.get("rerun-latex")].map((x) => x.raw);
-    if (!buildFailed2) problems.push(rerunProblem(references2, raw));
-    references2 = [];
+    if (!buildFailed2) {
+      problems.push(rerunProblem(labelsChanged ? references2 : [], raw, labelsChanged));
+    }
+    if (labelsChanged || buildFailed2) references2 = [];
   }
   problems.push(...undefinedReferences(references2));
   const anyUndefined = w.get("undefined-citation").length + w.get("undefined-reference").length > 0;
   const summary = w.get("undefined-references-summary")[0];
-  if (summary && !anyUndefined && !state.bibliography && !state.references) {
+  if (summary && !anyUndefined && !state.bibliography && !labelsChanged) {
     problems.push({
       rule: "undefined-reference",
       check: "output",
@@ -2862,7 +2916,8 @@ function analyzeLog(text2, opts = {}) {
     };
   }
   const threshold = opts.overfullThresholdPt ?? DEFAULT_OVERFULL_PT;
-  const fromErrors = errorProblems(parsed, { packages: packagesOf(parsed) });
+  const packages = packagesOf(parsed);
+  const fromErrors = errorProblems(parsed, { packages });
   const buildProblems = [
     ...fromErrors.filter((p) => p.check === "build"),
     ...fatalWithoutError(parsed, fromErrors)
@@ -2870,7 +2925,7 @@ function analyzeLog(text2, opts = {}) {
   const buildFailed2 = buildProblems.length > 0;
   const outputProblems = [
     ...fromErrors.filter((p) => p.check === "output"),
-    ...warningProblems(parsed, buildFailed2, threshold)
+    ...warningProblems(parsed, buildFailed2, threshold, packages)
   ];
   const build2 = {
     check: "build",
@@ -2908,7 +2963,7 @@ var init_analyze = __esm({
     MAX_EVIDENCE_LINES = 40;
     DEFAULT_OVERFULL_PT = 10;
     code2 = (text2) => `\`${text2}\``;
-    plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+    plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
     CONSEQUENCE_RULES = /* @__PURE__ */ new Set([
       "missing-dollar",
       "missing-brace",
@@ -2920,487 +2975,6 @@ var init_analyze = __esm({
       "illegal-parameter-number",
       "tex-error"
     ]);
-  }
-});
-
-// ../packages/core/src/log/bibliography.ts
-function bblEntries(text2) {
-  const out = [];
-  const re = /\\(?:bibitem\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}|entry\s*\{([^}]+)\})/g;
-  for (let m = re.exec(text2); m; m = re.exec(text2)) {
-    const key = (m[1] ?? m[2] ?? "").trim();
-    if (!key) continue;
-    out.push({ key, offset: m.index, line: text2.slice(0, m.index).split("\n").length });
-  }
-  return out;
-}
-function argumentSnippet(evidence2) {
-  const m = /^<argument> (.+)$/m.exec(evidence2 ?? "");
-  const text2 = m?.[1]?.replace(/[&_^#$%\\]+\s*$/, "").trim();
-  return text2 && text2.length >= 8 ? text2 : void 0;
-}
-function attributeBibliography(problems, src) {
-  if (!src.bbl) return problems;
-  const entries = bblEntries(src.bbl.text);
-  if (!entries.length) return problems;
-  let bibIndex;
-  const bibLocation = (key) => {
-    if (!bibIndex) {
-      bibIndex = /* @__PURE__ */ new Map();
-      for (const b of src.bibs) {
-        for (const e of parseBib(b.text)) {
-          if (!bibIndex.has(e.key)) bibIndex.set(e.key, { file: b.file, line: e.line });
-        }
-      }
-    }
-    return bibIndex.get(key);
-  };
-  return problems.map((p) => {
-    if (p.data?.bibKey) return p;
-    let key;
-    const loc = p.location;
-    if (loc?.file && loc.line && sameFile(loc.file, src.bbl?.path ?? "")) {
-      key = [...entries].reverse().find((e) => e.line <= loc.line)?.key;
-    } else {
-      const snippet2 = argumentSnippet(p.evidence);
-      const at = snippet2 ? src.bbl?.text.indexOf(snippet2) ?? -1 : -1;
-      if (at >= 0) key = [...entries].reverse().find((e) => e.offset <= at)?.key;
-    }
-    if (!key) return p;
-    const where = bibLocation(key);
-    return {
-      ...p,
-      message: `${p.message} in the bibliography entry \`${key}\``,
-      ...where ? { location: { file: where.file, line: where.line } } : {},
-      data: { ...p.data ?? {}, bibKey: key, ...loc ? { reportedAt: loc } : {} }
-    };
-  });
-}
-var sameFile;
-var init_bibliography = __esm({
-  "../packages/core/src/log/bibliography.ts"() {
-    "use strict";
-    init_parse();
-    sameFile = (a, b) => a.replace(/^\.\//, "") === b.replace(/^\.\//, "") || a.split("/").pop() === b.split("/").pop();
-  }
-});
-
-// ../packages/core/src/log/rules.ts
-var logRules;
-var init_rules = __esm({
-  "../packages/core/src/log/rules.ts"() {
-    "use strict";
-    logRules = [
-      // build
-      {
-        id: "undefined-control-sequence",
-        check: "build",
-        severity: "error",
-        title: "Unknown command",
-        summary: "The document uses a command that no loaded package defines: a typo, a missing package, or a command from another citation package.",
-        fix: "Fix the spelling or load the package that defines the command.",
-        corpus: "undefined-control-sequence"
-      },
-      {
-        id: "missing-dollar",
-        check: "build",
-        severity: "error",
-        title: "Math symbol outside math mode",
-        summary: "A `_`, `^` or math command appears in running text, or a formula is not closed, so TeX inserted a `$`.",
-        fix: "Escape `_` as `\\_` in text, or put the formula inside `$\u2026$`.",
-        corpus: "underscore-in-text"
-      },
-      {
-        id: "missing-brace",
-        check: "build",
-        severity: "error",
-        title: "Missing brace",
-        summary: "A `{` group is still open where TeX needs it closed, for example at the end of a formula.",
-        fix: "Close every `{` before the formula or environment ends.",
-        corpus: "missing-brace-inserted"
-      },
-      {
-        id: "extra-brace",
-        check: "build",
-        severity: "error",
-        title: "Extra closing brace",
-        summary: "A `}` closes nothing: there are more closing braces than opening ones.",
-        fix: "Delete the extra `}` or add the missing `{`.",
-        corpus: "too-many-braces"
-      },
-      {
-        id: "runaway-argument",
-        check: "build",
-        severity: "error",
-        title: "Unclosed command argument",
-        summary: "The argument of a command is never closed, so TeX read to the end of the paragraph or file.",
-        fix: "Add the missing `}` after the argument.",
-        corpus: "unclosed-brace"
-      },
-      {
-        id: "missing-package",
-        check: "build",
-        severity: "error",
-        title: "Package or class not installed",
-        summary: "A `\\usepackage` or `\\documentclass` names a file that is not in the TeX installation.",
-        fix: "Check the spelling, install it with `tlmgr install <name>`, or build in the Overfull Docker image.",
-        corpus: "missing-package"
-      },
-      {
-        id: "missing-file",
-        check: "build",
-        severity: "error",
-        title: "Input file not found",
-        summary: "An `\\input` or `\\include` points to a file that does not exist.",
-        fix: "Fix the path; it is relative to the main file and case-sensitive.",
-        corpus: "missing-input-file"
-      },
-      {
-        id: "option-clash",
-        check: "build",
-        severity: "error",
-        title: "Package loaded twice with different options",
-        summary: "A package was loaded again with options it was not first loaded with.",
-        fix: "Load it once with all options, or use `\\PassOptionsToPackage` before `\\documentclass`.",
-        corpus: "option-clash"
-      },
-      {
-        id: "unknown-graphics-extension",
-        check: "build",
-        severity: "error",
-        title: "Unsupported image format",
-        summary: "`\\includegraphics` was given a format such as SVG or GIF that the engine cannot embed.",
-        fix: "Convert the image to PDF, PNG or JPEG.",
-        corpus: "unknown-graphics-extension"
-      },
-      {
-        id: "environment-undefined",
-        check: "build",
-        severity: "error",
-        title: "Unknown environment",
-        summary: "A `\\begin{\u2026}` names an environment that is not defined (theorem environments must be declared).",
-        fix: "Load the package that defines it, declare it with `\\newtheorem`, or fix the spelling.",
-        corpus: "environment-undefined"
-      },
-      {
-        id: "environment-mismatch",
-        check: "build",
-        severity: "error",
-        title: "Environment closed with the wrong \\end",
-        summary: "A `\\begin{a}` is closed by `\\end{b}`.",
-        fix: "Make each `\\end{\u2026}` match the innermost open `\\begin{\u2026}`.",
-        corpus: "environment-mismatch"
-      },
-      {
-        id: "lonely-item",
-        check: "build",
-        severity: "error",
-        title: "\\item outside a list",
-        summary: "`\\item` is used outside `itemize`, `enumerate` or `description`.",
-        fix: "Wrap the items in a list environment.",
-        corpus: "lonely-item"
-      },
-      {
-        id: "missing-item",
-        check: "build",
-        severity: "error",
-        title: "Missing \\item",
-        summary: "LaTeX expected `\\item`, typically because text appears in a list before the first item.",
-        fix: "Start each entry with `\\item` and move other text out of the list.",
-        corpus: "missing-item"
-      },
-      {
-        id: "no-line-to-end",
-        check: "build",
-        severity: "error",
-        title: "Line break with no line to end",
-        summary: "`\\\\` is used after a blank line or at the start of a paragraph.",
-        fix: "Remove the `\\\\`; use a blank line or `\\vspace` for spacing."
-      },
-      {
-        id: "missing-begin-document",
-        check: "build",
-        severity: "error",
-        title: "Text in the preamble",
-        summary: "Typeset text appears before `\\begin{document}`.",
-        fix: "Move the text after `\\begin{document}` or comment it out.",
-        corpus: "missing-begin-document"
-      },
-      {
-        id: "preamble-only",
-        check: "build",
-        severity: "error",
-        title: "Preamble command in the document body",
-        summary: "A command such as `\\usepackage` is used after `\\begin{document}`.",
-        fix: "Move it above `\\begin{document}`.",
-        corpus: "usepackage-after-begin-document"
-      },
-      {
-        id: "unicode-character",
-        check: "build",
-        severity: "error",
-        title: "Unicode character pdfLaTeX cannot typeset",
-        summary: "The source contains a character pdfLaTeX does not know, or is not saved as UTF-8.",
-        fix: "Compile with LuaLaTeX, or replace the character with a LaTeX command.",
-        corpus: "inputenc-unicode"
-      },
-      {
-        id: "font-not-found",
-        check: "build",
-        severity: "error",
-        title: "Font not installed",
-        summary: "A font requested with fontspec (or a font package) is not available on this machine.",
-        fix: "Use a font shipped with TeX Live, or add the font files to the project and load them by file name.",
-        corpus: "fontspec-font-not-found"
-      },
-      {
-        id: "biblatex-error",
-        check: "build",
-        severity: "error",
-        title: "biblatex error",
-        summary: "biblatex stopped: BibTeX commands used with biblatex, an incompatible package, or a backend/version mismatch.",
-        fix: "Use biblatex options instead of BibTeX commands; delete the .bbl and rebuild on mismatches.",
-        corpus: "biblatex-bibliographystyle"
-      },
-      {
-        id: "illegal-parameter-number",
-        check: "build",
-        severity: "error",
-        title: "Misused # character",
-        summary: "A macro definition uses `#n` beyond its declared arguments, or a literal `#` appears in text.",
-        fix: "Declare enough arguments, or write `\\#` for a hash sign.",
-        corpus: "illegal-parameter-number"
-      },
-      {
-        id: "double-script",
-        check: "build",
-        severity: "error",
-        title: "Double subscript or superscript",
-        summary: "A symbol has two subscripts (or superscripts), such as `w_i_j`.",
-        fix: "Group them in braces: `w_{ij}`.",
-        corpus: "double-subscript"
-      },
-      {
-        id: "misplaced-alignment-tab",
-        check: "build",
-        severity: "error",
-        title: "Unescaped & in text",
-        summary: "`&` separates table columns and cannot appear in running text or a .bib field unescaped.",
-        fix: "Write `\\&`.",
-        corpus: "ampersand-in-text"
-      },
-      {
-        id: "undefined-color",
-        check: "build",
-        severity: "error",
-        title: "Undefined color",
-        summary: "A color name is used that xcolor does not know.",
-        fix: "Define it with `\\definecolor`, or load xcolor with `dvipsnames`/`svgnames`.",
-        corpus: "undefined-color"
-      },
-      {
-        id: "not-in-outer-par-mode",
-        check: "build",
-        severity: "error",
-        title: "Float inside a box",
-        summary: "A figure, table or margin note is placed inside a minipage, parbox or another float.",
-        fix: "Move the float out, or use `\\captionof` inside a minipage.",
-        corpus: "figure-in-minipage"
-      },
-      {
-        id: "dimension-too-large",
-        check: "build",
-        severity: "error",
-        title: "Length too large",
-        summary: "A length exceeds TeX\u2019s maximum of about 16383pt (5.75 m).",
-        fix: "Fix the length or rescale plot data.",
-        corpus: "dimension-too-large"
-      },
-      {
-        id: "tex-capacity-exceeded",
-        check: "build",
-        severity: "error",
-        title: "TeX ran out of capacity",
-        summary: "Usually infinite recursion (a command that calls itself); otherwise a very large figure.",
-        fix: "Check recent `\\newcommand`/`\\renewcommand` definitions; for big figures use LuaLaTeX or externalize them.",
-        corpus: "infinite-recursion"
-      },
-      {
-        id: "tikz-error",
-        check: "build",
-        severity: "error",
-        title: "TikZ/PGF error",
-        summary: "TikZ stopped on an unknown option, a missing semicolon, or an undefined node.",
-        fix: "Fix the option spelling, end paths with `;`, or load the needed TikZ library.",
-        corpus: "tikz-unknown-key"
-      },
-      {
-        id: "hyperref-error",
-        check: "build",
-        severity: "error",
-        title: "hyperref error",
-        summary: "hyperref reported an error, typically a driver or option conflict.",
-        fix: "Load hyperref last and set options with `\\hypersetup`."
-      },
-      {
-        id: "command-already-defined",
-        check: "build",
-        severity: "error",
-        title: "Command already defined",
-        summary: "`\\newcommand` tried to define a name that already exists.",
-        fix: "Choose another name, or use `\\renewcommand` deliberately."
-      },
-      {
-        id: "unknown-package-option",
-        check: "build",
-        severity: "error",
-        title: "Unknown package option",
-        summary: "A package or class was given an option it does not support.",
-        fix: "Check the option against the package documentation."
-      },
-      {
-        id: "tex-error",
-        check: "build",
-        severity: "error",
-        title: "TeX error",
-        summary: "TeX reported an error Overfull has no specific explanation for; the original message is shown.",
-        fix: "Read the message and fix the first error in the log first."
-      },
-      // output
-      {
-        id: "undefined-citation",
-        check: "output",
-        severity: "error",
-        title: "Undefined citation",
-        summary: "A cited key has no bibliography entry, so the PDF shows the key or [?].",
-        fix: "Fix the key or add the entry to the .bib file, then rebuild; or remove the `\\cite` if the source is not known.",
-        corpus: "biblatex-undefined-citation"
-      },
-      {
-        id: "undefined-reference",
-        check: "output",
-        severity: "error",
-        title: "Undefined reference",
-        summary: "A `\\ref` points to a label that does not exist, so the PDF shows ??.",
-        fix: "Add the `\\label` or fix the spelling in `\\ref`.",
-        corpus: "undefined-reference"
-      },
-      {
-        id: "bibliography-missing",
-        check: "output",
-        severity: "error",
-        title: "Bibliography not built",
-        summary: "Biber or BibTeX was never run, so all citations are undefined and the bibliography is empty.",
-        fix: "Build with `latexmk`, or run biber/bibtex and then LaTeX twice.",
-        corpus: "biblatex-rerun-biber"
-      },
-      {
-        id: "bibliography-stale",
-        check: "output",
-        severity: "warning",
-        title: "Bibliography out of date",
-        summary: "Citations changed since Biber or BibTeX last ran.",
-        fix: "Build with `latexmk`, or rerun biber/bibtex and LaTeX."
-      },
-      {
-        id: "rerun-needed",
-        check: "output",
-        severity: "warning",
-        title: "LaTeX needs another run",
-        summary: "Labels changed during the run; references and page numbers may be wrong until LaTeX runs again.",
-        fix: "Build with `latexmk`, which reruns LaTeX as needed.",
-        corpus: "labels-changed"
-      },
-      {
-        id: "empty-bibliography",
-        check: "output",
-        severity: "warning",
-        title: "Empty bibliography",
-        summary: "The bibliography printed no entries.",
-        fix: "Cite sources, check `\\addbibresource`, or use `\\nocite{*}`.",
-        corpus: "empty-bibliography"
-      },
-      {
-        id: "missing-figure",
-        check: "output",
-        severity: "error",
-        title: "Figure file not found",
-        summary: "An `\\includegraphics` file does not exist, so the PDF has an empty box.",
-        fix: "Fix the path and file name (case-sensitive).",
-        corpus: "missing-figure"
-      },
-      {
-        id: "duplicate-label",
-        check: "output",
-        severity: "warning",
-        title: "Label defined twice",
-        summary: "Two `\\label`s share a name, so references may point to the wrong place.",
-        fix: "Give each label a unique name.",
-        corpus: "duplicate-label"
-      },
-      {
-        id: "overfull-box",
-        check: "output",
-        severity: "warning",
-        title: "Text in the margin",
-        summary: "A line is wider than the text block by more than the threshold (default 10pt). The worst box per file is reported.",
-        fix: "Rephrase, use `\\url`/`\\path` for long identifiers, or scale wide material to `\\linewidth`.",
-        corpus: "overfull-hbox"
-      },
-      {
-        id: "font-substitution",
-        check: "output",
-        severity: "warning",
-        title: "Font shape substituted",
-        summary: "The font lacks a requested shape (e.g. bold small caps) and another one was used.",
-        fix: "Use a font family that has the shape, or avoid the combination.",
-        corpus: "font-shape-substitution"
-      },
-      {
-        id: "missing-glyph",
-        check: "output",
-        severity: "error",
-        title: "Characters missing from the font",
-        summary: "The font has no glyph for some characters, which are silently dropped from the PDF.",
-        fix: "Use a font that covers the characters (e.g. a CJK font with xeCJK or luatexja).",
-        corpus: "missing-glyph"
-      },
-      {
-        id: "pdf-string-token",
-        check: "output",
-        severity: "info",
-        title: "Heading simplified in PDF bookmarks",
-        summary: "hyperref removed math or commands from a heading when making the PDF bookmark.",
-        fix: "Use `\\texorpdfstring{TeX}{plain text}` in the heading.",
-        corpus: "math-in-pdf-bookmark"
-      },
-      {
-        id: "float-too-large",
-        check: "output",
-        severity: "warning",
-        title: "Float taller than the page",
-        summary: "A figure or table does not fit on a page.",
-        fix: "Scale it down or split it."
-      },
-      {
-        id: "font-feature-missing",
-        check: "output",
-        severity: "warning",
-        title: "Font lacks a requested feature",
-        summary: "fontspec could not apply a requested OpenType feature or script.",
-        fix: "Pick a font that supports it or drop the option."
-      }
-    ];
-  }
-});
-
-// ../packages/core/src/log/index.ts
-var init_log = __esm({
-  "../packages/core/src/log/index.ts"() {
-    "use strict";
-    init_analyze();
-    init_bibliography();
-    init_rules();
   }
 });
 
@@ -3550,6 +3124,513 @@ var init_tex2 = __esm({
     "use strict";
     MAX_OPTIONAL = 4096;
     CITE_COMMAND = /\\([A-Za-z]{0,12}cite[A-Za-z]{0,8})\*?(?![A-Za-z@])/g;
+  }
+});
+
+// ../packages/core/src/log/bibliography.ts
+function bblEntries(text2) {
+  const out = [];
+  const re = /\\(?:bibitem\s*(?:\[[^[\]]{0,2000}\]\s*)?\{([^{}\\]{1,1000})\}|entry\s*\{([^{}\\]{1,1000})\})/g;
+  let pos = 0;
+  let line = 1;
+  for (let m = re.exec(text2); m; m = re.exec(text2)) {
+    const key = (m[1] ?? m[2] ?? "").trim();
+    if (!key) continue;
+    for (; pos < m.index; pos++) if (text2.charCodeAt(pos) === 10) line++;
+    out.push({ key, offset: m.index, line });
+  }
+  return out;
+}
+function lastAtOrBefore(entries, field, value) {
+  let lo = 0;
+  let hi = entries.length;
+  while (lo < hi) {
+    const mid = lo + hi >>> 1;
+    if (entries[mid][field] <= value) lo = mid + 1;
+    else hi = mid;
+  }
+  return entries[lo - 1];
+}
+function argumentSnippet(evidence2) {
+  const m = /^<argument> (.+)$/m.exec(evidence2 ?? "");
+  const text2 = m?.[1]?.replace(/[&_^#$%\\]+\s*$/, "").trim();
+  return text2 && text2.length >= 8 ? text2 : void 0;
+}
+function attributeBibliography(problems, src) {
+  if (!src.bbl) return problems;
+  const entries = bblEntries(src.bbl.text);
+  if (!entries.length) return problems;
+  let bibIndex;
+  const bibLocation = (key) => {
+    if (!bibIndex) {
+      bibIndex = /* @__PURE__ */ new Map();
+      for (const b of src.bibs) {
+        for (const e of parseBib(b.text)) {
+          if (!bibIndex.has(e.key)) bibIndex.set(e.key, { file: b.file, line: e.line });
+        }
+      }
+    }
+    return bibIndex.get(key);
+  };
+  let printed;
+  const inBibliography = (loc) => {
+    printed ??= src.texFiles ? grepTex(src.texFiles, PRINTED) : [];
+    return printed.some((at) => sameFile(at.file, loc.file) && loc.line >= at.line);
+  };
+  return problems.map((p) => {
+    if (p.data?.bibKey) return p;
+    let key;
+    const loc = p.location;
+    if (loc?.file && loc.line && sameFile(loc.file, src.bbl?.path ?? "")) {
+      key = lastAtOrBefore(entries, "line", loc.line)?.key;
+    } else if (loc?.file && loc.line && inBibliography({ file: loc.file, line: loc.line })) {
+      const snippet2 = argumentSnippet(p.evidence);
+      const at = snippet2 ? src.bbl?.text.indexOf(snippet2) ?? -1 : -1;
+      if (at >= 0) key = lastAtOrBefore(entries, "offset", at)?.key;
+    }
+    if (!key) return p;
+    const where = bibLocation(key);
+    return {
+      ...p,
+      message: `${p.message} in the bibliography entry \`${key}\``,
+      ...where ? { location: { file: where.file, line: where.line } } : {},
+      data: { ...p.data ?? {}, bibKey: key, ...loc ? { reportedAt: loc } : {} }
+    };
+  });
+}
+var PRINTED, sameFile;
+var init_bibliography = __esm({
+  "../packages/core/src/log/bibliography.ts"() {
+    "use strict";
+    init_parse();
+    init_tex2();
+    PRINTED = /\\(?:printbibliography|bibliography\s*\{|begin\s*\{thebibliography\}|printbibheading)(?![A-Za-z@])/;
+    sameFile = (a, b) => a.replace(/^\.\//, "") === b.replace(/^\.\//, "") || a.split("/").pop() === b.split("/").pop();
+  }
+});
+
+// ../packages/core/src/log/rules.ts
+var logRules;
+var init_rules = __esm({
+  "../packages/core/src/log/rules.ts"() {
+    "use strict";
+    logRules = [
+      // build
+      {
+        id: "undefined-control-sequence",
+        check: "build",
+        severity: "error",
+        title: "Unknown command",
+        summary: "The document uses a command that no loaded package defines: a typo, a missing package, or a command from another citation package.",
+        fix: "Fix the spelling or load the package that defines the command.",
+        corpus: "undefined-control-sequence"
+      },
+      {
+        id: "missing-dollar",
+        check: "build",
+        severity: "error",
+        title: "Math symbol outside math mode",
+        summary: "A `_`, `^` or math command appears in running text, or a formula is not closed, so TeX inserted a `$`.",
+        fix: "Escape `_` as `\\_` in text, or put the formula inside `$\u2026$`.",
+        corpus: "underscore-in-text"
+      },
+      {
+        id: "missing-brace",
+        check: "build",
+        severity: "error",
+        title: "Missing brace",
+        summary: "A `{` group is still open where TeX needs it closed, for example at the end of a formula.",
+        fix: "Close every `{` before the formula or environment ends.",
+        corpus: "missing-brace-inserted"
+      },
+      {
+        id: "extra-brace",
+        check: "build",
+        severity: "error",
+        title: "Extra closing brace",
+        summary: "A `}` closes nothing: there are more closing braces than opening ones.",
+        fix: "Delete the extra `}` or add the missing `{`.",
+        corpus: "too-many-braces"
+      },
+      {
+        id: "runaway-argument",
+        check: "build",
+        severity: "error",
+        title: "Unclosed command argument",
+        summary: "The argument of a command is never closed, so TeX read to the end of the paragraph or file.",
+        fix: "Add the missing `}` after the argument.",
+        corpus: "unclosed-brace"
+      },
+      {
+        id: "missing-package",
+        check: "build",
+        severity: "error",
+        title: "Package or class not installed",
+        summary: "A `\\usepackage` or `\\documentclass` names a file that is not in the TeX installation.",
+        fix: "Check the spelling, install it with `tlmgr install <name>`, or build in the Overfull Docker image.",
+        corpus: "missing-package"
+      },
+      {
+        id: "missing-file",
+        check: "build",
+        severity: "error",
+        title: "Input file not found",
+        summary: "An `\\input` or `\\include` points to a file that does not exist.",
+        fix: "Fix the path; it is relative to the main file and case-sensitive.",
+        corpus: "missing-input-file"
+      },
+      {
+        id: "option-clash",
+        check: "build",
+        severity: "error",
+        title: "Package loaded twice with different options",
+        summary: "A package was loaded again with options it was not first loaded with.",
+        fix: "Load it once with all options, or use `\\PassOptionsToPackage` before `\\documentclass`.",
+        corpus: "option-clash"
+      },
+      {
+        id: "unknown-graphics-extension",
+        check: "build",
+        severity: "error",
+        title: "Unsupported image format",
+        summary: "`\\includegraphics` was given a format such as SVG or GIF that the engine cannot embed.",
+        fix: "Convert the image to PDF, PNG or JPEG.",
+        corpus: "unknown-graphics-extension"
+      },
+      {
+        id: "environment-undefined",
+        check: "build",
+        severity: "error",
+        title: "Unknown environment",
+        summary: "A `\\begin{\u2026}` names an environment that is not defined (theorem environments must be declared).",
+        fix: "Load the package that defines it, declare it with `\\newtheorem`, or fix the spelling.",
+        corpus: "environment-undefined"
+      },
+      {
+        id: "environment-mismatch",
+        check: "build",
+        severity: "error",
+        title: "Environment closed with the wrong \\end",
+        summary: "A `\\begin{a}` is closed by `\\end{b}`.",
+        fix: "Make each `\\end{\u2026}` match the innermost open `\\begin{\u2026}`.",
+        corpus: "environment-mismatch"
+      },
+      {
+        id: "lonely-item",
+        check: "build",
+        severity: "error",
+        title: "\\item outside a list",
+        summary: "`\\item` is used outside `itemize`, `enumerate` or `description`.",
+        fix: "Wrap the items in a list environment.",
+        corpus: "lonely-item"
+      },
+      {
+        id: "missing-item",
+        check: "build",
+        severity: "error",
+        title: "Missing \\item",
+        summary: "LaTeX expected `\\item`, typically because text appears in a list before the first item.",
+        fix: "Start each entry with `\\item` and move other text out of the list.",
+        corpus: "missing-item"
+      },
+      {
+        id: "no-line-to-end",
+        check: "build",
+        severity: "error",
+        title: "Line break with no line to end",
+        summary: "`\\\\` is used after a blank line or at the start of a paragraph.",
+        fix: "Remove the `\\\\`; use a blank line or `\\vspace` for spacing.",
+        corpus: "no-line-to-end"
+      },
+      {
+        id: "missing-begin-document",
+        check: "build",
+        severity: "error",
+        title: "Text in the preamble",
+        summary: "Typeset text appears before `\\begin{document}`.",
+        fix: "Move the text after `\\begin{document}` or comment it out.",
+        corpus: "missing-begin-document"
+      },
+      {
+        id: "preamble-only",
+        check: "build",
+        severity: "error",
+        title: "Preamble command in the document body",
+        summary: "A command such as `\\usepackage` is used after `\\begin{document}`.",
+        fix: "Move it above `\\begin{document}`.",
+        corpus: "usepackage-after-begin-document"
+      },
+      {
+        id: "unicode-character",
+        check: "build",
+        severity: "error",
+        title: "Unicode character pdfLaTeX cannot typeset",
+        summary: "The source contains a character pdfLaTeX does not know, or is not saved as UTF-8.",
+        fix: "Compile with LuaLaTeX, or replace the character with a LaTeX command.",
+        corpus: "inputenc-unicode"
+      },
+      {
+        id: "font-not-found",
+        check: "build",
+        severity: "error",
+        title: "Font not installed",
+        summary: "A font requested with fontspec (or a font package) is not available on this machine.",
+        fix: "Use a font shipped with TeX Live, or add the font files to the project and load them by file name.",
+        corpus: "fontspec-font-not-found"
+      },
+      {
+        id: "biblatex-error",
+        check: "build",
+        severity: "error",
+        title: "biblatex error",
+        summary: "biblatex stopped: BibTeX commands used with biblatex, an incompatible package, or a backend/version mismatch.",
+        fix: "Use biblatex options instead of BibTeX commands; delete the .bbl and rebuild on mismatches.",
+        corpus: "biblatex-bibliographystyle"
+      },
+      {
+        id: "illegal-parameter-number",
+        check: "build",
+        severity: "error",
+        title: "Misused # character",
+        summary: "A macro definition uses `#n` beyond its declared arguments, or a literal `#` appears in text.",
+        fix: "Declare enough arguments, or write `\\#` for a hash sign.",
+        corpus: "illegal-parameter-number"
+      },
+      {
+        id: "double-script",
+        check: "build",
+        severity: "error",
+        title: "Double subscript or superscript",
+        summary: "A symbol has two subscripts (or superscripts), such as `w_i_j`.",
+        fix: "Group them in braces: `w_{ij}`.",
+        corpus: "double-subscript"
+      },
+      {
+        id: "misplaced-alignment-tab",
+        check: "build",
+        severity: "error",
+        title: "Unescaped & in text",
+        summary: "`&` separates table columns and cannot appear in running text or a .bib field unescaped.",
+        fix: "Write `\\&`.",
+        corpus: "ampersand-in-text"
+      },
+      {
+        id: "undefined-color",
+        check: "build",
+        severity: "error",
+        title: "Undefined color",
+        summary: "A color name is used that xcolor does not know.",
+        fix: "Define it with `\\definecolor`, or load xcolor with `dvipsnames`/`svgnames`.",
+        corpus: "undefined-color"
+      },
+      {
+        id: "not-in-outer-par-mode",
+        check: "build",
+        severity: "error",
+        title: "Float inside a box",
+        summary: "A figure, table or margin note is placed inside a minipage, parbox or another float.",
+        fix: "Move the float out, or use `\\captionof` inside a minipage.",
+        corpus: "figure-in-minipage"
+      },
+      {
+        id: "dimension-too-large",
+        check: "build",
+        severity: "error",
+        title: "Length too large",
+        summary: "A length exceeds TeX\u2019s maximum of about 16383pt (5.75 m).",
+        fix: "Fix the length or rescale plot data.",
+        corpus: "dimension-too-large"
+      },
+      {
+        id: "tex-capacity-exceeded",
+        check: "build",
+        severity: "error",
+        title: "TeX ran out of capacity",
+        summary: "Usually infinite recursion (a command that calls itself); otherwise a very large figure.",
+        fix: "Check recent `\\newcommand`/`\\renewcommand` definitions; for big figures use LuaLaTeX or externalize them.",
+        corpus: "infinite-recursion"
+      },
+      {
+        id: "tikz-error",
+        check: "build",
+        severity: "error",
+        title: "TikZ/PGF error",
+        summary: "TikZ stopped on an unknown option, a missing semicolon, or an undefined node.",
+        fix: "Fix the option spelling, end paths with `;`, or load the needed TikZ library.",
+        corpus: "tikz-unknown-key"
+      },
+      {
+        id: "hyperref-error",
+        check: "build",
+        severity: "error",
+        title: "hyperref error",
+        summary: "hyperref reported an error, typically a driver or option conflict.",
+        fix: "Load hyperref last and set options with `\\hypersetup`.",
+        corpus: "hyperref-error"
+      },
+      {
+        id: "command-already-defined",
+        check: "build",
+        severity: "error",
+        title: "Command already defined",
+        summary: "`\\newcommand` tried to define a name that already exists.",
+        fix: "Choose another name, or use `\\renewcommand` deliberately.",
+        corpus: "command-already-defined"
+      },
+      {
+        id: "unknown-package-option",
+        check: "build",
+        severity: "error",
+        title: "Unknown package option",
+        summary: "A package or class was given an option it does not support.",
+        fix: "Check the option against the package documentation.",
+        corpus: "unknown-package-option"
+      },
+      {
+        id: "tex-error",
+        check: "build",
+        severity: "error",
+        title: "TeX error",
+        summary: "TeX reported an error Overfull has no specific explanation for; the original message is shown.",
+        fix: "Read the message and fix the first error in the log first."
+      },
+      // output
+      {
+        id: "undefined-citation",
+        check: "output",
+        severity: "error",
+        title: "Undefined citation",
+        summary: "A cited key has no bibliography entry, so the PDF shows the key or [?].",
+        fix: "Fix the key or add the entry to the .bib file, then rebuild; or remove the `\\cite` if the source is not known.",
+        corpus: "biblatex-undefined-citation"
+      },
+      {
+        id: "undefined-reference",
+        check: "output",
+        severity: "error",
+        title: "Undefined reference",
+        summary: "A `\\ref` points to a label that does not exist, so the PDF shows ??.",
+        fix: "Add the `\\label` or fix the spelling in `\\ref`.",
+        corpus: "undefined-reference"
+      },
+      {
+        id: "bibliography-missing",
+        check: "output",
+        severity: "error",
+        title: "Bibliography not built",
+        summary: "Biber or BibTeX was never run, so all citations are undefined and the bibliography is empty.",
+        fix: "Build with `latexmk`, or run biber/bibtex and then LaTeX twice.",
+        corpus: "biblatex-rerun-biber"
+      },
+      {
+        id: "bibliography-stale",
+        check: "output",
+        severity: "warning",
+        title: "Bibliography out of date",
+        summary: "Citations changed since Biber or BibTeX last ran.",
+        fix: "Build with `latexmk`, or rerun biber/bibtex and LaTeX.",
+        corpus: "bibliography-stale"
+      },
+      {
+        id: "rerun-needed",
+        check: "output",
+        severity: "warning",
+        title: "LaTeX needs another run",
+        summary: "Labels changed during the run; references and page numbers may be wrong until LaTeX runs again.",
+        fix: "Build with `latexmk`, which reruns LaTeX as needed.",
+        corpus: "labels-changed"
+      },
+      {
+        id: "empty-bibliography",
+        check: "output",
+        severity: "warning",
+        title: "Empty bibliography",
+        summary: "The bibliography printed no entries.",
+        fix: "Cite sources, check `\\addbibresource`, or use `\\nocite{*}`.",
+        corpus: "empty-bibliography"
+      },
+      {
+        id: "missing-figure",
+        check: "output",
+        severity: "error",
+        title: "Figure file not found",
+        summary: "An `\\includegraphics` file does not exist, so the PDF has an empty box.",
+        fix: "Fix the path and file name (case-sensitive).",
+        corpus: "missing-figure"
+      },
+      {
+        id: "duplicate-label",
+        check: "output",
+        severity: "warning",
+        title: "Label defined twice",
+        summary: "Two `\\label`s share a name, so references may point to the wrong place.",
+        fix: "Give each label a unique name.",
+        corpus: "duplicate-label"
+      },
+      {
+        id: "overfull-box",
+        check: "output",
+        severity: "warning",
+        title: "Text in the margin",
+        summary: "A line is wider than the text block by more than the threshold (default 10pt). The worst box per file is reported.",
+        fix: "Rephrase, use `\\url`/`\\path` for long identifiers, or scale wide material to `\\linewidth`.",
+        corpus: "overfull-hbox"
+      },
+      {
+        id: "font-substitution",
+        check: "output",
+        severity: "warning",
+        title: "Font shape substituted",
+        summary: "The font lacks a requested shape (e.g. bold small caps) and another one was used.",
+        fix: "Use a font family that has the shape, or avoid the combination.",
+        corpus: "font-shape-substitution"
+      },
+      {
+        id: "missing-glyph",
+        check: "output",
+        severity: "error",
+        title: "Characters missing from the font",
+        summary: "The font has no glyph for some characters, which are silently dropped from the PDF.",
+        fix: "Use a font that covers the characters (e.g. a CJK font with xeCJK or luatexja).",
+        corpus: "missing-glyph"
+      },
+      {
+        id: "pdf-string-token",
+        check: "output",
+        severity: "info",
+        title: "Heading simplified in PDF bookmarks",
+        summary: "hyperref removed math or commands from a heading when making the PDF bookmark.",
+        fix: "Use `\\texorpdfstring{TeX}{plain text}` in the heading.",
+        corpus: "math-in-pdf-bookmark"
+      },
+      {
+        id: "float-too-large",
+        check: "output",
+        severity: "warning",
+        title: "Float taller than the page",
+        summary: "A figure or table does not fit on a page.",
+        fix: "Scale it down or split it.",
+        corpus: "float-too-large"
+      },
+      {
+        id: "font-feature-missing",
+        check: "output",
+        severity: "warning",
+        title: "Font lacks a requested feature",
+        summary: "fontspec could not apply a requested OpenType feature or script.",
+        fix: "Pick a font that supports it or drop the option."
+      }
+    ];
+  }
+});
+
+// ../packages/core/src/log/index.ts
+var init_log = __esm({
+  "../packages/core/src/log/index.ts"() {
+    "use strict";
+    init_analyze();
+    init_bibliography();
+    init_rules();
   }
 });
 
@@ -4320,6 +4401,178 @@ var init_output = __esm({
   }
 });
 
+// ../packages/core/src/refs/normalize.ts
+function stripTags(s) {
+  let out = s;
+  for (let prev = ""; prev !== out; ) {
+    prev = out;
+    out = out.replace(/<[^<>]*>/g, "");
+  }
+  return out;
+}
+function codePointText(n) {
+  if (!Number.isInteger(n) || n < 0 || n > 1114111 || n >= 55296 && n <= 57343) {
+    return "\uFFFD";
+  }
+  return String.fromCodePoint(n);
+}
+function stripCdata(s) {
+  const open = "<![CDATA[";
+  let out = "";
+  let i = 0;
+  for (; ; ) {
+    const start = s.indexOf(open, i);
+    if (start < 0) break;
+    const end = s.indexOf("]]>", start + open.length);
+    if (end < 0) break;
+    out += s.slice(i, start) + s.slice(start + open.length, end);
+    i = end + 3;
+  }
+  return out + s.slice(i);
+}
+function decodeNumericEntities(s) {
+  return s.replace(/&#x([0-9a-f]+);/gi, (_m, h) => codePointText(Number.parseInt(h, 16))).replace(/&#(\d+);/g, (_m, d) => codePointText(Number(d)));
+}
+function stripMarkup(s) {
+  const decoded = decodeNumericEntities(s).replace(
+    /&([a-z]+);/gi,
+    (m, name) => ENTITIES[name.toLowerCase()] ?? m
+  );
+  return stripTags(decoded).replace(/\s+/g, " ").trim();
+}
+function foldText(plain2) {
+  return plain2.toLowerCase().normalize("NFKD").replace(new RegExp("\\p{M}", "gu"), "").replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `).replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c);
+}
+function titleWords(title, isTex = true) {
+  const plain2 = isTex ? texToPlain(title) : stripMarkup(title);
+  return foldText(plain2).replace(NO_SPACE_SCRIPTS, " $1 ").replace(/[^\p{L}\p{N}]+/gu, " ").trim().split(" ").filter(Boolean);
+}
+function asciiNormalizeTitle(title) {
+  return texToPlain(title).toLowerCase().replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `).replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+}
+function normalizeTitle(title, isTex = true) {
+  return titleWords(title, isTex).join(" ");
+}
+function dice(a, b) {
+  if (!a.length || !b.length) return 0;
+  const counts = /* @__PURE__ */ new Map();
+  for (const w of a) counts.set(w, (counts.get(w) ?? 0) + 1);
+  let shared = 0;
+  for (const w of b) {
+    const n = counts.get(w) ?? 0;
+    if (n > 0) {
+      shared++;
+      counts.set(w, n - 1);
+    }
+  }
+  return 2 * shared / (a.length + b.length);
+}
+function mainTitle(plain2) {
+  const m = /^(.+?)(?:\s*[:?!.]\s+|\s+[-–—]+\s+|\s*—\s*)\S/.exec(plain2);
+  return m ? m[1] : plain2;
+}
+function titleSimilarity(bibTitle, recordTitle) {
+  const a = titleWords(bibTitle, true);
+  const b = titleWords(recordTitle, false);
+  if (!a.length || !b.length) return 0;
+  if (a.join(" ") === b.join(" ")) return 1;
+  let score = dice(a, b);
+  const aMain = titleWords(mainTitle(texToPlain(bibTitle)), false);
+  const bMain = titleWords(mainTitle(stripMarkup(recordTitle)), false);
+  const subtitleMatch = aMain.length >= 2 && aMain.join(" ") === b.join(" ") && aMain.length < a.length || bMain.length >= 2 && bMain.join(" ") === a.join(" ") && bMain.length < b.length;
+  if (subtitleMatch) score = Math.max(score, 0.92);
+  return score;
+}
+function foldName(name) {
+  return foldText(stripMarkup(name)).replace(/[^\p{L}\s-]+/gu, "").replace(/[\s-]+/g, " ").trim();
+}
+function significant(name) {
+  return name.split(" ").filter((w) => w.length > 1 && !PARTICLES.has(w));
+}
+function namesMatch(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const sa = significant(a);
+  const sb = significant(b);
+  if (!sa.length || !sb.length) return false;
+  const [small, large] = sa.length <= sb.length ? [sa, sb] : [sb, sa];
+  return small.every((w) => large.includes(w));
+}
+var GREEK_NAMES, FOLD, ENTITIES, NO_SPACE_SCRIPTS, PARTICLES;
+var init_normalize = __esm({
+  "../packages/core/src/refs/normalize.ts"() {
+    "use strict";
+    init_tex();
+    GREEK_NAMES = {
+      \u03B1: "alpha",
+      \u03B2: "beta",
+      \u03B3: "gamma",
+      \u03B4: "delta",
+      \u03B5: "epsilon",
+      \u03B6: "zeta",
+      \u03B7: "eta",
+      \u03B8: "theta",
+      \u03D1: "theta",
+      \u03B9: "iota",
+      \u03BA: "kappa",
+      \u03BB: "lambda",
+      \u03BC: "mu",
+      \u03BD: "nu",
+      \u03BE: "xi",
+      \u03C0: "pi",
+      \u03C1: "rho",
+      \u03C3: "sigma",
+      \u03C2: "sigma",
+      \u03C4: "tau",
+      \u03C5: "upsilon",
+      \u03C6: "phi",
+      \u03D5: "phi",
+      \u03C7: "chi",
+      \u03C8: "psi",
+      \u03C9: "omega"
+    };
+    FOLD = {
+      \u00DF: "ss",
+      \u00F8: "o",
+      \u00E6: "ae",
+      \u0153: "oe",
+      \u0142: "l",
+      \u00F0: "d",
+      \u00FE: "th",
+      \u0131: "i",
+      \u014B: "ng"
+    };
+    ENTITIES = {
+      amp: "&",
+      lt: "<",
+      gt: ">",
+      quot: '"',
+      apos: "'",
+      nbsp: " "
+    };
+    NO_SPACE_SCRIPTS = /([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu;
+    PARTICLES = /* @__PURE__ */ new Set([
+      "van",
+      "von",
+      "der",
+      "den",
+      "de",
+      "del",
+      "della",
+      "di",
+      "da",
+      "du",
+      "dos",
+      "la",
+      "le",
+      "ten",
+      "ter",
+      "jr",
+      "sr"
+    ]);
+  }
+});
+
 // ../packages/core/src/pdf/verapdf.ts
 function isObj(v) {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -4336,7 +4589,7 @@ function asArray(v) {
   return v === void 0 || v === null ? [] : [v];
 }
 function decodeXml(s) {
-  return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d))).replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(Number.parseInt(h, 16))).replace(/&amp;/g, "&").trim();
+  return stripCdata(s).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, d) => codePointText(Number(d))).replace(/&#x([0-9a-f]+);/gi, (_, h) => codePointText(Number.parseInt(h, 16))).replace(/&amp;/g, "&").trim();
 }
 function attrs(tag2) {
   const out = {};
@@ -4509,6 +4762,7 @@ var MAX_CONTEXTS;
 var init_verapdf = __esm({
   "../packages/core/src/pdf/verapdf.ts"() {
     "use strict";
+    init_normalize();
     MAX_CONTEXTS = 3;
   }
 });
@@ -4523,148 +4777,6 @@ var init_pdf = __esm({
     init_output();
     init_rules2();
     init_verapdf();
-  }
-});
-
-// ../packages/core/src/refs/normalize.ts
-function stripTags(s) {
-  let out = s;
-  for (let prev = ""; prev !== out; ) {
-    prev = out;
-    out = out.replace(/<[^<>]*>/g, "");
-  }
-  return out;
-}
-function stripMarkup(s) {
-  const decoded = s.replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(Number.parseInt(h, 16))).replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d))).replace(/&([a-z]+);/gi, (m, name) => ENTITIES[name.toLowerCase()] ?? m);
-  return stripTags(decoded).replace(/\s+/g, " ").trim();
-}
-function foldText(plain2) {
-  return plain2.toLowerCase().replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `).replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c).normalize("NFKD").replace(/[̀-ͯ]/g, "");
-}
-function titleWords(title, isTex = true) {
-  const plain2 = isTex ? texToPlain(title) : stripMarkup(title);
-  return foldText(plain2).replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
-}
-function normalizeTitle(title, isTex = true) {
-  return titleWords(title, isTex).join(" ");
-}
-function dice(a, b) {
-  if (!a.length || !b.length) return 0;
-  const counts = /* @__PURE__ */ new Map();
-  for (const w of a) counts.set(w, (counts.get(w) ?? 0) + 1);
-  let shared = 0;
-  for (const w of b) {
-    const n = counts.get(w) ?? 0;
-    if (n > 0) {
-      shared++;
-      counts.set(w, n - 1);
-    }
-  }
-  return 2 * shared / (a.length + b.length);
-}
-function mainTitle(plain2) {
-  const m = /^(.+?)(?:\s*[:?!.]\s+|\s+[-–—]+\s+|\s*—\s*)\S/.exec(plain2);
-  return m ? m[1] : plain2;
-}
-function titleSimilarity(bibTitle, recordTitle) {
-  const a = titleWords(bibTitle, true);
-  const b = titleWords(recordTitle, false);
-  if (!a.length || !b.length) return 0;
-  if (a.join(" ") === b.join(" ")) return 1;
-  let score = dice(a, b);
-  const aMain = titleWords(mainTitle(texToPlain(bibTitle)), false);
-  const bMain = titleWords(mainTitle(stripMarkup(recordTitle)), false);
-  const subtitleMatch = aMain.length >= 2 && aMain.join(" ") === b.join(" ") && aMain.length < a.length || bMain.length >= 2 && bMain.join(" ") === a.join(" ") && bMain.length < b.length;
-  if (subtitleMatch) score = Math.max(score, 0.92);
-  return score;
-}
-function foldName(name) {
-  return foldText(stripMarkup(name)).replace(/[^a-z\s-]+/g, "").replace(/[\s-]+/g, " ").trim();
-}
-function significant(name) {
-  return name.split(" ").filter((w) => w.length > 1 && !PARTICLES.has(w));
-}
-function namesMatch(a, b) {
-  if (!a || !b) return false;
-  if (a === b) return true;
-  const sa = significant(a);
-  const sb = significant(b);
-  if (!sa.length || !sb.length) return false;
-  const [small, large] = sa.length <= sb.length ? [sa, sb] : [sb, sa];
-  return small.every((w) => large.includes(w));
-}
-var GREEK_NAMES, FOLD, ENTITIES, PARTICLES;
-var init_normalize = __esm({
-  "../packages/core/src/refs/normalize.ts"() {
-    "use strict";
-    init_tex();
-    GREEK_NAMES = {
-      \u03B1: "alpha",
-      \u03B2: "beta",
-      \u03B3: "gamma",
-      \u03B4: "delta",
-      \u03B5: "epsilon",
-      \u03B6: "zeta",
-      \u03B7: "eta",
-      \u03B8: "theta",
-      \u03D1: "theta",
-      \u03B9: "iota",
-      \u03BA: "kappa",
-      \u03BB: "lambda",
-      \u03BC: "mu",
-      \u03BD: "nu",
-      \u03BE: "xi",
-      \u03C0: "pi",
-      \u03C1: "rho",
-      \u03C3: "sigma",
-      \u03C2: "sigma",
-      \u03C4: "tau",
-      \u03C5: "upsilon",
-      \u03C6: "phi",
-      \u03D5: "phi",
-      \u03C7: "chi",
-      \u03C8: "psi",
-      \u03C9: "omega"
-    };
-    FOLD = {
-      \u00DF: "ss",
-      \u00F8: "o",
-      \u00E6: "ae",
-      \u0153: "oe",
-      \u0142: "l",
-      \u00F0: "d",
-      \u00FE: "th",
-      \u0131: "i",
-      \u014B: "ng"
-    };
-    ENTITIES = {
-      amp: "&",
-      lt: "<",
-      gt: ">",
-      quot: '"',
-      apos: "'",
-      nbsp: " "
-    };
-    PARTICLES = /* @__PURE__ */ new Set([
-      "van",
-      "von",
-      "der",
-      "den",
-      "de",
-      "del",
-      "della",
-      "di",
-      "da",
-      "du",
-      "dos",
-      "la",
-      "le",
-      "ten",
-      "ter",
-      "jr",
-      "sr"
-    ]);
   }
 });
 
@@ -4870,69 +4982,43 @@ function isAuthorProvided(entry) {
     `${entry.fields.note ?? ""} ${entry.fields.annote ?? ""}`
   );
 }
-var DANGEROUS_MACROS, PROVENANCE_FIELD;
+var MATH_MACROS, CONTROL_SYMBOLS, PROVENANCE_FIELD;
 var init_entry = __esm({
   "../packages/core/src/refs/entry.ts"() {
     "use strict";
     init_normalize();
     init_sha256();
-    DANGEROUS_MACROS = new Set(
-      [
-        "input",
-        "include",
-        "includeonly",
-        "inputiffileexists",
-        "iffileexists",
-        "endinput",
-        "write",
-        "immediate",
-        "openout",
-        "openin",
-        "read",
-        "readline",
-        "closeout",
-        "closein",
-        "catcode",
-        "def",
-        "edef",
-        "gdef",
-        "xdef",
-        "let",
-        "futurelet",
-        "newcommand",
-        "renewcommand",
-        "providecommand",
-        "declarerobustcommand",
-        "csname",
-        "endcsname",
-        "expandafter",
-        "scantokens",
-        "everyeof",
-        "everypar",
-        "everyjob",
-        "output",
-        "shipout",
-        "special",
-        "directlua",
-        "latelua",
-        "luaexec",
-        "luadirect",
-        "usepackage",
-        "requirepackage",
-        "documentclass",
-        "shellescape",
-        "pdfshellescape",
-        "outer",
-        "uppercase",
-        "lowercase",
-        "detokenize",
-        "unexpanded",
-        "begingroup",
-        "aftergroup",
-        "afterassignment",
-        "globaldefs"
-      ].map((m) => m.toLowerCase())
-    );
+    MATH_MACROS = /* @__PURE__ */ new Set([
+      ..."alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu nu xi pi varpi rho varrho sigma varsigma tau upsilon phi varphi chi psi omega".split(
+        " "
+      ),
+      ..."Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi Omega".split(" "),
+      ..."upalpha upbeta upgamma updelta upepsilon upmu uppi upsigma uptau upphi upomega".split(" "),
+      ..."times cdot pm mp div ast star circ bullet leq geq le ge neq ne approx sim simeq cong equiv propto ll gg".split(
+        " "
+      ),
+      ..."infty partial nabla sum prod int oint sqrt frac dfrac tfrac binom log ln exp sin cos tan lim sup inf max min det".split(
+        " "
+      ),
+      ..."to rightarrow leftarrow Rightarrow Leftarrow leftrightarrow Leftrightarrow mapsto uparrow downarrow".split(
+        " "
+      ),
+      ..."in notin ni subset subseteq supset supseteq cup cap setminus emptyset varnothing forall exists neg lnot land lor wedge vee".split(
+        " "
+      ),
+      ..."ell hbar imath jmath prime cdots vdots ddots langle rangle lbrace rbrace lfloor rfloor lceil rceil mid vert Vert parallel perp".split(
+        " "
+      ),
+      ..."hat tilde bar vec dot ddot breve check acute grave overline underline widehat widetilde overrightarrow".split(
+        " "
+      ),
+      ..."left right big Big bigl bigr Bigl Bigr text mathnormal operatorname boldsymbol quad qquad".split(
+        " "
+      ),
+      // CrossRef's spelling of punctuation in math (`$\mathsemicolon$`, `$\less$`).
+      ..."less greater mathsemicolon mathcolon mathplus mathhyphen mathslash".split(" ")
+    ]);
+    CONTROL_SYMBOLS = /* @__PURE__ */ new Set([..."\"'`^~=.&%#_{},;:!-/ |\\$".split(""), "\n", "	"]);
     PROVENANCE_FIELD = "x-overfull";
   }
 });
@@ -4967,15 +5053,37 @@ async function getJson(client, url, accept = "application/json", headers) {
   if (res.status < 200 || res.status >= 300) {
     throw new SourceUnavailableError(host, `${host} answered HTTP ${res.status}`);
   }
+  let data;
   try {
-    return { status: res.status, data: JSON.parse(res.body) };
+    data = JSON.parse(res.body);
   } catch {
     const reason = `${host} returned a non-JSON page (HTTP ${res.status}); it may be blocking automated requests`;
     client.markDown(host, reason);
     throw new SourceUnavailableError(host, reason);
   }
+  if (!isObject(data)) throw unexpectedData(host);
+  return { status: res.status, data };
 }
-var SourceUnavailableError, MAX_RETRY_AFTER_MS, BREAKER_THRESHOLD, FIRST_BYTE_TIMEOUT_MS, HttpClient;
+function isObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function unexpectedData(host) {
+  return new SourceUnavailableError(host, `${host} returned unexpected data`);
+}
+function listIn(host, value, optional = false) {
+  if (Array.isArray(value)) return value;
+  if (value === void 0 && optional) return [];
+  throw unexpectedData(host);
+}
+function readAnswer(host, read) {
+  try {
+    return read();
+  } catch (err) {
+    if (err instanceof TypeError) throw unexpectedData(host);
+    throw err;
+  }
+}
+var SourceUnavailableError, MAX_RETRY_AFTER_MS, BREAKER_THRESHOLD, FIRST_BYTE_TIMEOUT_MS, CROSSREF, CROSSREF_PUBLIC, CROSSREF_POLITE, HttpClient;
 var init_http = __esm({
   "../packages/core/src/refs/http.ts"() {
     "use strict";
@@ -4990,12 +5098,19 @@ var init_http = __esm({
     MAX_RETRY_AFTER_MS = 3e4;
     BREAKER_THRESHOLD = 2;
     FIRST_BYTE_TIMEOUT_MS = 4e3;
+    CROSSREF = "api.crossref.org";
+    CROSSREF_PUBLIC = { intervalMs: 1100, concurrent: 1 };
+    CROSSREF_POLITE = { intervalMs: 350, concurrent: 3 };
     HttpClient = class {
       fetchFn;
       timeoutMs;
       retryDelayMs;
       signal;
       intervals;
+      /** Most requests in flight per host, for hosts that limit it. */
+      limits;
+      active = /* @__PURE__ */ new Map();
+      waiting = /* @__PURE__ */ new Map();
       nextSlot = /* @__PURE__ */ new Map();
       down = /* @__PURE__ */ new Map();
       failures = /* @__PURE__ */ new Map();
@@ -5012,11 +5127,14 @@ var init_http = __esm({
         this.firstByteMs = Math.min(FIRST_BYTE_TIMEOUT_MS, this.timeoutMs);
         this.retryDelayMs = opts.retryDelayMs ?? 1e3;
         this.signal = opts.signal;
+        const crossref = opts.mailto ? CROSSREF_POLITE : CROSSREF_PUBLIC;
         this.intervals = {
           "export.arxiv.org": opts.arxivIntervalMs ?? 3e3,
+          [CROSSREF]: opts.crossrefIntervalMs ?? crossref.intervalMs,
           // Semantic Scholar's key allows 1 request per second; keyless requests share a pool.
           ...opts.semanticScholarKey ? { "api.semanticscholar.org": 1100 } : {}
         };
+        this.limits = { [CROSSREF]: crossref.concurrent };
       }
       /** Marks a host as unusable for the rest of this run (e.g. a bot challenge). */
       markDown(host, reason) {
@@ -5030,11 +5148,32 @@ var init_http = __esm({
       async get(url, accept, headers) {
         const host = new URL(url).host;
         const release = await this.acquire(host);
+        let free;
         try {
+          free = await this.slot(host);
           return await this.getOnce(url, accept, host, headers);
         } finally {
+          free?.();
           release();
         }
+      }
+      /** Waits until the host has room for one more request in flight (see `limits`). */
+      async slot(host) {
+        const limit = this.limits[host];
+        if (!limit) return () => {
+        };
+        while ((this.active.get(host) ?? 0) >= limit) {
+          await new Promise((resolve5) => {
+            const queue = this.waiting.get(host) ?? [];
+            queue.push(resolve5);
+            this.waiting.set(host, queue);
+          });
+        }
+        this.active.set(host, (this.active.get(host) ?? 0) + 1);
+        return () => {
+          this.active.set(host, (this.active.get(host) ?? 1) - 1);
+          this.waiting.get(host)?.shift()?.();
+        };
       }
       async getOnce(url, accept, host, headers) {
         let res = await this.attempt(url, accept, host, headers);
@@ -5229,7 +5368,7 @@ function parseArxivId(input2) {
   return m ? m[1] : null;
 }
 function xmlText(s) {
-  return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(Number.parseInt(h, 16))).replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d))).replace(/&(amp|lt|gt|quot|apos);/g, (_m, e) => XML_ENTITIES[e]).replace(/\s+/g, " ").trim();
+  return decodeNumericEntities(stripCdata(s)).replace(/&(amp|lt|gt|quot|apos);/g, (_m, e) => XML_ENTITIES[e]).replace(/\s+/g, " ").trim();
 }
 function tag(xml, name) {
   const m = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`).exec(xml);
@@ -5338,10 +5477,10 @@ function yearOf(d) {
   return Number.isInteger(y) && y > 0 ? y : void 0;
 }
 function fromCsl(item, source) {
-  const main3 = first(item.title);
-  if (!main3) return null;
+  const main2 = first(item.title);
+  if (!main2) return null;
   const sub = first(item.subtitle);
-  const title = sub && !main3.toLowerCase().includes(sub.toLowerCase()) ? `${main3}: ${sub}` : main3;
+  const title = sub && !main2.toLowerCase().includes(sub.toLowerCase()) ? `${main2}: ${sub}` : main2;
   const years = [item.issued, item["published-print"], item["published-online"], item.published].map(yearOf).filter((y) => y !== void 0);
   const authors = (item.author ?? []).map((a) => ({
     family: (a.family ?? a.name ?? a.literal ?? "").trim(),
@@ -5396,7 +5535,8 @@ async function resolveDoi(client, doi) {
   } catch {
     return { kind: "no-metadata" };
   }
-  const record = fromCsl(item, "doi.org");
+  if (!isObject(item)) return { kind: "no-metadata" };
+  const record = readAnswer("doi.org", () => fromCsl(item, "doi.org"));
   if (!record) return { kind: "no-metadata" };
   if (!record.doi) record.doi = doi;
   return { kind: "found", record };
@@ -5477,7 +5617,12 @@ function fromEuropePmc(r) {
 }
 async function query2(client, url) {
   const { data } = await getJson(client, url);
-  return (data?.resultList?.result ?? []).map(fromEuropePmc).filter((r) => r !== null);
+  if (!data) return [];
+  const host = "www.ebi.ac.uk";
+  return readAnswer(host, () => {
+    if (!isObject(data.resultList)) throw unexpectedData(host);
+    return listIn(host, data.resultList.result, true).map((r) => fromEuropePmc(r)).filter((r) => r !== null);
+  });
 }
 async function europepmcByPmid(client, pmid) {
   return (await query2(client, europepmcPmidUrl(pmid)))[0] ?? null;
@@ -5516,12 +5661,27 @@ function parseOpenReviewId(value) {
   const id = url.searchParams.get("id");
   return id && /^[A-Za-z0-9_-]{5,40}$/.test(id) ? id : null;
 }
+function unescapeTexId(value) {
+  return value.replace(/\\([_%#&])/g, "$1").replace(/[{}]/g, "");
+}
 function unwrapUrl(value) {
   const v = value.trim().slice(0, 600);
   return v.startsWith("\\url{") && v.endsWith("}") ? v.slice(5, -1).trim() : v;
 }
+function idFields(entry) {
+  const f = { ...entry.fields };
+  for (const name of ["doi", "eprint", "pmid", "pmcid"]) {
+    const v = f[name];
+    if (v !== void 0) f[name] = unescapeTexId(v);
+  }
+  for (const name of ["url", "howpublished"]) {
+    const v = f[name];
+    if (v?.includes("\\")) f[name] = v.replace(/\\([_%#&])/g, "$1");
+  }
+  return f;
+}
 function otherIdentifiers(entry, doi) {
-  const f = entry.fields;
+  const f = idFields(entry);
   const ids = {};
   const archive = (f.eprinttype ?? f.archiveprefix ?? "").toLowerCase();
   const acl = [f.url, f.howpublished, doi ?? void 0].map((v) => v ? parseAclId(unwrapUrl(v)) : null).find((v) => Boolean(v));
@@ -5535,7 +5695,7 @@ function otherIdentifiers(entry, doi) {
   return ids;
 }
 function identifiersOf(entry) {
-  const f = entry.fields;
+  const f = idFields(entry);
   const ids = {};
   const doi = (f.doi ? parseDoi(f.doi) : null) ?? [f.url, f.howpublished].map((v) => {
     const m = /https?:\/\/(?:dx\.)?doi\.org\/(10\.\d{4,9}\/[^\s{}]+)/i.exec(v ?? "");
@@ -5643,10 +5803,15 @@ function bibYear(entry) {
 function bibFacts(entry) {
   const people = parseNames(entry.fields.author ?? entry.fields.editor);
   const facts = {
-    surnames: people.filter((p) => !p.corporate).map((p) => foldName(p.family)),
-    firstIsPersonal: people.length > 0 && !people[0]?.corporate
+    surnames: people.filter((p) => !p.corporate).map((p) => foldName(p.family)).filter(Boolean),
+    // A first author whose name has no letters (`{???}`) cannot be compared either.
+    firstIsPersonal: people.length > 0 && !people[0]?.corporate && foldName(people[0]?.family ?? "") !== ""
   };
-  if (entry.fields.title) facts.title = entry.fields.title;
+  const title = entry.fields.title;
+  if (title) {
+    facts.hasTitleField = true;
+    if (normalizeTitle(title, true)) facts.title = title;
+  }
   const authorText2 = entry.fields.author ?? entry.fields.editor;
   if (authorText2) facts.authorText = authorText2;
   const year = bibYear(entry);
@@ -5814,6 +5979,24 @@ function retractedProblems(results, byKey) {
   }
   return problems;
 }
+function retractionUncheckedProblems(results) {
+  const missed = results.filter((r) => r.retractionUnchecked);
+  if (!missed.length) return [];
+  const reason = missed[missed.length - 1]?.retractionUnchecked;
+  const keys = missed.map((r) => r.key);
+  const n = keys.length;
+  return [
+    {
+      rule: "reference-retraction-unchecked",
+      check: "references",
+      severity: "info",
+      message: `retraction check incomplete: ${reason}`,
+      detail: `${n} matched ${n === 1 ? "work was" : "works were"} not checked for a retraction or withdrawal: ${keys.map((k) => `\`${k}\``).join(", ")}.`,
+      fix: "Run `overfull check` again later; only the works that were missed are asked about again.",
+      data: { keys, reason }
+    }
+  ];
+}
 function publishedVersionProblems(results, byKey) {
   const problems = [];
   for (const r of results) {
@@ -5912,109 +6095,6 @@ var init_extra = __esm({
   }
 });
 
-// ../packages/core/src/refs/retraction.ts
-function dateOf(u) {
-  const [y, m, d] = u.updated?.["date-parts"]?.[0] ?? [];
-  if (!y) return void 0;
-  return [y, m, d].filter((n) => typeof n === "number").map((n, i) => String(n).padStart(i === 0 ? 4 : 2, "0")).join("-");
-}
-function retractionOf(work) {
-  const updates = work["updated-by"] ?? [];
-  const pick2 = updates.find((u) => u.type === "retraction") ?? updates.find((u) => u.type === "withdrawal");
-  if (!pick2 || !work.DOI) return void 0;
-  const notice = {
-    kind: pick2.type === "withdrawal" ? "withdrawal" : "retraction",
-    doi: work.DOI.toLowerCase()
-  };
-  if (pick2.DOI) notice.noticeDoi = pick2.DOI.toLowerCase();
-  const date = dateOf(pick2);
-  if (date) notice.date = date;
-  if (pick2.source) notice.assertedBy = pick2.source;
-  return notice;
-}
-function crossrefUpdatesUrl(dois, mailto) {
-  const params = new URLSearchParams({
-    filter: dois.map((d) => `doi:${d}`).join(","),
-    select: "DOI,updated-by",
-    rows: String(dois.length)
-  });
-  if (mailto) params.set("mailto", mailto);
-  return `https://api.crossref.org/works?${params}`;
-}
-async function findRetractions(client, ctx, dois) {
-  const { cache: cache2 } = ctx.opts;
-  const found = /* @__PURE__ */ new Map();
-  const maxAge = { ...cacheMaxAge(ctx.opts.cacheMaxAgeDays) };
-  maxAge.negative = Math.min(maxAge.negative, 1);
-  maxAge.positive = Math.min(maxAge.positive, 1);
-  const todo = [];
-  for (const doi of [...new Set(dois)]) {
-    if (doi.includes(",")) continue;
-    const hit = cache2 && !ctx.opts.refresh ? await cache2.get(`retraction:${doi}`) : null;
-    if (hit && typeof hit === "object" && isFresh(hit.cachedAt, false, maxAge)) {
-      if (hit.notice) found.set(doi, hit.notice);
-    } else todo.push(doi);
-  }
-  for (let i = 0; i < todo.length; i += BATCH2) {
-    const chunk = todo.slice(i, i + BATCH2);
-    const { data } = await getJson(
-      client,
-      crossrefUpdatesUrl(chunk, ctx.opts.mailto)
-    );
-    const items = data?.message?.items;
-    if (!Array.isArray(items)) continue;
-    const byDoi = /* @__PURE__ */ new Map();
-    for (const item of items) {
-      const notice = retractionOf(item);
-      if (notice) byDoi.set(notice.doi, notice);
-    }
-    for (const doi of chunk) {
-      const notice = byDoi.get(doi);
-      if (notice) found.set(doi, notice);
-      if (cache2)
-        await cache2.set(`retraction:${doi}`, {
-          ...notice ? { notice } : {},
-          cachedAt: Date.now()
-        });
-    }
-  }
-  return found;
-}
-async function attachRetractions(ctx, results) {
-  if (!ctx.opts.checkRetractions) return;
-  if (ctx.opts.sources && !ctx.opts.sources.includes("crossref")) return;
-  const candidates = [];
-  for (const r of results) {
-    const doi = r.matched?.doi?.toLowerCase();
-    if ((r.status === "verified" || r.status === "mismatch") && !r.wrongWork && doi) {
-      if (!doi.startsWith("10.48550/")) candidates.push({ r, doi });
-    }
-  }
-  if (!candidates.length) return;
-  try {
-    const found = await findRetractions(
-      ctx.client,
-      ctx,
-      candidates.map((c) => c.doi)
-    );
-    for (const { r, doi } of candidates) {
-      const notice = found.get(doi);
-      if (notice) r.retraction = notice;
-    }
-  } catch (err) {
-    if (ctx.opts.signal?.aborted) throw err;
-  }
-}
-var BATCH2;
-var init_retraction = __esm({
-  "../packages/core/src/refs/retraction.ts"() {
-    "use strict";
-    init_cache();
-    init_http();
-    BATCH2 = 40;
-  }
-});
-
 // ../packages/core/src/refs/sources/crossref.ts
 function crossrefSearchUrl(q, mailto) {
   const text2 = [q.title, q.firstAuthor, q.year].filter(Boolean).join(" ");
@@ -6023,13 +6103,14 @@ function crossrefSearchUrl(q, mailto) {
   return `https://api.crossref.org/works?${params}`;
 }
 async function crossrefSearch(client, q, mailto) {
-  const { data } = await getJson(
-    client,
-    crossrefSearchUrl(q, mailto)
-  );
-  return (data?.message?.items ?? []).map((item) => fromCsl(item, "crossref")).filter((r) => r !== null);
+  const { data } = await getJson(client, crossrefSearchUrl(q, mailto));
+  if (!data) return [];
+  return readAnswer(HOST, () => {
+    if (!isObject(data.message)) throw unexpectedData(HOST);
+    return listIn(HOST, data.message.items).map((item) => fromCsl(item, "crossref")).filter((r) => r !== null);
+  });
 }
-var SELECT;
+var SELECT, HOST;
 var init_crossref = __esm({
   "../packages/core/src/refs/sources/crossref.ts"() {
     "use strict";
@@ -6048,6 +6129,7 @@ var init_crossref = __esm({
       "container-title",
       "is-referenced-by-count"
     ].join(",");
+    HOST = "api.crossref.org";
   }
 });
 
@@ -6083,7 +6165,16 @@ function fromDblp(info3) {
 }
 async function dblpSearch(client, title) {
   const { data } = await getJson(client, dblpSearchUrl(title));
-  return (data?.result?.hits?.hit ?? []).map((h) => h.info ? fromDblp(h.info) : null).filter((r) => r !== null);
+  if (!data) return [];
+  const host = "dblp.org";
+  return readAnswer(host, () => {
+    const hits = isObject(data.result) ? data.result.hits : void 0;
+    if (!isObject(hits)) throw unexpectedData(host);
+    return listIn(host, hits.hit, true).map((h) => {
+      const info3 = h.info;
+      return info3 ? fromDblp(info3) : null;
+    }).filter((r) => r !== null);
+  });
 }
 var init_dblp = __esm({
   "../packages/core/src/refs/sources/dblp.ts"() {
@@ -6098,7 +6189,14 @@ function openalexSearchUrl(title, apiKey, mailto) {
   const params = new URLSearchParams({ search: title, "per-page": "5" });
   if (apiKey) params.set("api_key", apiKey);
   if (mailto) params.set("mailto", mailto);
-  return `https://api.openalex.org/works?${params}`;
+  return `https://${HOST2}/works?${params}`;
+}
+function openalexDoiUrl(doi, apiKey, mailto) {
+  const params = new URLSearchParams({ select: SELECT2 });
+  if (apiKey) params.set("api_key", apiKey);
+  if (mailto) params.set("mailto", mailto);
+  const path = encodeURIComponent(doi).replace(/%2F/gi, "/");
+  return `https://${HOST2}/works/doi:${path}?${params}`;
 }
 function fromOpenAlex(w) {
   const title = w.display_name ?? w.title;
@@ -6124,13 +6222,34 @@ async function openalexSearch(client, title, apiKey, mailto) {
     client,
     openalexSearchUrl(title, apiKey, mailto)
   );
-  return (data?.results ?? []).map(fromOpenAlex).filter((r) => r !== null);
+  if (!data) return [];
+  return readAnswer(
+    HOST2,
+    () => listIn(HOST2, data.results).map((w) => fromOpenAlex(w)).filter((r) => r !== null)
+  );
 }
+async function openalexByDoi(client, doi, apiKey, mailto) {
+  const { data } = await getJson(client, openalexDoiUrl(doi, apiKey, mailto));
+  if (!data) return null;
+  return readAnswer(HOST2, () => fromOpenAlex(data));
+}
+var HOST2, SELECT2;
 var init_openalex = __esm({
   "../packages/core/src/refs/sources/openalex.ts"() {
     "use strict";
     init_names();
     init_http();
+    HOST2 = "api.openalex.org";
+    SELECT2 = [
+      "display_name",
+      "title",
+      "publication_year",
+      "doi",
+      "type",
+      "cited_by_count",
+      "authorships",
+      "primary_location"
+    ].join(",");
   }
 });
 
@@ -6170,7 +6289,12 @@ async function semanticScholarSearch(client, title, apiKey) {
     "application/json",
     apiKey ? { "x-api-key": apiKey } : void 0
   );
-  return (data?.data ?? []).map(fromSemanticScholar).filter((r) => r !== null);
+  if (!data) return [];
+  const host = "api.semanticscholar.org";
+  return readAnswer(
+    host,
+    () => listIn(host, data.data, true).map((p) => fromSemanticScholar(p)).filter((r) => r !== null)
+  );
 }
 var FIELDS, TYPES2;
 var init_semanticscholar = __esm({
@@ -6192,9 +6316,12 @@ var init_semanticscholar = __esm({
 async function prefetchArxiv(ctx, ids) {
   if (!sourceAllowed(ctx.opts, "arxiv")) return;
   const wanted = [];
+  const maxAge = cacheMaxAge(ctx.opts.cacheMaxAgeDays);
   for (const id of new Set(ids)) {
     const hit = ctx.opts.refresh ? void 0 : await ctx.opts.cache?.get(arxivCacheKey(id));
-    if (hit === void 0) wanted.push(id);
+    const stored = hit;
+    const usable = stored !== null && typeof stored === "object" && isFresh(stored.cachedAt, !stored.record, maxAge);
+    if (!usable) wanted.push(id);
   }
   if (wanted.length < 2) return;
   try {
@@ -6222,6 +6349,21 @@ async function arxivByIdCached(ctx, id) {
     arxivCacheKey(id),
     async () => ({
       record: ctx.arxivBatch?.get(id.replace(/v\d+$/, "").toLowerCase()) ?? await arxivById(ctx.client, id)
+    }),
+    {
+      isNegative: (v) => !v.record,
+      maxAge: cacheMaxAge(ctx.opts.cacheMaxAgeDays),
+      refresh: ctx.opts.refresh === true
+    }
+  );
+  return value.record;
+}
+async function openalexByDoiCached(ctx, doi) {
+  const value = await cached(
+    ctx.opts.cache,
+    `openalex:${doiCacheKey(doi)}`,
+    async () => ({
+      record: await openalexByDoi(ctx.client, doi, ctx.opts.openalexKey, ctx.opts.mailto)
     }),
     {
       isNegative: (v) => !v.record,
@@ -6277,7 +6419,7 @@ function titleSources(ctx, q) {
   if (key) list2.push(["openalex", () => openalexSearch(client, plain2, key, opts.mailto)]);
   return list2.filter(([source]) => sourceAllowed(opts, source));
 }
-async function searchOne(ctx, cacheKey, source, run2) {
+async function searchOne(ctx, cacheKey, source, run3) {
   const cache2 = ctx.opts.cache;
   const hit = cache2 && !ctx.opts.refresh ? await cache2.get(cacheKey) : void 0;
   const cachedRecords = hit?.[source];
@@ -6288,7 +6430,7 @@ async function searchOne(ctx, cacheKey, source, run2) {
   )) {
     return cachedRecords;
   }
-  const records = await run2();
+  const records = await run3();
   if (cache2) {
     const write = (writes.get(cache2) ?? Promise.resolve()).then(async () => {
       const latest = await cache2.get(cacheKey) ?? {};
@@ -6309,17 +6451,19 @@ async function searchOne(ctx, cacheKey, source, run2) {
 }
 async function titleSearch(ctx, q, visit) {
   const outcome = { searched: [], failures: [] };
-  const cacheKey = titleCacheKey(q.title, q.year, q.isTex) + (q.hinted && q.firstAuthor ? `|author:${q.firstAuthor.toLowerCase()}` : "");
+  if (!normalizeTitle(q.title, q.isTex)) return outcome;
+  const author = q.firstAuthor ? foldName(q.firstAuthor) : "";
+  const cacheKey = titleCacheKey(q.title, q.year, q.isTex) + (author ? `|author:${author}` : "");
   const sources = titleSources(ctx, q);
   const first2 = sources.filter(([s]) => s === "crossref" || s === "dblp");
   const waves = [first2, sources.filter((entry) => !first2.includes(entry))];
   for (const wave of waves) {
-    const pending = wave.map(([source, run2]) => {
+    const pending = wave.map(([source, run3]) => {
       if (ctx.deadline !== void 0 && Date.now() > ctx.deadline) {
         const reason = `${source} not asked: lookup time budget used up`;
         return Promise.resolve({ source, reason });
       }
-      return searchOne(ctx, cacheKey, source, run2).then(
+      return searchOne(ctx, cacheKey, source, run3).then(
         (records) => ({ source, records }),
         (err) => ({ source, err })
       );
@@ -6361,12 +6505,12 @@ async function titleSearch(ctx, q, visit) {
     ],
     ["europepmc", () => europepmcSearch(ctx.client, plainTitle)]
   ];
-  for (const [source, run2] of fallbacks) {
+  for (const [source, run3] of fallbacks) {
     if (outcome.searched.length >= MAX_TITLE_ANSWERS) break;
     if (ctx.deadline !== void 0 && Date.now() > ctx.deadline) break;
     if (!sourceAllowed(ctx.opts, source)) continue;
     try {
-      const records = await searchOne(ctx, cacheKey, source, run2);
+      const records = await searchOne(ctx, cacheKey, source, run3);
       outcome.searched.push(source);
       if (visit(records, source)) return outcome;
     } catch (err) {
@@ -6382,6 +6526,7 @@ var init_search = __esm({
     init_tex();
     init_cache();
     init_http();
+    init_normalize();
     init_acl();
     init_arxiv();
     init_crossref();
@@ -6392,6 +6537,132 @@ var init_search = __esm({
     init_semanticscholar();
     MAX_TITLE_ANSWERS = 3;
     writes = /* @__PURE__ */ new WeakMap();
+  }
+});
+
+// ../packages/core/src/refs/retraction.ts
+function dateOf(u) {
+  const [y, m, d] = u.updated?.["date-parts"]?.[0] ?? [];
+  if (!y) return void 0;
+  return [y, m, d].filter((n) => typeof n === "number").map((n, i) => String(n).padStart(i === 0 ? 4 : 2, "0")).join("-");
+}
+function retractionOf(work) {
+  const updates = work["updated-by"] ?? [];
+  const pick2 = updates.find((u) => u.type === "retraction") ?? updates.find((u) => u.type === "withdrawal");
+  if (!pick2 || !work.DOI) return void 0;
+  const notice = {
+    kind: pick2.type === "withdrawal" ? "withdrawal" : "retraction",
+    doi: work.DOI.toLowerCase()
+  };
+  if (pick2.DOI) notice.noticeDoi = pick2.DOI.toLowerCase();
+  const date = dateOf(pick2);
+  if (date) notice.date = date;
+  if (pick2.source) notice.assertedBy = pick2.source;
+  return notice;
+}
+function crossrefUpdatesUrl(dois, mailto) {
+  const params = new URLSearchParams({
+    filter: dois.map((d) => `doi:${d}`).join(","),
+    select: "DOI,updated-by",
+    rows: String(dois.length)
+  });
+  if (mailto) params.set("mailto", mailto);
+  return `https://api.crossref.org/works?${params}`;
+}
+function noticesIn(data) {
+  const host = "api.crossref.org";
+  return readAnswer(host, () => {
+    const message = isObject(data) ? data.message : void 0;
+    if (!isObject(message)) throw unexpectedData(host);
+    const byDoi = /* @__PURE__ */ new Map();
+    for (const item of listIn(host, message.items)) {
+      const notice = retractionOf(item);
+      if (notice) byDoi.set(notice.doi, notice);
+    }
+    return byDoi;
+  });
+}
+async function findRetractions(client, ctx, dois) {
+  const { cache: cache2 } = ctx.opts;
+  const found = /* @__PURE__ */ new Map();
+  const unchecked = [];
+  let incomplete;
+  const maxAge = { ...cacheMaxAge(ctx.opts.cacheMaxAgeDays) };
+  maxAge.negative = Math.min(maxAge.negative, 1);
+  maxAge.positive = Math.min(maxAge.positive, 1);
+  const todo = [];
+  for (const doi of [...new Set(dois)]) {
+    if (doi.includes(",")) continue;
+    const hit = cache2 && !ctx.opts.refresh ? await cache2.get(`retraction:${doi}`) : null;
+    if (hit && typeof hit === "object" && isFresh(hit.cachedAt, false, maxAge)) {
+      if (hit.notice) found.set(doi, hit.notice);
+    } else todo.push(doi);
+  }
+  for (let i = 0; i < todo.length; i += BATCH2) {
+    const chunk = todo.slice(i, i + BATCH2);
+    let byDoi;
+    try {
+      const { data } = await getJson(client, crossrefUpdatesUrl(chunk, ctx.opts.mailto));
+      byDoi = noticesIn(data);
+    } catch (err) {
+      if (ctx.opts.signal?.aborted) throw err;
+      unchecked.push(...chunk);
+      incomplete = failureReason(err);
+      continue;
+    }
+    for (const doi of chunk) {
+      const notice = byDoi.get(doi);
+      if (notice) found.set(doi, notice);
+      if (cache2)
+        await cache2.set(`retraction:${doi}`, {
+          ...notice ? { notice } : {},
+          cachedAt: Date.now()
+        });
+    }
+  }
+  return { found, unchecked, ...incomplete ? { incomplete } : {} };
+}
+async function attachRetractions(ctx, results) {
+  if (!ctx.opts.checkRetractions) return;
+  if (ctx.opts.sources && !ctx.opts.sources.includes("crossref")) return;
+  const candidates = [];
+  for (const r of results) {
+    const doi = r.matched?.doi?.toLowerCase();
+    if ((r.status === "verified" || r.status === "mismatch") && !r.wrongWork && doi) {
+      if (!doi.startsWith("10.48550/")) candidates.push({ r, doi });
+    }
+  }
+  if (!candidates.length) return;
+  let check2;
+  try {
+    check2 = await findRetractions(
+      ctx.client,
+      ctx,
+      candidates.map((c) => c.doi)
+    );
+  } catch (err) {
+    if (ctx.opts.signal?.aborted) throw err;
+    check2 = {
+      found: /* @__PURE__ */ new Map(),
+      unchecked: candidates.map((c) => c.doi),
+      incomplete: failureReason(err)
+    };
+  }
+  const unchecked = new Set(check2.unchecked);
+  for (const { r, doi } of candidates) {
+    const notice = check2.found.get(doi);
+    if (notice) r.retraction = notice;
+    else if (unchecked.has(doi)) r.retractionUnchecked = check2.incomplete ?? "request failed";
+  }
+}
+var BATCH2;
+var init_retraction = __esm({
+  "../packages/core/src/refs/retraction.ts"() {
+    "use strict";
+    init_cache();
+    init_http();
+    init_search();
+    BATCH2 = 40;
   }
 });
 
@@ -6449,7 +6720,21 @@ async function checkDoi(ctx, doi, facts, ev) {
     if (res.kind !== "found") return null;
     return assessIdentified(facts, res.record, ev, "doi", doi, "resolves to");
   } catch (err) {
-    return sourceFailed(ctx, ev, "doi.org", err);
+    sourceFailed(ctx, ev, "doi.org", err);
+  }
+  const viaOpenalex = await checkOpenalexDoi(ctx, doi, facts, ev, "doi", doi);
+  if (!viaOpenalex) ev.doiUnchecked = true;
+  return viaOpenalex;
+}
+async function checkOpenalexDoi(ctx, doi, facts, ev, field, id) {
+  if (!sourceAllowed(ctx.opts, "openalex")) return null;
+  try {
+    const record = await openalexByDoiCached(ctx, doi);
+    if (!record) return null;
+    ev.searched.add("openalex");
+    return assessIdentified(facts, record, ev, field, id, field === "doi" ? "resolves to" : "is");
+  } catch (err) {
+    return sourceFailed(ctx, ev, "openalex", err);
   }
 }
 function assessIdentified(facts, record, ev, field, id, verb) {
@@ -6479,8 +6764,25 @@ async function checkArxiv(ctx, id, facts, ev) {
     }
     return assessIdentified(facts, record, ev, "eprint", id, "is");
   } catch (err) {
-    return sourceFailed(ctx, ev, "arxiv", err);
+    sourceFailed(ctx, ev, "arxiv", err);
+    return checkOpenalexDoi(ctx, arxivDoi(id), facts, ev, "eprint", id);
   }
+}
+async function checkArxivDoi(ctx, id, facts, ev) {
+  const doi = arxivDoi(id);
+  if (sourceAllowed(ctx.opts, "doi.org")) {
+    try {
+      const res = await resolveDoiCached(ctx, doi);
+      ev.searched.add("doi.org");
+      if (res.kind === "found") return assessIdentified(facts, res.record, ev, "eprint", id, "is");
+    } catch (err) {
+      sourceFailed(ctx, ev, "doi.org", err);
+    }
+  }
+  return checkOpenalexDoi(ctx, doi, facts, ev, "eprint", id);
+}
+function arxivDoi(id) {
+  return `10.48550/arxiv.${id.toLowerCase()}`;
 }
 async function checkOtherId(ctx, source, label, fetchRecord, facts, ev) {
   ev.queries.push(label);
@@ -6588,7 +6890,7 @@ function noMatch(ctx, base, entry, kind, ids, ev) {
     (s) => !sourceAllowed(opts, s)
   );
   const skippedNote = skipped3.length ? `(${sourcesText(skipped3).replace(/ or /, " and ")} ${skipped3.length === 1 ? "was" : "were"} not searched)` : "";
-  const titleNote = entry.fields.title ? " and no record has a similar title" : "";
+  const titleNote = ev.queries.some((q) => q.startsWith("title:")) ? " and no record has a similar title" : "";
   if (ev.arxivMissing) {
     return {
       ...withSearched,
@@ -6668,23 +6970,73 @@ async function verifyEntry(entry, ctx, ignore) {
   const kind = entryKind(entry, ids);
   if (kind === "not-indexed") return { ...base, reason: notIndexedReason(entry) };
   const facts = bibFacts(entry);
-  if (!facts.title && !ids.doi && !ids.arxivId)
-    return { ...base, reason: "no title, DOI or arXiv id to look up" };
+  if (!facts.title && !ids.doi && !ids.arxivId) {
+    const reason = facts.hasTitleField ? "the title has no letters or digits to look up, and there is no DOI or arXiv id" : "no title, DOI or arXiv id to look up";
+    return { ...base, reason };
+  }
   const ev = {
     assessments: [],
     searched: /* @__PURE__ */ new Set(),
     failures: [],
     doiMissing: false,
     arxivMissing: false,
+    doiUnchecked: false,
     queries: []
   };
-  const viaId = (ids.doi && sourceAllowed(ctx.opts, "doi.org") ? await checkDoi(ctx, ids.doi, facts, ev) : null) ?? (ids.arxivId && sourceAllowed(ctx.opts, "arxiv") ? await checkArxiv(ctx, ids.arxivId, facts, ev) : null) ?? await checkOtherIds(ctx, ids, facts, ev);
+  const viaId = (ids.doi && sourceAllowed(ctx.opts, "doi.org") ? await checkDoi(ctx, ids.doi, facts, ev) : null) ?? (ids.arxivId ? sourceAllowed(ctx.opts, "arxiv") ? await checkArxiv(ctx, ids.arxivId, facts, ev) : await checkArxivDoi(ctx, ids.arxivId, facts, ev) : null) ?? await checkOtherIds(ctx, ids, facts, ev);
   const withQuery = (r) => ({ ...r, query: ev.queries[0] ?? "" });
-  if (viaId) return withQuery(withBrokenIds(fromAssessment(base, viaId, ev), ids, ev));
+  const found = (a) => withQuery(withBrokenIds(withUncheckedDoi(fromAssessment(base, a, ev), a, ids, ev), ids, ev));
+  if (viaId) return found(viaId);
   await searchByTitle(ctx, facts, kind, ev);
-  const best = bestAssessment(ev.assessments);
-  if (best) return withQuery(withBrokenIds(fromAssessment(base, best, ev), ids, ev));
+  const best = ev.doiUnchecked ? bestForDoi(ev.assessments, ids.doi) : bestAssessment(ev.assessments);
+  if (best) return found(best);
   return withQuery(noMatch(ctx, base, entry, kind, ids, ev));
+}
+function bestForDoi(list2, doi) {
+  const sameDoi = list2.filter((a) => doi && a.record.doi?.toLowerCase() === doi);
+  return bestAssessment(sameDoi) ?? bestAssessment(list2);
+}
+function withUncheckedDoi(result, a, ids, ev) {
+  if (!ev.doiUnchecked || !ids.doi) return result;
+  const recordDoi = a.record.doi?.toLowerCase();
+  if (recordDoi === ids.doi) return result;
+  const failures = lastFailures(ev.failures);
+  if (recordDoi) {
+    const { reason: _reason2, ...rest2 } = result;
+    return {
+      ...rest2,
+      status: "mismatch",
+      differences: [
+        { field: "doi", bib: ids.doi, record: recordDoi },
+        ...(result.differences ?? []).filter((d) => d.field !== "doi")
+      ],
+      reason: `doi.org could not be reached, and the record found for this entry has DOI ${recordDoi}, not ${ids.doi}`
+    };
+  }
+  if (result.status !== "verified") return result;
+  const { reason: _reason, ...rest } = result;
+  return {
+    ...rest,
+    status: "error",
+    failed: [...new Set(ev.failures.map((f) => f.source))],
+    failures,
+    reason: `a matching record exists, but the DOI ${ids.doi} could not be checked: ${failuresText(failures)}`
+  };
+}
+async function verifyEntrySafely(entry, ctx, ignore) {
+  try {
+    return await verifyEntry(entry, ctx, ignore);
+  } catch (err) {
+    if (ctx.opts.signal?.aborted) throw err;
+    const result = {
+      key: entry.key,
+      status: "error",
+      reason: `lookup incomplete: ${failureReason(err)}`
+    };
+    if (entry.line)
+      result.location = { line: entry.line, ...entry.file ? { file: entry.file } : {} };
+    return result;
+  }
 }
 async function runPool(items, limit, worker) {
   const results = new Array(items.length);
@@ -6719,7 +7071,7 @@ async function verifyEntries(entries, opts = {}) {
   );
   let done = 0;
   const results = await runPool(entries, opts.concurrency ?? 4, async (e) => {
-    const result = await verifyEntry(e, ctx, ignore);
+    const result = await verifyEntrySafely(e, ctx, ignore);
     opts.onProgress?.(++done, entries.length);
     return opts.requireProvenance && isUnproven(e, result) ? { ...result, unproven: true } : result;
   });
@@ -6734,9 +7086,22 @@ function isUnproven(entry, result) {
 function hasValidProvenance(entry) {
   const f = entry.fields;
   const ids = identifiersOf(entry);
-  return Boolean(provenanceOf(entry) && (ids.doi || ids.arxivId || f.doi || f.eprint || f.url));
+  const marked = provenanceOf(entry) !== void 0 || hasLegacyProvenance(entry);
+  return Boolean(marked && (ids.doi || ids.arxivId || f.doi || f.eprint || f.url));
 }
-var SOURCE_NAMES, SECOND_OPINION;
+function hasLegacyProvenance(entry) {
+  const title = entry.fields.title ?? "";
+  const legacy = asciiNormalizeTitle(title);
+  if (legacy === normalizeTitle(title, true)) return false;
+  const value = entry.fields[PROVENANCE_FIELD]?.replace(/\s+/g, " ").trim();
+  const m = value ? /^cite\s+\S+\s+\d{4}-\d{2}-\d{2}\s+([0-9a-f]{12})$/i.exec(value) : null;
+  if (!m) return false;
+  const parts = provenanceCanonical(entry).split(SEP);
+  if (parts.length !== 7) return false;
+  parts[2] = legacy;
+  return sha256Hex(parts.join(SEP)).slice(0, 12) === m[1].toLowerCase();
+}
+var SOURCE_NAMES, SECOND_OPINION, SEP;
 var init_verify = __esm({
   "../packages/core/src/refs/verify.ts"() {
     "use strict";
@@ -6748,6 +7113,7 @@ var init_verify = __esm({
     init_normalize();
     init_retraction();
     init_search();
+    init_sha256();
     SOURCE_NAMES = {
       "doi.org": "doi.org",
       crossref: "CrossRef",
@@ -6759,6 +7125,7 @@ var init_verify = __esm({
       europepmc: "Europe PMC"
     };
     SECOND_OPINION = ["openalex", "semanticscholar", "dblp"];
+    SEP = "";
   }
 });
 
@@ -7029,6 +7396,7 @@ function refsCheck(results, opts = {}) {
       return Boolean(opts.requireProvenance && entry && isUnproven(entry, r));
     }).map((r) => unprovenProblem(r, byKey.get(r.key))),
     ...retractedProblems(results, byKey),
+    ...retractionUncheckedProblems(results),
     ...publishedVersionProblems(results, byKey),
     ...opts.entries ? duplicateProblems(opts.entries) : [],
     ...opts.reportUncited && opts.entries && opts.citedKeys ? uncitedProblems(opts.entries, opts.citedKeys) : []
@@ -7097,8 +7465,8 @@ var init_check = __esm({
         check: "references",
         severity: "info",
         title: "Project reference cache ignored",
-        summary: "With `references.cache: project`, lookups are cached in `.overfull/cache/refs.json` inside the project. That file is repository content: in CI (any provider, with or without a .git directory) it is never read, and anywhere a cache reached through a symlink is not used, because it could mark references as verified that were never looked up. Every reference is looked up again.",
-        fix: "Keep `.overfull/` out of git (add it to .gitignore) and make sure it is a real directory, not a symlink; or drop `references.cache: project` to use the user cache directory."
+        summary: "With `--project-cache` (or `OVERFULL_REFS_CACHE=project`), lookups are cached in `.overfull/cache/refs.json` inside the project. That file is repository content: in CI (any provider, with or without a .git directory) it is never read, and anywhere a cache reached through a symlink is not used, because it could mark references as verified that were never looked up. `references.cache: project` in the project's own overfull.yml is ignored for the same reason. Every reference is looked up again.",
+        fix: "Keep `.overfull/` out of git (add it to .gitignore) and make sure it is a real directory, not a symlink. To keep the cache in the project, pass `--project-cache` or set `OVERFULL_REFS_CACHE=project` in your own environment, not in overfull.yml."
       },
       {
         id: "reference-not-found",
@@ -7181,6 +7549,14 @@ var init_check = __esm({
         fix: "Read the retraction notice. Replace the work with one that stands, or cite it only to say it was retracted, together with the notice."
       },
       {
+        id: "reference-retraction-unchecked",
+        check: "references",
+        severity: "info",
+        title: "Retraction check incomplete",
+        summary: "CrossRef could not be asked whether some matched works are retracted or withdrawn (a request failed or its answer was unreadable). Works it did answer for were checked; the others were not.",
+        fix: "Run `overfull check` again later. Answers are kept for one day, so the next run asks only about the works that were missed."
+      },
+      {
         id: "reference-published-version",
         check: "references",
         severity: "info",
@@ -7241,18 +7617,27 @@ function formatLocation(loc) {
   if (loc.page) return `p.${loc.page}`;
   return "";
 }
+function compareProblems(a, b) {
+  const fa = a.p.location?.file;
+  const fb = b.p.location?.file;
+  return SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] || checkIndex(a.p.check) - checkIndex(b.p.check) || (fa === void 0 ? 1 : 0) - (fb === void 0 ? 1 : 0) || (fa ?? "").localeCompare(fb ?? "") || (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) || (a.p.location?.page ?? 0) - (b.p.location?.page ?? 0) || a.i - b.i;
+}
 function sortProblems(problems) {
-  return problems.map((p, i) => ({ p, i })).sort((a, b) => {
-    const fa = a.p.location?.file;
-    const fb = b.p.location?.file;
-    return SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] || (fa === void 0 ? 1 : 0) - (fb === void 0 ? 1 : 0) || (fa ?? "").localeCompare(fb ?? "") || (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) || a.i - b.i;
-  }).map(({ p }) => p);
+  return problems.map((p, i) => ({ p, i })).sort(compareProblems).map(({ p }) => p);
 }
 function sortedProblems(report) {
-  const checkIndex = (c) => CHECK_IDS.indexOf(c);
-  return report.checks.flatMap((c) => c.problems).map((p, i) => ({ p, i })).sort(
-    (a, b) => SEVERITY_ORDER[a.p.severity] - SEVERITY_ORDER[b.p.severity] || checkIndex(a.p.check) - checkIndex(b.p.check) || (a.p.location?.file ?? "").localeCompare(b.p.location?.file ?? "") || (a.p.location?.line ?? 0) - (b.p.location?.line ?? 0) || (a.p.location?.page ?? 0) - (b.p.location?.page ?? 0) || a.i - b.i
-  ).map(({ p }) => p);
+  return sortProblems(report.checks.flatMap((c) => c.problems));
+}
+function codeSpans(s) {
+  const out = [];
+  let last = 0;
+  for (const m of s.matchAll(/`([^`\n]+)`/g)) {
+    if (m.index > last) out.push({ code: false, text: s.slice(last, m.index) });
+    out.push({ code: true, text: m[1] });
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push({ code: false, text: s.slice(last) });
+  return out;
 }
 function tally(report) {
   const all = report.checks.flatMap((c) => c.problems);
@@ -7286,6 +7671,9 @@ function tallyLine(t) {
 function oneLine(s) {
   return s.replace(/[\r\n\u0085\u2028\u2029]+/g, " ").replace(UNSAFE_CHARS, "");
 }
+function stripUnsafe(s) {
+  return s.replace(UNSAFE_CHARS, "");
+}
 function safeLines(s) {
   return s.split(/\r\n|[\r\n\u0085\u2028\u2029]/).map(oneLine);
 }
@@ -7298,12 +7686,13 @@ function neutralizeWorkflowCommands(text2) {
   } while (out !== prev);
   return out;
 }
-var SEVERITY_ORDER, RUNNER_WHITESPACE, UNSAFE_CHARS, COMMAND_AT_LINE_START;
+var SEVERITY_ORDER, checkIndex, RUNNER_WHITESPACE, UNSAFE_CHARS, COMMAND_AT_LINE_START;
 var init_shared = __esm({
   "../packages/core/src/report/shared.ts"() {
     "use strict";
     init_types();
     SEVERITY_ORDER = { error: 0, warning: 1, info: 2 };
+    checkIndex = (c) => CHECK_IDS.indexOf(c);
     RUNNER_WHITESPACE = "[\\s\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff\\f\\v]";
     UNSAFE_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
     COMMAND_AT_LINE_START = new RegExp(`(^|[\\r\\n])(${RUNNER_WHITESPACE}*?)(::|##\\[)`, "g");
@@ -7365,11 +7754,113 @@ function mergeDuplicateFindings(checks) {
   }
   return checks;
 }
+function mergeOutput(output, pdfProblems) {
+  const has = (re) => output.problems.some((p) => re.test(p.rule));
+  const extra = pdfProblems.filter(
+    (p) => p.rule === "pdf-unresolved-reference" ? !has(/undefined-reference|reference-undefined/) : !has(/undefined-citation|citation-undefined/)
+  );
+  if (extra.length === 0) return output;
+  const problems = [...output.problems, ...extra];
+  return { ...output, status: statusOf(problems), problems, summary: outputSummary(problems) };
+}
 var init_dedupe = __esm({
   "../packages/core/src/report/dedupe.ts"() {
     "use strict";
     init_analyze();
     init_types();
+  }
+});
+
+// ../packages/core/src/report/html.ts
+function problemHtml(p) {
+  const where = formatLocation(p.location);
+  const parts = [
+    `<h3><span class="tag">${SEVERITY_WORD[p.severity]}</span>${inline(p.message)}</h3>`,
+    `<div class="where">${where ? `${esc(where)} \xB7 ` : ""}${esc(p.rule)}</div>`
+  ];
+  if (p.detail) parts.push(`<p>${inline(p.detail)}</p>`);
+  if (p.fix) parts.push(`<p><strong>Fix:</strong> ${inline(p.fix)}</p>`);
+  if (p.evidence) {
+    parts.push(`<details><summary>Evidence</summary><pre>${esc(p.evidence)}</pre></details>`);
+  }
+  return `<article class="p ${p.severity}">${parts.join("")}</article>`;
+}
+function formatHtml(report) {
+  const target = report.target ?? "LaTeX project";
+  const rows = report.checks.map(
+    (c) => `<tr><th scope="row">${esc(c.check)}</th><td class="st s-${c.status}">${CHECK_WORD[c.status]}</td><td>${inline(checkLine(c))}</td></tr>`
+  ).join("");
+  const sections = report.checks.filter((c) => c.problems.length > 0).map((c) => `<h2>${esc(c.check)}</h2>${sortProblems(c.problems).map(problemHtml).join("")}`).join("");
+  const why2 = nothingCheckedLine(report);
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Overfull report: ${esc(target)}</title>
+<style>${CSS2}</style></head>
+<body><main>
+<header><h1>${esc(target)}</h1><div class="stamp s-${report.status}">${STATUS_WORD[report.status]}</div></header>
+${why2 ? `<p class="meta">${inline(why2)}</p>` : ""}
+<p class="tally">${esc(tallyLine(tally(report)))}</p>
+<table><thead><tr><th scope="col">Check</th><th scope="col">Result</th><th scope="col">Summary</th></tr></thead><tbody>${rows}</tbody></table>
+${sections}
+<footer>Overfull ${esc(report.version)} \xB7 <code>overfull explain &lt;rule&gt;</code> explains a rule.</footer>
+</main></body></html>
+`;
+}
+var esc, inline, STATUS_WORD, CHECK_WORD, SEVERITY_WORD, CSS2;
+var init_html = __esm({
+  "../packages/core/src/report/html.ts"() {
+    "use strict";
+    init_shared();
+    esc = (s) => stripUnsafe(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    inline = (s) => codeSpans(stripUnsafe(s)).map((span) => span.code ? `<code>${esc(span.text)}</code>` : esc(span.text)).join("");
+    STATUS_WORD = {
+      pass: "Pass",
+      warn: "To review",
+      fail: "To fix",
+      skipped: "Nothing checked"
+    };
+    CHECK_WORD = {
+      pass: "pass",
+      warn: "review",
+      fail: "fix",
+      skipped: "skipped"
+    };
+    SEVERITY_WORD = { error: "Fix", warning: "Review", info: "Note" };
+    CSS2 = `
+:root{color-scheme:light dark;--bg:#f6f5f1;--ink:#161a2b;--dim:#5b6274;--line:#d9d6cc;--card:#fff;
+--fail:#b3261e;--warn:#8a5a00;--pass:#1e6b3a;--info:#2f5d8a;--code:#ecebe4}
+@media (prefers-color-scheme:dark){:root{--bg:#12141c;--ink:#e8e6df;--dim:#9aa1b2;--line:#2b2f3d;
+--card:#191c27;--fail:#ff8a80;--warn:#f2c267;--pass:#7fd49b;--info:#8fbfe8;--code:#232735}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.55 ui-serif,Georgia,"Times New Roman",serif}
+main{max-width:920px;margin:0 auto;padding:40px 20px 64px}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:baseline;justify-content:space-between;
+border-bottom:2px solid var(--ink);padding-bottom:16px}
+h1{font-size:28px;line-height:1.2;margin:0;overflow-wrap:anywhere}
+.stamp{font:600 13px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;
+border:2px solid currentColor;padding:8px 12px;transform:rotate(-2deg)}
+.s-fail{color:var(--fail)}.s-warn{color:var(--warn)}.s-pass{color:var(--pass)}.s-skipped{color:var(--dim)}
+.meta,.tally{color:var(--dim);font:14px/1.5 ui-sans-serif,system-ui,sans-serif;margin:12px 0 0}
+table{width:100%;border-collapse:collapse;margin:28px 0 8px;font:15px/1.4 ui-sans-serif,system-ui,sans-serif}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;white-space:nowrap}td.st{white-space:nowrap;font-weight:600}
+h2{font-size:20px;margin:36px 0 8px}
+.p{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--dim);
+border-radius:4px;padding:12px 14px;margin:10px 0}
+.p.error{border-left-color:var(--fail)}.p.warning{border-left-color:var(--warn)}.p.info{border-left-color:var(--info)}
+.p h3{font-size:16px;margin:0;font-weight:600;overflow-wrap:anywhere}
+.tag{font:600 11px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;margin-right:8px}
+.error .tag{color:var(--fail)}.warning .tag{color:var(--warn)}.info .tag{color:var(--info)}
+.where{color:var(--dim);font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:4px;overflow-wrap:anywhere}
+.p p{margin:8px 0 0}code{font:.9em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);
+padding:1px 4px;border-radius:3px;overflow-wrap:anywhere}
+pre{margin:8px 0 0;padding:10px;background:var(--code);border-radius:4px;overflow:auto;
+font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}
+summary{cursor:pointer;color:var(--dim);font:13px/1.4 ui-sans-serif,system-ui,sans-serif;margin-top:8px}
+footer{margin-top:48px;color:var(--dim);font:13px/1.5 ui-sans-serif,system-ui,sans-serif}
+@media print{body{background:#fff}.p{break-inside:avoid}}
+`;
   }
 });
 
@@ -7514,17 +8005,17 @@ function escapeHtml(s) {
 function escapeMarkdown(s) {
   return escapeHtml(oneLine(s)).replace(/([\\`*_{}[\]|~#])/g, "\\$1");
 }
-function inline(s) {
-  return oneLine(s).split("`").map(
-    (part, i) => i % 2 === 1 ? `<code>${escapeHtml(part).replace(/\|/g, "&#124;")}</code>` : escapeMarkdown(part)
+function inline2(s) {
+  return codeSpans(oneLine(s)).map(
+    (span) => span.code ? `<code>${escapeHtml(span.text).replace(/\|/g, "&#124;")}</code>` : escapeMarkdown(span.text)
   ).join("");
 }
 function problemItem(p) {
   const loc = formatLocation(p.location);
-  const head = `- **${p.severity}**${loc ? ` <code>${escapeHtml(oneLine(loc))}</code>` : ""} ${escapeMarkdown(p.message)} <sub>${escapeHtml(oneLine(p.rule))}</sub>`;
+  const head = `- **${p.severity}**${loc ? ` <code>${escapeHtml(oneLine(loc))}</code>` : ""} ${inline2(p.message)} <sub>${escapeHtml(oneLine(p.rule))}</sub>`;
   const sub = [];
-  if (p.detail) sub.push(`  - Why: ${inline(p.detail)}`);
-  if (p.fix) sub.push(`  - Fix: ${inline(p.fix)}`);
+  if (p.detail) sub.push(`  - Why: ${inline2(p.detail)}`);
+  if (p.fix) sub.push(`  - Fix: ${inline2(p.fix)}`);
   return [head, ...sub].join("\n");
 }
 function formatMarkdown(report) {
@@ -7533,10 +8024,10 @@ function formatMarkdown(report) {
   const word = report.status === "skipped" ? "NOTHING CHECKED" : report.status.toUpperCase();
   out.push(`## Overfull preflight: ${word}${target}`, "");
   const why2 = nothingCheckedLine(report);
-  if (why2) out.push(inline(why2), "");
+  if (why2) out.push(inline2(why2), "");
   out.push("| Check | Status | Summary |", "| --- | --- | --- |");
   for (const c of report.checks) {
-    out.push(`| ${c.check} | ${STATUS_TEXT[c.status]} | ${inline(checkLine(c))} |`);
+    out.push(`| ${c.check} | ${STATUS_TEXT[c.status]} | ${inline2(checkLine(c))} |`);
   }
   out.push("", tallyLine(tally(report)), "");
   const problems = sortedProblems(report);
@@ -7563,6 +8054,32 @@ var init_markdown = __esm({
   }
 });
 
+// ../packages/core/src/venue/arxiv-texlive.ts
+function bblFormatVersion(text2) {
+  return /biblatex bbl format version (\d+(?:\.\d+)*)/.exec(text2.slice(0, 2e3))?.[1];
+}
+var ARXIV_TEXLIVE;
+var init_arxiv_texlive = __esm({
+  "../packages/core/src/venue/arxiv-texlive.ts"() {
+    "use strict";
+    ARXIV_TEXLIVE = {
+      source: [
+        "https://info.arxiv.org/help/submit_tex.html",
+        "https://info.arxiv.org/help/faq/texlive.html"
+      ],
+      checkedOn: "2026-11-17",
+      /** The TeX Live arXiv uses unless the submitter picks another one. */
+      defaultYear: 2025,
+      versions: [
+        { year: 2025, biblatex: "3.20", biber: "2.20", bblFormats: ["3.3"] },
+        { year: 2023, biblatex: "3.19", biber: "2.19", bblFormats: ["3.2", "3.3"] }
+      ],
+      /** TeX processors arXiv offers for LaTeX (besides `latex` in DVI mode). */
+      engines: ["pdflatex", "xelatex"]
+    };
+  }
+});
+
 // ../packages/core/src/venue/arxiv.ts
 function detectEngine(log) {
   if (!log) return void 0;
@@ -7578,6 +8095,58 @@ function isAbsolute(p) {
 function dirname(p) {
   const i = p.lastIndexOf("/");
   return i < 0 ? "" : p.slice(0, i + 1);
+}
+function joinPath2(dir, rel2) {
+  const out = [];
+  for (const part of `${dir}${rel2}`.replace(/\\/g, "/").split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") out.pop();
+    else out.push(part);
+  }
+  return out.join("/");
+}
+function bibFiles(uses, main2) {
+  const out = [];
+  for (const use of uses) {
+    if (use.name === "addbibresource") {
+      const arg = use.arg.trim();
+      if (/location\s*=\s*remote/.test(use.optional ?? "") || /^[a-z]+:\/\//i.test(arg)) continue;
+      if (arg && !isAbsolute(arg)) out.push(joinPath2(dirname(main2), arg));
+    } else if (use.name === "bibliography") {
+      for (const raw of use.arg.split(",")) {
+        const name = raw.trim();
+        if (!name || isAbsolute(name)) continue;
+        out.push(joinPath2(dirname(main2), /\.bib$/i.test(name) ? name : `${name}.bib`));
+      }
+    }
+  }
+  return [...new Set(out)];
+}
+function bblVersionProblems(bbl) {
+  const format = bblFormatVersion(bbl.text);
+  if (!format) return [];
+  const { versions, defaultYear } = ARXIV_TEXLIVE;
+  const current = versions.find((v) => v.year === defaultYear);
+  if (!current || current.bblFormats.includes(format)) return [];
+  const older = versions.find((v) => v.bblFormats.includes(format));
+  const supported = `TeX Live ${current.year}, the default, reads format ${current.bblFormats.join(" or ")}`;
+  return [
+    {
+      rule: "arxiv-bbl-version",
+      check: "venue",
+      severity: "warning",
+      message: older ? `${bbl.path} has biblatex .bbl format ${format}; on arXiv only TeX Live ${older.year} reads it (${supported})` : `${bbl.path} has biblatex .bbl format ${format}, which arXiv cannot read (${supported})`,
+      location: { file: bbl.path },
+      fix: `Upload the .bib files without the .bbl, so arXiv runs Biber or BibTeX itself, or build the .bbl with TeX Live ${current.year} (biblatex ${current.biblatex}, Biber ${current.biber})${older ? `, or choose TeX Live ${older.year} when you submit` : ""}`,
+      data: {
+        format,
+        arxivFormats: current.bblFormats,
+        texLive: current.year,
+        source: ARXIV_TEXLIVE.source[0],
+        checkedOn: ARXIV_TEXLIVE.checkedOn
+      }
+    }
+  ];
 }
 function arxivProblems(ctx) {
   const problems = [];
@@ -7612,8 +8181,8 @@ function arxivProblems(ctx) {
       rule: "arxiv-unsupported-engine",
       check: "venue",
       severity: "error",
-      message: "This build used LuaLaTeX, but arXiv compiles with pdfLaTeX",
-      fix: "arXiv compiles with pdfLaTeX; build with `make arxiv` / `latexmk -pdf` and check that log with --log",
+      message: "This build used LuaLaTeX, which arXiv does not offer (it compiles with pdfLaTeX or XeLaTeX)",
+      fix: "Build with pdfLaTeX (`latexmk -pdf`) or XeLaTeX (`latexmk -xelatex`) and check that log with `--log`",
       data: { engine }
     });
   }
@@ -7651,22 +8220,32 @@ function arxivProblems(ctx) {
         fix: "Rename the file without spaces (use - or _)"
       });
     }
+    const has = (f) => ctx.files?.some((x) => x.toLowerCase() === f.toLowerCase());
+    const stem2 = ctx.main.replace(/\.tex$/i, "");
+    const expected = `${stem2}.bbl`;
+    const bibs = bibFiles(uses, ctx.main);
     const usesBib = uses.some((u) => u.name === "addbibresource" || u.name === "bibliography");
-    const stem = ctx.main.replace(/\.tex$/i, "");
-    const expected = `${stem}.bbl`;
-    const hasBbl = ctx.files.some((f) => f.toLowerCase() === expected.toLowerCase());
-    if (usesBib && !hasBbl) {
+    const missingBibs = bibs.filter((b) => !has(b));
+    if (usesBib && !has(expected) && (missingBibs.length > 0 || bibs.length === 0)) {
       const other = ctx.files.find(
         (f) => f.toLowerCase().endsWith(".bbl") && dirname(f) === dirname(ctx.main ?? "")
       );
+      const bibText = missingBibs.length ? missingBibs.join(", ") : "the .bib file";
       problems.push({
         rule: "arxiv-missing-bbl",
         check: "venue",
-        severity: "info",
-        message: other ? `Found ${other}, but arXiv compiles ${ctx.main} and reads ${expected}; rename or copy it to ${expected}` : `No ${expected} next to ${ctx.main}; arXiv does not run biber`,
-        fix: other ? `Copy the .bbl to ${expected} (arXiv runs on the main file, not on your jobname)` : "Build once, then upload the generated .bbl (named like your main file) with your sources",
-        data: { expected, ...other ? { found: other } : {} }
+        severity: "warning",
+        message: other ? `Found ${other}, but arXiv reads ${expected} (named like ${ctx.main}), and ${bibText} is not in the project` : `Neither ${expected} nor ${bibText} is in the project; arXiv needs one of them to build the bibliography`,
+        fix: other ? `Copy ${other} to ${expected}, or add ${bibText} to the upload so arXiv builds the bibliography itself` : `Add ${bibText} to the project (arXiv runs BibTeX or Biber on it), or upload the ${expected} your build made`,
+        data: {
+          expected,
+          ...missingBibs.length ? { missingBibs } : {},
+          ...other ? { found: other } : {}
+        }
       });
+    }
+    if (ctx.bbl && ctx.bbl.path.toLowerCase() === expected.toLowerCase()) {
+      problems.push(...bblVersionProblems(ctx.bbl));
     }
   }
   const seen = /* @__PURE__ */ new Set();
@@ -7681,6 +8260,7 @@ var PATH_COMMANDS;
 var init_arxiv2 = __esm({
   "../packages/core/src/venue/arxiv.ts"() {
     "use strict";
+    init_arxiv_texlive();
     init_tex2();
     PATH_COMMANDS = [
       "includegraphics",
@@ -7733,10 +8313,113 @@ var init_aux_file = __esm({
 });
 
 // ../packages/core/src/venue/anonymity.ts
-function authorText(arg) {
-  return arg.replace(/\\(and|And|AND|thanks|footnote|email|affil|inst|orcid)\b(\s*\{[^}]*\})?/g, " ").replace(/\\\\(\[[^\]]*\])?/g, " ").replace(/\\[A-Za-z@]+\*?/g, " ").replace(/[{}$^_~&,;]/g, " ").replace(/\s+/g, " ").trim();
+function simpleMacros(files) {
+  const macros = /* @__PURE__ */ new Map();
+  const re = /\\(?:(?:re)?newcommand|providecommand)\*?\s*(?:\{\s*\\([A-Za-z@]+)\s*\}|\\([A-Za-z@]+))\s*(?=\{)|\\[gex]?def\s*\\([A-Za-z@]+)\s*(?=\{)/g;
+  for (const f of files) {
+    const src = stripComments(f.content);
+    re.lastIndex = 0;
+    for (let m = re.exec(src); m; m = re.exec(src)) {
+      const name = m[1] ?? m[2] ?? m[3];
+      const group = readGroup(src, m.index + m[0].length);
+      if (!name || !group || group.value.length > MAX_BODY) continue;
+      macros.set(name, group.value);
+      re.lastIndex = group.end;
+    }
+  }
+  return macros;
 }
-function anonymityProblems(ctx) {
+function expandMacros(text2, macros) {
+  if (!macros.size) return text2;
+  let out = text2;
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    let changed = false;
+    let budget = MAX_BODY * 4;
+    out = out.replace(/\\(?:([A-Za-z@]+)|[\s\S])/g, (whole, name) => {
+      const body = name === void 0 ? void 0 : macros.get(name);
+      if (body === void 0 || body.length > budget) return whole;
+      budget -= body.length;
+      changed = true;
+      return ` ${body} `;
+    });
+    if (!changed) break;
+  }
+  return out;
+}
+function acknowledgmentProblems(ctx) {
+  const files = ctx.texFiles ?? [];
+  const sourceHits = grepTex(files, ACK_SOURCE);
+  const pages2 = ctx.facts?.pages ?? [];
+  const problem3 = (location2) => ({
+    rule: "anonymity-acknowledgments",
+    check: "venue",
+    severity: "warning",
+    message: "Acknowledgments section in an anonymous submission",
+    ...location2 ? { location: location2 } : {},
+    fix: "Remove or comment out acknowledgments until the camera-ready version"
+  });
+  if (pages2.some((p) => p.text.trim() !== "")) {
+    const page = pages2.find((p) => p.text.split("\n").some((l) => ACK_HEADING.test(l)));
+    if (!page) return [];
+    const hit = sourceHits[0];
+    return [
+      problem3(hit ? { file: hit.file, line: hit.line, page: page.number } : { page: page.number })
+    ];
+  }
+  return sourceHits.map((hit) => problem3({ file: hit.file, line: hit.line }));
+}
+function optionNames(optional) {
+  if (!optional) return [];
+  return optional.split(",").map((o) => o.trim()).filter((o) => o && !/=\s*false\s*$/i.test(o)).map((o) => o.replace(/\s*=.*$/s, ""));
+}
+function classAnonymity(rule, sources) {
+  const files = sources.filter((f) => /\.tex$/i.test(f.path));
+  const loads = findCommands(files, ["documentclass", "usepackage", "RequirePackage"]).filter(
+    (use) => use.arg.split(",").map((n) => n.trim()).includes(rule.package)
+  );
+  if (!loads.length) return { loaded: false, anonymized: false };
+  const options = new Set(loads.flatMap((use) => optionNames(use.optional)));
+  const off = rule.unlessOptions?.find((o) => options.has(o));
+  if (off) {
+    return {
+      loaded: true,
+      anonymized: false,
+      reason: `it is loaded with the \`${off}\` option`,
+      how: "remove that option"
+    };
+  }
+  if (rule.withOptions && !rule.withOptions.some((o) => options.has(o))) {
+    const need = rule.withOptions.map((o) => `\`${o}\``).join(" or ");
+    return {
+      loaded: true,
+      anonymized: false,
+      reason: `it is loaded without the ${need} option`,
+      how: `add the \`${rule.withOptions[0]}\` option`
+    };
+  }
+  for (const cmd of rule.unlessCommands ?? []) {
+    if (grepTex(files, new RegExp(`\\\\${cmd}(?![A-Za-z@])`)).length) {
+      return {
+        loaded: true,
+        anonymized: false,
+        reason: `the source uses \`\\${cmd}\``,
+        how: "remove or comment out that command"
+      };
+    }
+  }
+  return { loaded: true, anonymized: true };
+}
+function authorText(arg, macros = /* @__PURE__ */ new Map()) {
+  return expandMacros(arg, macros).replace(/\\(and|And|AND|thanks|footnote|email|affil|inst|orcid)\b(\s*\{[^}]*\})?/g, " ").replace(/\\\\(\[[^\]]*\])?/g, " ").replace(/\\[A-Za-z@]+\*?/g, " ").replace(/[{}$^_~&,;]/g, " ").replace(/\s+/g, " ").trim();
+}
+function authorFix(profile, cls) {
+  const rule = profile?.anonymizedByClass;
+  if (rule && cls?.reason) {
+    return `\`${rule.package}\` hides the authors only in review mode, but ${cls.reason}: ${cls.how} for the review version, or use \`\\author{Anonymous}\``;
+  }
+  return "Use `\\author{Anonymous}` or the venue class\u2019s review/anonymous option";
+}
+function anonymityProblems(ctx, profile) {
   const problems = [];
   const pdfAuthor = ctx.facts?.info.author ?? ctx.facts?.xmp.creators?.join(", ");
   if (pdfAuthor && !ANON.test(pdfAuthor)) {
@@ -7750,8 +8433,11 @@ function anonymityProblems(ctx) {
     });
   }
   const files = ctx.texFiles ?? [];
-  for (const use of findCommands(files, ["author"])) {
-    const text2 = authorText(use.arg);
+  const cls = profile?.anonymizedByClass ? classAnonymity(profile.anonymizedByClass, files) : void 0;
+  const authors = cls?.anonymized ? [] : findCommands(files, ["author"]);
+  const macros = authors.length ? simpleMacros(files) : /* @__PURE__ */ new Map();
+  for (const use of authors) {
+    const text2 = authorText(use.arg, macros);
     if (!text2 || ANON.test(text2)) continue;
     if (!new RegExp("\\p{L}{2,}", "u").test(text2)) continue;
     problems.push({
@@ -7760,20 +8446,10 @@ function anonymityProblems(ctx) {
       severity: "error",
       message: `\\author names someone: "${text2.slice(0, 60)}${text2.length > 60 ? "\u2026" : ""}"`,
       location: { file: use.file, line: use.line },
-      fix: "Use `\\author{Anonymous}` or the venue class\u2019s review/anonymous option"
+      fix: authorFix(profile, cls)
     });
   }
-  const ack = /\\(?:section|chapter|subsection|paragraph|subsubsection)\*?\s*\{\s*Acknowledg|\\begin\{acknowledg|\\acknowledg(?:e)?ments\b/i;
-  for (const hit of grepTex(files, ack)) {
-    problems.push({
-      rule: "anonymity-acknowledgments",
-      check: "venue",
-      severity: "warning",
-      message: "Acknowledgments section in an anonymous submission",
-      location: { file: hit.file, line: hit.line },
-      fix: "Remove or comment out acknowledgments until the camera-ready version"
-    });
-  }
+  problems.push(...acknowledgmentProblems(ctx));
   const self2 = /\b(?:our|my)\s+(?:previous|prior|earlier|own|recent)\s+(?:work|paper|papers|study|studies|publication|results?)\b/gi;
   for (const hit of grepTex(files, self2)) {
     problems.push({
@@ -7787,12 +8463,16 @@ function anonymityProblems(ctx) {
   }
   return problems;
 }
-var ANON;
+var ANON, MAX_BODY, MAX_ROUNDS, ACK_SOURCE, ACK_HEADING;
 var init_anonymity = __esm({
   "../packages/core/src/venue/anonymity.ts"() {
     "use strict";
     init_tex2();
     ANON = /anonym|blind|submission|paper\s*id|author\s*names?\s*(hidden|withheld)/i;
+    MAX_BODY = 2e3;
+    MAX_ROUNDS = 4;
+    ACK_SOURCE = /\\(?:section|chapter|subsection|paragraph|subsubsection)\*?\s*\{\s*Acknowledg|\\begin\{acknowledg|\\acknowledg(?:e)?ments\b/i;
+    ACK_HEADING = /^\s*(?:(?:\d+(?:\.\d+)*|[A-Z])\.?\s+)?(?:[Aa]cknowledge?ments?|ACKNOWLEDGE?MENTS?)(?:\s*(?:[.:]\s*)?$|\s*[.:]\s+\S)/;
   }
 });
 
@@ -8174,9 +8854,9 @@ function pageLimitText(profile, ctx) {
   const max = profile.pageLimit?.max;
   if (max === void 0) return void 0;
   const total = ctx.facts?.pageCount;
-  const main3 = mainTextPages(profile, ctx);
-  if (main3 !== void 0)
-    return `main text ${pages(main3)}, limit ${max}${total !== void 0 ? ` (${total} in total)` : ""}`;
+  const main2 = mainTextPages(profile, ctx);
+  if (main2 !== void 0)
+    return `main text ${pages(main2)}, limit ${max}${total !== void 0 ? ` (${total} in total)` : ""}`;
   return total !== void 0 ? `${pages(total)}, limit ${max}` : void 0;
 }
 function pageLimitProblems(profile, ctx) {
@@ -8304,10 +8984,30 @@ var init_pages = __esm({
 });
 
 // ../packages/core/src/venue/stale.ts
+function utcDate(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s ?? "");
+  return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : void 0;
+}
 function staleProfileProblems(profile, now) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(profile.checkedOn ?? "");
-  if (!m) return [];
-  const checked = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  const sources = profile.source?.length ? ` (${profile.source.join(", ")})` : "";
+  const deadline = utcDate(profile.deadline);
+  if (deadline) {
+    const days = Math.floor((now.getTime() - deadline.getTime()) / DAY_MS2);
+    if (days > DEADLINE_GRACE_DAYS) {
+      return [
+        {
+          rule: "venue-profile-stale",
+          check: "venue",
+          severity: "info",
+          message: `Profile ${profile.id} is for an edition whose submission deadline (${profile.deadline}) passed ${days} days ago; a later edition may have other rules`,
+          fix: `For a camera-ready version, follow the venue's final instructions. For a later edition, read its call for papers${sources} and use its profile when there is one`,
+          data: { profile: profile.id, deadline: profile.deadline, days }
+        }
+      ];
+    }
+  }
+  const checked = utcDate(profile.checkedOn);
+  if (!checked) return [];
   const limit = new Date(checked);
   limit.setUTCMonth(limit.getUTCMonth() + STALE_AFTER_MONTHS);
   if (now.getTime() <= limit.getTime()) return [];
@@ -8317,16 +9017,18 @@ function staleProfileProblems(profile, now) {
       check: "venue",
       severity: "info",
       message: `Profile ${profile.id} was last checked against the venue's pages on ${profile.checkedOn}; it may be out of date`,
-      fix: `Read the venue's current instructions${profile.source?.length ? ` (${profile.source.join(", ")})` : ""} before you submit`,
+      fix: `Read the venue's current instructions${sources} before you submit`,
       data: { profile: profile.id, checkedOn: profile.checkedOn, months: STALE_AFTER_MONTHS }
     }
   ];
 }
-var STALE_AFTER_MONTHS;
+var STALE_AFTER_MONTHS, DEADLINE_GRACE_DAYS, DAY_MS2;
 var init_stale = __esm({
   "../packages/core/src/venue/stale.ts"() {
     "use strict";
     STALE_AFTER_MONTHS = 14;
+    DEADLINE_GRACE_DAYS = 30;
+    DAY_MS2 = 864e5;
   }
 });
 
@@ -8377,7 +9079,7 @@ function venueCheck(profile, ctx) {
   const problems = [
     ...pageLimitProblems(profile, ctx),
     ...paperSizeProblems(profile, ctx),
-    ...profile.anonymous ? [...anonymityProblems(ctx), ...anonymityLinkProblems(ctx)] : [],
+    ...profile.anonymous ? [...anonymityProblems(ctx, profile), ...anonymityLinkProblems(ctx)] : [],
     ...styleFileProblems(profile, ctx.texFiles ?? []),
     ...layoutProblems(profile, ctx),
     ...marginProblems(profile, ctx),
@@ -8432,6 +9134,7 @@ var init_venues_generated = __esm({
           "https://aaai.org/authorkit27/"
         ],
         checkedOn: "2026-11-10",
+        deadline: "2026-07-28",
         paper: "letter",
         pageLimit: {
           max: 7,
@@ -8451,7 +9154,13 @@ var init_venues_generated = __esm({
         textBlock: {
           widthMm: 177.8
         },
-        notes: "The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for references. Acknowledgements are omitted from papers submitted for review. The author policy allows judicious use of generative AI tools; the pages read state no disclosure requirement. The hash is of aaai2027.sty (2027/10/21) from the AuthorKit27 archive downloaded on 2026-11-10. The AAAI-28 call page redirects to AAAI-26 content, so AAAI-27 is the latest published. Text block: 7 in wide, centred on US Letter (aaai2027.sty)."
+        anonymizedByClass: {
+          package: "aaai2027",
+          withOptions: [
+            "submission"
+          ]
+        },
+        notes: 'The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for references. Acknowledgements are omitted from papers submitted for review. The author policy allows judicious use of generative AI tools; the pages read state no disclosure requirement. The hash is of aaai2027.sty from the AuthorKit27 archive downloaded on 2026-11-10; its \\ProvidesPackage line gives the date 2027/10/21 (sic, in the official file). The AAAI-28 call page redirects to AAAI-26 content, so AAAI-27 is the latest published. Text block: 7 in wide, centred on US Letter (aaai2027.sty). aaai2027.sty prints "Anonymous submission" with the submission option.'
       },
       "acl-rolling-review": {
         id: "acl-rolling-review",
@@ -8476,7 +9185,13 @@ var init_venues_generated = __esm({
         },
         anonymous: true,
         disclosure: "recommended",
-        notes: "Short papers have 4 pages of content. Final versions of long papers get one more page (9). Missing a Limitations section is a desk-rejection reason. Use of generative AI for writing or coding must be disclosed in the Responsible NLP Checklist, with details in the Acknowledgements; some uses (language polishing, short-form input assistance) need no disclosure. The official style files are at https://github.com/acl-org/acl-style-files (not reachable from this session, so no file name or hash is recorded)."
+        anonymizedByClass: {
+          package: "acl",
+          withOptions: [
+            "review"
+          ]
+        },
+        notes: 'Short papers have 4 pages of content. Final versions of long papers get one more page (9). Missing a Limitations section is a desk-rejection reason. Use of generative AI for writing or coding must be disclosed in the Responsible NLP Checklist, with details in the Acknowledgements; some uses (language polishing, short-form input assistance) need no disclosure. The official style files are at https://github.com/acl-org/acl-style-files (not reachable from this session, so no file name or hash is recorded). acl.sty prints "Anonymous ACL submission" with the review option (https://github.com/acl-org/acl-style-files, read on 2026-11-17).'
       },
       "acm-sigconf": {
         id: "acm-sigconf",
@@ -8497,7 +9212,13 @@ var init_venues_generated = __esm({
         textBlock: {
           widthMm: 177.9
         },
-        notes: "Each ACM conference sets its own page limit and review rules; set them in overfull.yml (`venue:`) from the call for papers, and use the class option `anonymous` for double-blind review. Layout from acmart v2.21 (2026/11/01): the sigconf format is US Letter with 54 pt inner and outer margins, so the text block is 8.5 in minus 108 pt wide. acmart.cls is generated from acmart.dtx, so no hash is recorded. ACM's own pages (acm.org/publications) could not be read from the build machine."
+        anonymizedByClass: {
+          package: "acmart",
+          withOptions: [
+            "anonymous"
+          ]
+        },
+        notes: "Each ACM conference sets its own page limit and review rules; set them in overfull.yml (`venue:`) from the call for papers, and use the class option `anonymous` for double-blind review. Layout from acmart v2.21 (2026/11/01): the sigconf format is US Letter with 54 pt inner and outer margins, so the text block is 8.5 in minus 108 pt wide. acmart.cls is generated from acmart.dtx, so no hash is recorded. ACM's own pages (acm.org/publications) could not be read from the build machine. acmart.cls hides the authors with the anonymous option (acmart.dtx v2.21)."
       },
       "aistats-2027": {
         id: "aistats-2027",
@@ -8509,6 +9230,7 @@ var init_venues_generated = __esm({
           "https://aistats.org/aistats2027/AISTATS2027PaperPack.zip"
         ],
         checkedOn: "2026-11-11",
+        deadline: "2026-10-06",
         paper: "letter",
         pageLimit: {
           max: 8,
@@ -8533,7 +9255,14 @@ var init_venues_generated = __esm({
           widthMm: 171.5,
           leftMm: 22.2
         },
-        notes: "The call requires an AI Use Statement in every submission, in the ICLR format, and allows generative AI tools otherwise. Papers whose main text is over the limit are desk-rejected; the camera-ready limit is 9 pages. Submissions may use author-year or numeric citations; camera-ready papers must use author-year. Paper size is US Letter (the article class default, emitted by the style file). The hash is of aistats2027.sty (2026/09/02) from AISTATS2027PaperPack.zip downloaded on 2026-11-11. Text block: 6.75 in wide, 0.875 in from the left edge (aistats2027.sty)."
+        anonymizedByClass: {
+          package: "aistats2027",
+          unlessOptions: [
+            "accepted",
+            "preprint"
+          ]
+        },
+        notes: 'The call requires an AI Use Statement in every submission, in the ICLR format, and allows generative AI tools otherwise. Papers whose main text is over the limit are desk-rejected; the camera-ready limit is 9 pages. Submissions may use author-year or numeric citations; camera-ready papers must use author-year. Paper size is US Letter (the article class default, emitted by the style file). The hash is of aistats2027.sty (2026/09/02) from AISTATS2027PaperPack.zip downloaded on 2026-11-11. Text block: 6.75 in wide, 0.875 in from the left edge (aistats2027.sty). aistats2027.sty prints "Anonymous Author" unless the accepted or preprint option is given.'
       },
       "cvpr-2027": {
         id: "cvpr-2027",
@@ -8545,6 +9274,7 @@ var init_venues_generated = __esm({
           "https://media.eventhosts.cc/Conferences/CVPR2027/author-kit-CVPR2027-v1-latex.zip"
         ],
         checkedOn: "2026-11-10",
+        deadline: "2026-11-16",
         paper: "letter",
         pageLimit: {
           max: 8,
@@ -8566,7 +9296,14 @@ var init_venues_generated = __esm({
         textBlock: {
           widthMm: 174.6
         },
-        notes: 'Every submission needs a section titled "LLM Usage Statement" after the main text and before the references; it states "No LLMs or generative AI tools were used in this work" if none were. The camera-ready version must disclose AI-generated content in the Acknowledgments. Paper size is from the check in the official cvpr.sty. The hash is of cvpr.sty from author-kit-CVPR2027-v1-latex.zip downloaded on 2026-11-10. Text block: 6.875 in wide, centred on US Letter (cvpr.sty).'
+        anonymizedByClass: {
+          package: "cvpr",
+          withOptions: [
+            "review",
+            "rebuttal"
+          ]
+        },
+        notes: 'Every submission needs a section titled "LLM Usage Statement" after the main text and before the references; it states "No LLMs or generative AI tools were used in this work" if none were. The camera-ready version must disclose AI-generated content in the Acknowledgments. Paper size is from the check in the official cvpr.sty. The hash is of cvpr.sty from author-kit-CVPR2027-v1-latex.zip downloaded on 2026-11-10. Text block: 6.875 in wide, centred on US Letter (cvpr.sty). cvpr.sty hides the authors with the review or rebuttal option.'
       },
       "eccv-2026": {
         id: "eccv-2026",
@@ -8578,6 +9315,7 @@ var init_venues_generated = __esm({
           "https://eccv.ecva.net/Conferences/2026/CallForPapers"
         ],
         checkedOn: "2026-11-11",
+        deadline: "2026-03-05",
         paper: "any",
         pageLimit: {
           max: 14,
@@ -8605,7 +9343,16 @@ var init_venues_generated = __esm({
           leftMm: 12,
           topMm: 12
         },
-        notes: "Papers over 14 pages (excluding references), not anonymized, or not in the ECCV 2026 template are desk-rejected, and so are submissions whose margins, formatting or font were changed (the 2026 template's font differs from CVPR's). The LLM policy allows any tools but makes authors responsible for the content; papers citing non-existent material are rejected. No AI-use statement is asked for. The kit is the one the submission policies link (github.com/paolo-favaro/paper-template, tag Latest, commit da8c09c of 2026-01-23); its own llncs.cls differs from Springer's current one. The review option crops the page to 146 x 217 mm around a 122 x 193 mm text block 12 mm from the left and top edges (eccv.sty), hence no standard paper size."
+        anonymizedByClass: {
+          package: "eccv",
+          withOptions: [
+            "review"
+          ],
+          unlessOptions: [
+            "final"
+          ]
+        },
+        notes: `Papers over 14 pages (excluding references), not anonymized, or not in the ECCV 2026 template are desk-rejected, and so are submissions whose margins, formatting or font were changed (the 2026 template's font differs from CVPR's). The LLM policy allows any tools but makes authors responsible for the content; papers citing non-existent material are rejected. No AI-use statement is asked for. The kit is the one the submission policies link (github.com/paolo-favaro/paper-template, tag Latest, commit da8c09c of 2026-01-23); its own llncs.cls differs from Springer's current one. The review option crops the page to 146 x 217 mm around a 122 x 193 mm text block 12 mm from the left and top edges (eccv.sty), hence no standard paper size. eccv.sty prints "Anonymous ECCV Submission" with the review option.`
       },
       "emnlp-2026": {
         id: "emnlp-2026",
@@ -8618,6 +9365,7 @@ var init_venues_generated = __esm({
           "https://acl-org.github.io/ACLPUB/formatting.html"
         ],
         checkedOn: "2026-11-10",
+        deadline: "2026-05-25",
         paper: "a4",
         pageLimit: {
           max: 8,
@@ -8631,7 +9379,13 @@ var init_venues_generated = __esm({
         },
         anonymous: true,
         disclosure: "recommended",
-        notes: "Papers go through ACL Rolling Review and follow all ARR submission requirements; the EMNLP page lists long papers (8 pages) and short papers (4 pages). Final versions get one additional page (9 for long papers, 5 for short papers). Exclusions and the A4 size are from the ARR call and the ACL formatting guidelines it links. Writing-assistance disclosure follows the ARR policy. No style file name or hash is recorded because the official style repository was not reachable from this session."
+        anonymizedByClass: {
+          package: "acl",
+          withOptions: [
+            "review"
+          ]
+        },
+        notes: 'Papers go through ACL Rolling Review and follow all ARR submission requirements; the EMNLP page lists long papers (8 pages) and short papers (4 pages). Final versions get one additional page (9 for long papers, 5 for short papers). Exclusions and the A4 size are from the ARR call and the ACL formatting guidelines it links. Writing-assistance disclosure follows the ARR policy. No style file name or hash is recorded because the official style repository was not reachable from this session. acl.sty prints "Anonymous ACL submission" with the review option (https://github.com/acl-org/acl-style-files, read on 2026-11-17).'
       },
       "iclr-2027": {
         id: "iclr-2027",
@@ -8644,6 +9398,7 @@ var init_venues_generated = __esm({
           "https://iclr.cc/Conferences/2027/AIPolicyForAuthors"
         ],
         checkedOn: "2026-11-10",
+        deadline: "2026-09-25",
         pageLimit: {
           max: 9,
           endLabel: "overfull:main-end",
@@ -8665,7 +9420,13 @@ var init_venues_generated = __esm({
         textBlock: {
           widthMm: 139.7
         },
-        notes: "The page limit is 10 for the discussion phase and the camera-ready version. A mandatory AI use statement section does not count toward the limit. Style files are from iclr-2027-style-files.zip (linked from the author guidelines), downloaded on 2026-11-10 (file dated 2026-07-28 in the archive). Text block: 5.5 in wide with 1.5 in side margins (iclr2027_conference.sty)."
+        anonymizedByClass: {
+          package: "iclr2027_conference",
+          unlessCommands: [
+            "iclrfinalcopy"
+          ]
+        },
+        notes: 'The page limit is 10 for the discussion phase and the camera-ready version. A mandatory AI use statement section does not count toward the limit. Style files are from iclr-2027-style-files.zip (linked from the author guidelines), downloaded on 2026-11-10 (file dated 2026-07-28 in the archive). Text block: 5.5 in wide with 1.5 in side margins (iclr2027_conference.sty). iclr2027_conference.sty prints "Anonymous authors" until \\iclrfinalcopy is used.'
       },
       "icml-2026": {
         id: "icml-2026",
@@ -8677,6 +9438,7 @@ var init_venues_generated = __esm({
           "https://icml.cc/Conferences/2026/AuthorInstructions"
         ],
         checkedOn: "2026-11-10",
+        deadline: "2026-01-28",
         paper: "letter",
         pageLimit: {
           max: 8,
@@ -8700,7 +9462,14 @@ var init_venues_generated = __esm({
           widthMm: 171.5,
           leftMm: 19.6
         },
-        notes: "Final versions of accepted papers get one extra page for the main paper. The call allows generative AI tools and encourages authors to explain notable uses in their methodology; LLMs cannot be authors. The hash is of icml2026.sty (v2.0, 2025/10/29) from icml2026.zip downloaded on 2026-11-10. The ICML 2027 call page exists but has no content yet. Text block: 6.75 in wide, 0.77 in from the left edge (icml2026.sty)."
+        anonymizedByClass: {
+          package: "icml2026",
+          unlessOptions: [
+            "accepted",
+            "preprint"
+          ]
+        },
+        notes: 'Final versions of accepted papers get one extra page for the main paper. The call allows generative AI tools and encourages authors to explain notable uses in their methodology; LLMs cannot be authors. The hash is of icml2026.sty (v2.0, 2025/10/29) from icml2026.zip downloaded on 2026-11-10. The ICML 2027 call page exists but has no content yet. Text block: 6.75 in wide, 0.77 in from the left edge (icml2026.sty). icml2026.sty prints "Anonymous Authors" unless the accepted or preprint option is given.'
       },
       "ieee-conference": {
         id: "ieee-conference",
@@ -8737,6 +9506,7 @@ var init_venues_generated = __esm({
           "https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip"
         ],
         checkedOn: "2026-11-10",
+        deadline: "2026-05-06",
         paper: "letter",
         pageLimit: {
           max: 9,
@@ -8759,7 +9529,18 @@ var init_venues_generated = __esm({
         textBlock: {
           widthMm: 139.7
         },
-        notes: "The handbook asks authors to describe agent or LLM use in the experimental setup only when it is an important, original or non-standard part of the method. Accepted papers get one additional content page for the camera-ready version. Paper size is from the letterpaper option in the official style file (the handbook does not state it). The hash is of neurips_2026.sty (dated 2026-01-29) from the kit downloaded on 2026-11-10. Text block: 5.5 in wide, centred on US Letter (geometry in neurips_2026.sty)."
+        anonymizedByClass: {
+          package: "neurips_2026",
+          unlessOptions: [
+            "final",
+            "preprint",
+            "nonanonymous",
+            "creativeai",
+            "education",
+            "sglblindworkshop"
+          ]
+        },
+        notes: 'The handbook asks authors to describe agent or LLM use in the experimental setup only when it is an important, original or non-standard part of the method. Accepted papers get one additional content page for the camera-ready version. Paper size is from the letterpaper option in the official style file (the handbook does not state it). The hash is of neurips_2026.sty (dated 2026-01-29) from the kit downloaded on 2026-11-10. Text block: 5.5 in wide, centred on US Letter (geometry in neurips_2026.sty). neurips_2026.sty prints "Anonymous Author(s)" unless one of the options final, preprint, nonanonymous, creativeai, education or sglblindworkshop is given.'
       },
       "springer-lncs": {
         id: "springer-lncs",
@@ -8790,13 +9571,13 @@ var init_venues_generated = __esm({
 });
 
 // ../packages/core/src/venue/profiles.ts
-function merge(parent, inline2) {
+function merge(parent, inline3) {
   const merged = { ...parent };
-  for (const [k, v] of Object.entries(inline2)) {
+  for (const [k, v] of Object.entries(inline3)) {
     if (v !== void 0) merged[k] = v;
   }
-  if (inline2.pageLimit) merged.pageLimit = { ...parent.pageLimit, ...inline2.pageLimit };
-  if (!inline2.id) merged.id = parent.id;
+  if (inline3.pageLimit) merged.pageLimit = { ...parent.pageLimit, ...inline3.pageLimit };
+  if (!inline3.id) merged.id = parent.id;
   return merged;
 }
 function known(name, venues) {
@@ -8817,9 +9598,9 @@ function lookup(name, venues) {
 }
 function resolveProfile(nameOrInline, venues = venueProfileData) {
   if (typeof nameOrInline === "string") return lookup(nameOrInline, venues);
-  const { extends: base, ...inline2 } = nameOrInline;
-  const baseName3 = base ?? (inline2.id && known(inline2.id, venues) ? inline2.id : "generic");
-  return merge(lookup(baseName3, venues), inline2);
+  const { extends: base, ...inline3 } = nameOrInline;
+  const baseName3 = base ?? (inline3.id && known(inline3.id, venues) ? inline3.id : "generic");
+  return merge(lookup(baseName3, venues), inline3);
 }
 var ALL_CHECKS, builtinProfiles, UnknownProfileError;
 var init_profiles = __esm({
@@ -8859,7 +9640,7 @@ var init_profiles = __esm({
       arxiv: {
         id: "arxiv",
         name: "arXiv",
-        description: "arXiv submission: no absolute paths, no shell escape, .bbl included, pdfLaTeX-safe figures.",
+        description: "arXiv submission: no absolute paths, no shell escape, .bib or a matching .bbl included, pdfLaTeX-safe figures.",
         paper: "any",
         disclosure: "off",
         accessibility: "recommended",
@@ -8956,7 +9737,7 @@ var init_rules3 = __esm({
         check: "venue",
         severity: "warning",
         title: "Acknowledgments in an anonymous submission",
-        summary: "Acknowledgments often name people, grants or institutions and break anonymity.",
+        summary: "Acknowledgments often name people, grants or institutions and break anonymity. With a PDF, only an acknowledgments heading printed in it counts; without one, the sources are searched.",
         fix: "Remove the acknowledgments until the camera-ready version."
       },
       {
@@ -9004,8 +9785,8 @@ var init_rules3 = __esm({
         check: "venue",
         severity: "error",
         title: "Built with LuaLaTeX (arXiv)",
-        summary: "arXiv compiles submissions with pdfLaTeX. A paper that only builds with LuaLaTeX (fontspec, Lua code) fails there, and a LuaLaTeX log says nothing about the arXiv build.",
-        fix: "arXiv compiles with pdfLaTeX; build with `make arxiv` / `latexmk -pdf` and check that log with --log."
+        summary: "arXiv compiles LaTeX with pdfLaTeX or XeLaTeX, not LuaLaTeX. A paper that only builds with LuaLaTeX (Lua code, luatexja) fails there, and a LuaLaTeX log says nothing about the arXiv build.",
+        fix: "Build with pdfLaTeX (`latexmk -pdf`) or XeLaTeX (`latexmk -xelatex`) and check that log with `--log`."
       },
       {
         id: "arxiv-eps-pdflatex",
@@ -9026,10 +9807,18 @@ var init_rules3 = __esm({
       {
         id: "arxiv-missing-bbl",
         check: "venue",
-        severity: "info",
-        title: ".bbl not present (arXiv)",
-        summary: "arXiv does not run biber; with biblatex you must upload the .bbl generated by your build.",
-        fix: "Build locally, then include the .bbl named like the main file (`main.tex` \u2192 `main.bbl`; a `<jobname>.bbl` must be copied to that name) in the upload."
+        severity: "warning",
+        title: "Neither .bbl nor .bib in the upload (arXiv)",
+        summary: "arXiv builds the bibliography itself from the uploaded .bib files (BibTeX, or Biber when biblatex selects it), or uses an uploaded .bbl named like the main file. With neither, it blocks the submission.",
+        fix: "Add the .bib files the document names to the project, or upload the .bbl named like the main file (`main.tex` \u2192 `main.bbl`; copy a `<jobname>.bbl` to that name)."
+      },
+      {
+        id: "arxiv-bbl-version",
+        check: "venue",
+        severity: "warning",
+        title: "biblatex .bbl in a format arXiv cannot read",
+        summary: "A biblatex .bbl must match the biblatex and Biber on arXiv: TeX Live 2025, the default, reads .bbl format 3.3 only (checked 2026-11-17). A .bbl from a newer or older TeX Live breaks the bibliography there.",
+        fix: "Upload the .bib files without the .bbl so arXiv runs Biber itself, or build the .bbl with arXiv\u2019s TeX Live (2025: biblatex 3.20, Biber 2.20)."
       },
       {
         id: "arxiv-filename-space",
@@ -9044,7 +9833,7 @@ var init_rules3 = __esm({
         check: "venue",
         severity: "info",
         title: "Venue profile may be out of date",
-        summary: "The profile was last compared with the venue\u2019s official pages more than 14 months ago. Page limits, style files and policies change between years.",
+        summary: "The profile is for an edition whose submission deadline passed more than 30 days ago, or it was last compared with the venue\u2019s official pages more than 14 months ago. Page limits, style files and policies change between years.",
         fix: "Read the venue\u2019s current author instructions (the profile lists its sources) and compare them with what Overfull reports."
       },
       {
@@ -9136,7 +9925,7 @@ var init_rules4 = __esm({
 });
 
 // ../packages/core/src/report/sarif.ts
-function joinPath2(root, file) {
+function joinPath3(root, file) {
   const f = file.replace(/\\/g, "/").replace(/^\.\//, "");
   if (!root || root === "." || root === "./") return f;
   return `${root.replace(/\/+$/, "")}/${f}`;
@@ -9183,7 +9972,7 @@ function formatSarif(report, opts = {}) {
         locations: [
           {
             physicalLocation: {
-              artifactLocation: { uri: joinPath2(opts.root, file), uriBaseId: "%SRCROOT%" },
+              artifactLocation: { uri: joinPath3(opts.root, file), uriBaseId: "%SRCROOT%" },
               region: { startLine: line && line > 0 ? line : 1 }
             }
           }
@@ -9233,6 +10022,7 @@ var init_report = __esm({
     "use strict";
     init_annotations();
     init_dedupe();
+    init_html();
     init_human();
     init_json();
     init_markdown();
@@ -9266,6 +10056,10 @@ function userCacheDir(env, platform = process.platform) {
   if (platform === "win32")
     return join(env.LOCALAPPDATA || join(home, "AppData", "Local"), "overfull");
   return join(env.XDG_CACHE_HOME || join(home, ".cache"), "overfull");
+}
+function refsCacheMode(flag, env) {
+  if (flag) return "project";
+  return env.OVERFULL_REFS_CACHE?.trim().toLowerCase() === "project" ? "project" : "user";
 }
 function refsCachePath(root, mode, env) {
   if (mode === "project") return join(root, ".overfull", "cache", "refs.json");
@@ -16687,6 +17481,11 @@ var require_dist = __commonJS({
 });
 
 // ../packages/cli/src/io.ts
+function testRefsTiming(env) {
+  const testRun = Boolean(process.env.VITEST) || process.env.NODE_ENV === "test";
+  if (!testRun || env.OVERFULL_TEST_NO_SPACING !== "1") return {};
+  return { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
+}
 var UsageError;
 var init_io = __esm({
   "../packages/cli/src/io.ts"() {
@@ -16702,7 +17501,16 @@ var init_io = __esm({
 
 // ../packages/cli/src/safety.ts
 import { randomBytes } from "node:crypto";
-import { existsSync, lstatSync as lstatSync2, realpathSync as realpathSync2 } from "node:fs";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  lstatSync as lstatSync2,
+  mkdirSync as mkdirSync2,
+  openSync,
+  realpathSync as realpathSync2,
+  writeFileSync as writeFileSync2
+} from "node:fs";
 import { dirname as dirname3, isAbsolute as isAbsolute2, relative as relative2, resolve, sep as sep2 } from "node:path";
 function checkName(value, what, allowSlash) {
   const segments = value.split("/");
@@ -16755,6 +17563,81 @@ function insideRootOrUndefined(root, path) {
     return void 0;
   }
 }
+function insideRootForWrite(root, path, what) {
+  const abs = insideRoot(root, path, what);
+  const refuse = (why2) => new UsageError(
+    `${what} "${path}" ${why2}. Overfull only writes files inside the project directory (${root}).`
+  );
+  let probe = abs;
+  for (; ; ) {
+    let st;
+    try {
+      st = lstatSync2(probe);
+    } catch {
+      st = void 0;
+    }
+    if (st) {
+      if (st.isSymbolicLink() && !existsSync(probe))
+        throw refuse("goes through a dangling symlink");
+      break;
+    }
+    const parent = dirname3(probe);
+    if (parent === probe) break;
+    probe = parent;
+  }
+  let realRoot;
+  let realProbe;
+  try {
+    realRoot = realpathSync2(root);
+    realProbe = realpathSync2(probe);
+  } catch {
+    throw refuse("cannot be resolved");
+  }
+  if (!isInside(realRoot, realProbe)) throw refuse("leads outside the project through a symlink");
+  return abs;
+}
+function reportTarget(root, path, what) {
+  const abs = resolve(root, path);
+  let realRoot = root;
+  try {
+    realRoot = realpathSync2(root);
+  } catch {
+  }
+  if (isAbsolute2(path) && !isInside(root, abs) && !isInside(realRoot, abs))
+    return { path: abs, inProject: false };
+  let link = false;
+  try {
+    link = lstatSync2(abs).isSymbolicLink();
+  } catch {
+  }
+  if (link) {
+    throw new UsageError(
+      `${what} "${path}" is a symlink. Overfull does not write reports through symlinks inside the project; remove it or choose another file.`
+    );
+  }
+  return { path: insideRootForWrite(root, path, what), inProject: true };
+}
+function writeReport(target, text2) {
+  mkdirSync2(dirname3(target.path), { recursive: true });
+  if (!target.inProject) {
+    writeFileSync2(target.path, text2);
+    return;
+  }
+  const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0);
+  let fd;
+  try {
+    fd = openSync(target.path, flags, 438);
+  } catch (err) {
+    if (err.code === "ELOOP")
+      throw new UsageError(`Report file "${target.path}" is a symlink; not written.`);
+    throw err;
+  }
+  try {
+    writeFileSync2(fd, text2);
+  } finally {
+    closeSync(fd);
+  }
+}
 function isCI(env) {
   return CI_VARS.some((k) => {
     const v = env[k];
@@ -16791,12 +17674,12 @@ var init_safety = __esm({
 
 // ../packages/cli/src/project.ts
 import {
-  closeSync,
-  constants,
+  closeSync as closeSync2,
+  constants as constants2,
   existsSync as existsSync2,
   fstatSync,
   lstatSync as lstatSync3,
-  openSync,
+  openSync as openSync2,
   readdirSync,
   readFileSync as readFileSync2,
   realpathSync as realpathSync3,
@@ -16851,7 +17734,7 @@ function readTexFiles(root, files, skipped3 = []) {
     const abs = join2(root, path);
     let fd;
     try {
-      fd = openSync(abs, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+      fd = openSync2(abs, constants2.O_RDONLY | (constants2.O_NONBLOCK ?? 0));
     } catch {
       continue;
     }
@@ -16869,7 +17752,7 @@ function readTexFiles(root, files, skipped3 = []) {
     } catch (err) {
       skipped3.push({ path, reason: err instanceof Error ? err.message : String(err) });
     } finally {
-      closeSync(fd);
+      closeSync2(fd);
     }
   }
   return out;
@@ -16897,10 +17780,10 @@ function requireRegularFile(path) {
 function readAux(root, jobname, auxDir = ".") {
   const dir = join2(root, auxDir);
   const mainPath = insideRootOrUndefined(root, join2(dir, `${jobname}.aux`));
-  const main3 = mainPath ? readIfExists(mainPath) : void 0;
-  if (main3 === void 0) return void 0;
-  const parts = [main3];
-  for (const m of main3.matchAll(/\\@input\{([^}]+\.aux)\}/g)) {
+  const main2 = mainPath ? readIfExists(mainPath) : void 0;
+  if (main2 === void 0) return void 0;
+  const parts = [main2];
+  for (const m of main2.matchAll(/\\@input\{([^}]+\.aux)\}/g)) {
     const p = insideRootOrUndefined(root, join2(dir, m[1]));
     const extra = p ? readIfExists(p) : void 0;
     if (extra) parts.push(extra);
@@ -16922,23 +17805,23 @@ function detectMain(root, outputDirs = ["."]) {
     const abs = join2(root, name);
     let fd;
     try {
-      fd = openSync(abs, "r");
+      fd = openSync2(abs, "r");
       const st = fstatSync(fd);
       if (!st.isFile() || st.size > MAX_TEX_BYTES) continue;
       const text2 = readFileSync2(fd, "utf8").replace(/(^|[^\\])%.*$/gm, "$1");
       if (/\\documentclass\b/.test(text2)) candidates.push(name);
     } catch {
     } finally {
-      if (fd !== void 0) closeSync(fd);
+      if (fd !== void 0) closeSync2(fd);
     }
   }
   if (candidates.length === 1)
     return { main: candidates[0], how: "only document", candidates };
   if (candidates.length > 1) {
     const built = candidates.filter((c) => {
-      const stem = c.replace(/\.tex$/i, "");
+      const stem2 = c.replace(/\.tex$/i, "");
       return outputDirs.some(
-        (d) => ["log", "pdf"].some((ext) => isRegular(join2(root, d, `${stem}.${ext}`)))
+        (d) => ["log", "pdf"].some((ext) => isRegular(join2(root, d, `${stem2}.${ext}`)))
       );
     });
     if (built.length === 1)
@@ -16983,7 +17866,7 @@ var init_project = __esm({
 
 // ../packages/cli/src/config.ts
 import { existsSync as existsSync3, readdirSync as readdirSync2, readFileSync as readFileSync3 } from "node:fs";
-import { basename as basename2, dirname as dirname4, isAbsolute as isAbsolute3, join as join3, resolve as resolve2 } from "node:path";
+import { basename as basename2, dirname as dirname4, isAbsolute as isAbsolute3, join as join3, relative as relative4, resolve as resolve2 } from "node:path";
 function latexmkrcDirs(root) {
   const out = {};
   for (const name of [".latexmkrc", "latexmkrc"]) {
@@ -17006,27 +17889,27 @@ function stringList(v, field, file) {
   if (Array.isArray(v) && v.every((x) => typeof x === "string")) return v;
   throw new ConfigError(file, `\`${field}\` must be a string or a list of strings`);
 }
-function closest2(word, options) {
-  const dist = (a, b) => {
-    const d = Array.from(
-      { length: a.length + 1 },
-      (_, i) => [i, ...Array(b.length).fill(0)]
-    );
-    for (let j = 1; j <= b.length; j++) d[0][j] = j;
-    for (let i = 1; i <= a.length; i++) {
-      for (let j = 1; j <= b.length; j++) {
-        const row = d[i];
-        const prev = d[i - 1];
-        row[j] = Math.min(
-          prev[j] + 1,
-          row[j - 1] + 1,
-          prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-        );
-      }
+function editDistance2(a, b) {
+  const d = Array.from(
+    { length: a.length + 1 },
+    (_, i) => [i, ...Array(b.length).fill(0)]
+  );
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const row = d[i];
+      const prev = d[i - 1];
+      row[j] = Math.min(
+        prev[j] + 1,
+        row[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
     }
-    return d[a.length][b.length];
-  };
-  const best = options.map((o) => ({ o, d: dist(word.toLowerCase(), o.toLowerCase()) })).sort((x, y) => x.d - y.d)[0];
+  }
+  return d[a.length][b.length];
+}
+function closest2(word, options) {
+  const best = options.map((o) => ({ o, d: editDistance2(word.toLowerCase(), o.toLowerCase()) })).sort((x, y) => x.d - y.d)[0];
   return best && best.d <= Math.max(2, Math.floor(word.length / 3)) ? best.o : void 0;
 }
 function checkKeys(obj, allowed, where, file) {
@@ -17094,8 +17977,8 @@ function parseChecks(v, file, field = "checks") {
   }
   return list2;
 }
-function discoverBib(root, main3) {
-  const mainPath = join3(root, main3);
+function discoverBib(root, main2) {
+  const mainPath = join3(root, main2);
   if (existsSync3(mainPath)) {
     const src = readFileSync3(mainPath, "utf8").replace(/(^|[^\\])%.*$/gm, "$1");
     const found = [];
@@ -17107,7 +17990,7 @@ function discoverBib(root, main3) {
         if (name) found.push(name.endsWith(".bib") ? name : `${name}.bib`);
       }
     }
-    const rel2 = dirname4(main3);
+    const rel2 = dirname4(main2);
     const resolved = found.map((f) => rel2 === "." || isAbsolute3(f) ? f : join3(rel2, f));
     if (resolved.length) return [...new Set(resolved)];
   }
@@ -17136,7 +18019,9 @@ function loadConfig(cwd, explicit, env = {}, opts = {}) {
     } catch (err) {
       throw new ConfigError(
         file,
-        `invalid YAML: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`
+        // The whole message: its first line ends with "at line 2, column 5:" and the
+        // lines after it show where.
+        `invalid YAML: ${err instanceof Error ? err.message.trimEnd() : String(err)}`
       );
     }
     if (data !== null && data !== void 0 && !isObj2(data))
@@ -17150,43 +18035,43 @@ function loadConfig(cwd, explicit, env = {}, opts = {}) {
   if (raw.jobname !== void 0 && typeof raw.jobname !== "string")
     throw new ConfigError(f, "`jobname` must be a string");
   const rc = latexmkrcDirs(root);
-  let main3;
+  let main2;
   let mainSource;
   let mainCandidates;
   if (opts.main !== void 0) {
-    main3 = safeRelPath(opts.main);
+    main2 = safeRelPath(opts.main);
     mainSource = "--main";
-    if (!existsSync3(join3(root, main3))) throw new UsageError(`Main file not found: ${opts.main}`);
+    if (!existsSync3(join3(root, main2))) throw new UsageError(`Main file not found: ${opts.main}`);
   } else if (raw.main !== void 0) {
-    main3 = safeRelPath(raw.main);
+    main2 = safeRelPath(raw.main);
     mainSource = "overfull.yml";
   } else {
     const found = detectMain(root, [
       .../* @__PURE__ */ new Set([".", rc.outDir ?? ".", rc.auxDir ?? rc.outDir ?? "."])
     ]);
     if (found.main) {
-      main3 = found.main;
+      main2 = found.main;
       mainSource = found.how === "main.tex" ? "main.tex" : "detected";
     } else {
-      main3 = "main.tex";
+      main2 = "main.tex";
       mainSource = "default";
       if (found.candidates.length > 1) mainCandidates = found.candidates;
     }
   }
   const jobnameSource = raw.jobname !== void 0 ? "overfull.yml" : rc.jobname ? ".latexmkrc" : "main file";
   const jobname = safeJobname(
-    raw.jobname ?? rc.jobname ?? basename2(main3).replace(/\.tex$/i, "")
+    raw.jobname ?? rc.jobname ?? basename2(main2).replace(/\.tex$/i, "")
   );
-  const bib = raw.bib !== void 0 ? stringList(raw.bib, "bib", f) : discoverBib(root, main3);
-  let inline2 = {};
+  const bib = raw.bib !== void 0 ? stringList(raw.bib, "bib", f) : discoverBib(root, main2);
+  let inline3 = {};
   let profileName = "generic";
   if (typeof raw.profile === "string") profileName = raw.profile;
-  else if (isObj2(raw.profile)) inline2 = validateVenue(raw.profile, f);
+  else if (isObj2(raw.profile)) inline3 = validateVenue(raw.profile, f);
   else if (raw.profile !== void 0) throw new ConfigError(f, "`profile` must be a profile name");
-  if (raw.venue !== void 0) inline2 = { ...inline2, ...validateVenue(raw.venue, f) };
+  if (raw.venue !== void 0) inline3 = { ...inline3, ...validateVenue(raw.venue, f) };
   let profile;
   try {
-    profile = resolveProfile({ extends: inline2.extends ?? profileName, ...inline2 });
+    profile = resolveProfile({ extends: inline3.extends ?? profileName, ...inline3 });
   } catch (err) {
     if (err instanceof UnknownProfileError) throw new ConfigError(f, err.message);
     throw err;
@@ -17224,7 +18109,7 @@ function loadConfig(cwd, explicit, env = {}, opts = {}) {
   const auxDir = build2.outDir !== void 0 ? outDir : norm(safeRelPath(rc.auxDir ?? outDir, "aux directory"));
   const config = {
     root,
-    main: main3,
+    main: main2,
     mainSource,
     ...mainCandidates ? { mainCandidates } : {},
     jobname,
@@ -17233,7 +18118,7 @@ function loadConfig(cwd, explicit, env = {}, opts = {}) {
     jobnameFromConfig: jobnameSource !== "main file",
     jobnameSource,
     profile,
-    venue: inline2,
+    venue: inline3,
     checks,
     references: { ...mailto ? { mailto } : {}, ignore, cache: cache2, requireCite, reportUncited },
     build: { engine, image, outDir, auxDir, outDirFromConfig: build2.outDir !== void 0 }
@@ -17253,7 +18138,7 @@ var init_config = __esm({
     init_io();
     init_project();
     init_safety();
-    DEFAULT_IMAGE = "ghcr.io/amet13/overfull:3";
+    DEFAULT_IMAGE = "ghcr.io/amet13/overfull:3-slim";
     CONFIG_FILE = "overfull.yml";
     TOP_KEYS = ["main", "jobname", "bib", "profile", "checks", "references", "venue", "build"];
     VENUE_KEYS = [
@@ -17280,18 +18165,18 @@ var init_config = __esm({
 
 // ../packages/cli/src/tools.ts
 import { spawn } from "node:child_process";
-import { accessSync, constants as constants2 } from "node:fs";
-import { delimiter, join as join4 } from "node:path";
+import { accessSync, constants as constants3 } from "node:fs";
+import { delimiter, isAbsolute as isAbsolute4, join as join4, win32 } from "node:path";
 function which(cmd, env = process.env, opts = {}) {
   const win = (opts.platform ?? process.platform) === "win32";
   const exts = win ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((e) => e && (opts.allowBatch || !/^\.(bat|cmd)$/i.test(e))) : [""];
   const sepChar = win ? ";" : delimiter;
   for (const dir of (env.PATH ?? env.Path ?? "").split(sepChar)) {
-    if (!dir) continue;
+    if (!dir || !(win ? win32.isAbsolute(dir) : isAbsolute4(dir))) continue;
     for (const ext of exts) {
       const p = join4(dir, cmd + ext);
       try {
-        accessSync(p, win ? constants2.F_OK : constants2.X_OK);
+        accessSync(p, win ? constants3.F_OK : constants3.X_OK);
         return p;
       } catch {
       }
@@ -17299,12 +18184,34 @@ function which(cmd, env = process.env, opts = {}) {
   }
   return void 0;
 }
+function resolveCommand(cmd, env = process.env, opts = {}) {
+  if (/[\\/]/.test(cmd)) return cmd;
+  return which(cmd, env, opts);
+}
 function run(cmd, args, opts = {}) {
+  const lookupEnv = opts.env && (opts.env.PATH ?? opts.env.Path) ? opts.env : process.env;
+  const program = resolveCommand(cmd, lookupEnv, { allowBatch: opts.shell === true });
+  if (!program) {
+    return Promise.resolve({
+      code: 127,
+      stdout: "",
+      stderr: "",
+      error: `${cmd} was not found on PATH`
+    });
+  }
+  let file = program;
+  if (opts.shell && process.platform === "win32") {
+    try {
+      file = quoteWindowsArg(program);
+    } catch (err) {
+      return Promise.resolve({ code: 127, stdout: "", stderr: "", error: String(err) });
+    }
+  }
   return new Promise((resolvePromise) => {
     let stdout = "";
     let stderr = "";
     let pending = "";
-    const child = spawn(cmd, args, {
+    const child = spawn(file, args, {
       cwd: opts.cwd,
       env: opts.env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -17338,9 +18245,14 @@ function run(cmd, args, opts = {}) {
   });
 }
 async function dockerAvailable(env) {
-  if (!which("docker", env)) return false;
-  const r = await run("docker", ["info", "--format", "{{.ServerVersion}}"], { timeoutMs: 8e3 });
+  if (dockerDisabled(env)) return false;
+  const docker = which("docker", env);
+  if (!docker) return false;
+  const r = await run(docker, ["info", "--format", "{{.ServerVersion}}"], { timeoutMs: 8e3 });
   return r.code === 0;
+}
+function dockerDisabled(env = process.env) {
+  return env.OVERFULL_NO_DOCKER === "1";
 }
 function quoteWindowsArg(arg) {
   if (/["%!^&|<>\r\n]/.test(arg)) throw new Error(`Unsupported character in argument: ${arg}`);
@@ -19312,7 +20224,7 @@ async function JBig2(moduleArg = {}) {
     h: _setImageData,
     f: _setLineData
   };
-  async function run2() {
+  async function run3() {
     preRun();
     var setStatus = Module["setStatus"];
     if (setStatus) {
@@ -19327,7 +20239,7 @@ async function JBig2(moduleArg = {}) {
   }
   var wasmExports;
   wasmExports = await createWasm();
-  await run2();
+  await run3();
   return Module;
 }
 async function OpenJPEG(moduleArg = {}) {
@@ -19595,7 +20507,7 @@ async function OpenJPEG(moduleArg = {}) {
     f: _setImageData,
     a: _storeErrorMessage
   };
-  async function run2() {
+  async function run3() {
     preRun();
     var setStatus = Module["setStatus"];
     if (setStatus) {
@@ -19610,7 +20522,7 @@ async function OpenJPEG(moduleArg = {}) {
   }
   var wasmExports;
   wasmExports = await createWasm();
-  await run2();
+  await run3();
   return Module;
 }
 function getInlineImageCacheKey(bytes) {
@@ -25774,20 +26686,20 @@ var init_pdf_worker = __esm({
       };
     });
     an_object_or_undefined_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var $String = String;
       var $TypeError = TypeError;
       module.exports = function(argument) {
-        if (argument === void 0 || isObject(argument)) return argument;
+        if (argument === void 0 || isObject2(argument)) return argument;
         throw new $TypeError($String(argument) + " is not an object or undefined");
       };
     });
     an_object_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var $String = String;
       var $TypeError = TypeError;
       module.exports = function(argument) {
-        if (isObject(argument)) return argument;
+        if (isObject2(argument)) return argument;
         throw new $TypeError($String(argument) + " is not an object");
       };
     });
@@ -25841,7 +26753,7 @@ var init_pdf_worker = __esm({
       var DESCRIPTORS = descriptors_namespaceFn();
       var globalThis2 = global_this_namespaceFn();
       var isCallable = is_callable_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var hasOwn = has_own_property_namespaceFn();
       var classof = classof_namespaceFn();
       var tryToString = try_to_string_namespaceFn();
@@ -25886,18 +26798,18 @@ var init_pdf_worker = __esm({
         BigUint64Array: 8
       };
       var isView = function isView2(it) {
-        if (!isObject(it)) return false;
+        if (!isObject2(it)) return false;
         var klass = classof(it);
         return klass === "DataView" || hasOwn(TypedArrayConstructorsList, klass) || hasOwn(BigIntArrayConstructorsList, klass);
       };
       var getTypedArrayConstructor = function(it) {
         var proto = getPrototypeOf(it);
-        if (!isObject(proto)) return;
+        if (!isObject2(proto)) return;
         var state = getInternalState(proto);
         return state && hasOwn(state, TYPED_ARRAY_CONSTRUCTOR) ? state[TYPED_ARRAY_CONSTRUCTOR] : getTypedArrayConstructor(proto);
       };
       var isTypedArray = function(it) {
-        if (!isObject(it)) return false;
+        if (!isObject2(it)) return false;
         var klass = classof(it);
         return hasOwn(TypedArrayConstructorsList, klass) || hasOwn(BigIntArrayConstructorsList, klass);
       };
@@ -25984,7 +26896,7 @@ var init_pdf_worker = __esm({
         defineBuiltInAccessor(TypedArrayPrototype, TO_STRING_TAG, {
           configurable: true,
           get: function() {
-            return isObject(this) ? this[TYPED_ARRAY_TAG] : void 0;
+            return isObject2(this) ? this[TYPED_ARRAY_TAG] : void 0;
           }
         });
         for (NAME in TypedArrayConstructorsList) if (globalThis2[NAME]) {
@@ -26241,9 +27153,9 @@ var init_pdf_worker = __esm({
     });
     document_create_element_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var globalThis2 = global_this_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var document2 = globalThis2.document;
-      var EXISTS = isObject(document2) && isObject(document2.createElement);
+      var EXISTS = isObject2(document2) && isObject2(document2.createElement);
       module.exports = function(it) {
         return EXISTS ? document2.createElement(it) : {};
       };
@@ -26574,7 +27486,7 @@ var init_pdf_worker = __esm({
     internal_state_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var NATIVE_WEAK_MAP = weak_map_basic_detection_namespaceFn();
       var globalThis2 = global_this_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var createNonEnumerableProperty = create_non_enumerable_property_namespaceFn();
       var hasOwn = has_own_property_namespaceFn();
       var shared = shared_store_namespaceFn();
@@ -26590,7 +27502,7 @@ var init_pdf_worker = __esm({
       var getterFor = function(TYPE) {
         return function(it) {
           var state;
-          if (!isObject(it) || (state = get(it)).type !== TYPE) {
+          if (!isObject2(it) || (state = get(it)).type !== TYPE) {
             throw new TypeError2("Incompatible receiver, " + TYPE + " required");
           }
           return state;
@@ -26693,19 +27605,19 @@ var init_pdf_worker = __esm({
       };
     });
     is_possible_prototype_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       module.exports = function(argument) {
-        return isObject(argument) || argument === null;
+        return isObject2(argument) || argument === null;
       };
     });
     is_pure_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       module.exports = false;
     });
     is_raw_json_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var getInternalState = internal_state_namespaceFn().get;
       module.exports = function isRawJSON(O) {
-        if (!isObject(O)) return false;
+        if (!isObject2(O)) return false;
         var state = getInternalState(O);
         return !!state && state.type === "RawJSON";
       };
@@ -26959,7 +27871,7 @@ var init_pdf_worker = __esm({
     iterators_core_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var fails = fails_namespaceFn();
       var isCallable = is_callable_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var create = object_create_namespaceFn();
       var getPrototypeOf = object_get_prototype_of_namespaceFn();
       var defineBuiltIn = define_built_in_namespaceFn();
@@ -26976,7 +27888,7 @@ var init_pdf_worker = __esm({
           if (PrototypeOfArrayIteratorPrototype !== Object.prototype) IteratorPrototype = PrototypeOfArrayIteratorPrototype;
         }
       }
-      var NEW_ITERATOR_PROTOTYPE = !isObject(IteratorPrototype) || fails(function() {
+      var NEW_ITERATOR_PROTOTYPE = !isObject2(IteratorPrototype) || fails(function() {
         var test = {};
         return IteratorPrototype[ITERATOR].call(test) !== test;
       });
@@ -27301,7 +28213,7 @@ var init_pdf_worker = __esm({
     });
     object_set_prototype_of_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var uncurryThisAccessor = function_uncurry_this_accessor_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var requireObjectCoercible = require_object_coercible_namespaceFn();
       var aPossiblePrototype = a_possible_prototype_namespaceFn();
       module.exports = Object.setPrototypeOf || ("__proto__" in {} ? (function() {
@@ -27317,7 +28229,7 @@ var init_pdf_worker = __esm({
         return function setPrototypeOf(O, proto) {
           requireObjectCoercible(O);
           aPossiblePrototype(proto);
-          if (!isObject(O)) return O;
+          if (!isObject2(O)) return O;
           if (CORRECT_SETTER) setter(O, proto);
           else O.__proto__ = proto;
           return O;
@@ -27327,13 +28239,13 @@ var init_pdf_worker = __esm({
     ordinary_to_primitive_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var call = function_call_namespaceFn();
       var isCallable = is_callable_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var $TypeError = TypeError;
       module.exports = function(input2, pref) {
         var fn, val;
-        if (pref === "string" && isCallable(fn = input2.toString) && !isObject(val = call(fn, input2))) return val;
-        if (isCallable(fn = input2.valueOf) && !isObject(val = call(fn, input2))) return val;
-        if (pref !== "string" && isCallable(fn = input2.toString) && !isObject(val = call(fn, input2))) return val;
+        if (pref === "string" && isCallable(fn = input2.toString) && !isObject2(val = call(fn, input2))) return val;
+        if (isCallable(fn = input2.valueOf) && !isObject2(val = call(fn, input2))) return val;
+        if (pref !== "string" && isCallable(fn = input2.toString) && !isObject2(val = call(fn, input2))) return val;
         throw new $TypeError("Can't convert object to primitive value");
       };
     });
@@ -27407,11 +28319,11 @@ var init_pdf_worker = __esm({
     };
     promise_resolve_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var anObject = an_object_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var newPromiseCapability = new_promise_capability_namespaceFn();
       module.exports = function(C, x) {
         anObject(C);
-        if (isObject(x) && x.constructor === C) return x;
+        if (isObject2(x) && x.constructor === C) return x;
         var promiseCapability = newPromiseCapability.f(C);
         var resolve5 = promiseCapability.resolve;
         resolve5(x);
@@ -27735,7 +28647,7 @@ var init_pdf_worker = __esm({
     };
     to_primitive_namespaceFn = /* @__PURE__ */ __webpack_require__.cw((module) => {
       var call = function_call_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var isSymbol = is_symbol_namespaceFn();
       var getMethod = get_method_namespaceFn();
       var ordinaryToPrimitive = ordinary_to_primitive_namespaceFn();
@@ -27743,13 +28655,13 @@ var init_pdf_worker = __esm({
       var $TypeError = TypeError;
       var TO_PRIMITIVE = wellKnownSymbol("toPrimitive");
       module.exports = function(input2, pref) {
-        if (!isObject(input2) || isSymbol(input2)) return input2;
+        if (!isObject2(input2) || isSymbol(input2)) return input2;
         var exoticToPrim = getMethod(input2, TO_PRIMITIVE);
         var result;
         if (exoticToPrim) {
           if (pref === void 0) pref = "default";
           result = call(exoticToPrim, input2, pref);
-          if (!isObject(result) || isSymbol(result)) return result;
+          if (!isObject2(result) || isSymbol(result)) return result;
           throw new $TypeError("Can't convert object to primitive value");
         }
         if (pref === void 0) pref = "number";
@@ -28413,7 +29325,7 @@ var init_pdf_worker = __esm({
       var fails = fails_namespaceFn();
       var isArray = is_array_namespaceFn();
       var isCallable = is_callable_namespaceFn();
-      var isObject = is_object_namespaceFn();
+      var isObject2 = is_object_namespaceFn();
       var create = object_create_namespaceFn();
       var isRawJSON = is_raw_json_namespaceFn();
       var isSymbol = is_symbol_namespaceFn();
@@ -28503,7 +29415,7 @@ var init_pdf_worker = __esm({
         return kind === "Number" && hasInternalSlot(thisNumberValue, it) || kind === "String" && hasInternalSlot(stringValueOf, it) || kind === "Boolean" && hasInternalSlot(booleanValueOf, it) || !!bigIntValueOf && kind === "BigInt" && hasInternalSlot(bigIntValueOf, it);
       };
       var isSerializedAsObject = function(it) {
-        if (!isObject(it) || isCallable(it) || isArray(it)) return false;
+        if (!isObject2(it) || isCallable(it) || isArray(it)) return false;
         try {
           return !isBoxedPrimitive(it);
         } catch (error) {
@@ -28514,7 +29426,7 @@ var init_pdf_worker = __esm({
         return {
           toJSON: function() {
             var element = holder[key];
-            if (isObject(element) || typeof element == "bigint") {
+            if (isObject2(element) || typeof element == "bigint") {
               var elementToJSON = element.toJSON;
               if (isCallable(elementToJSON)) element = call(elementToJSON, element, key);
             }
@@ -52224,13 +53136,13 @@ var init_pdf_worker = __esm({
         for (let i = 2; i < NUMBER_OF_SAMPLES; i++) {
           const rgbOffset = i * 3;
           const r = rgb[rgbOffset], g = rgb[rgbOffset + 1], b = rgb[rgbOffset + 2];
-          const run2 = i - iBase;
-          maxSlopeR = Math.min(maxSlopeR, (r - rBase + 1) / run2);
-          maxSlopeG = Math.min(maxSlopeG, (g - gBase + 1) / run2);
-          maxSlopeB = Math.min(maxSlopeB, (b - bBase + 1) / run2);
-          minSlopeR = Math.max(minSlopeR, (r - rBase - 1) / run2);
-          minSlopeG = Math.max(minSlopeG, (g - gBase - 1) / run2);
-          minSlopeB = Math.max(minSlopeB, (b - bBase - 1) / run2);
+          const run3 = i - iBase;
+          maxSlopeR = Math.min(maxSlopeR, (r - rBase + 1) / run3);
+          maxSlopeG = Math.min(maxSlopeG, (g - gBase + 1) / run3);
+          maxSlopeB = Math.min(maxSlopeB, (b - bBase + 1) / run3);
+          minSlopeR = Math.max(minSlopeR, (r - rBase - 1) / run3);
+          minSlopeG = Math.max(minSlopeG, (g - gBase - 1) / run3);
+          minSlopeB = Math.max(minSlopeB, (b - bBase - 1) / run3);
           const slopesExist = minSlopeR <= maxSlopeR && minSlopeG <= maxSlopeG && minSlopeB <= maxSlopeB;
           if (!slopesExist) {
             const cssColor = Util.makeHexColor(rPrev, gPrev, bPrev);
@@ -87339,20 +88251,20 @@ var init_pdf2 = __esm({
       };
     });
     an_object_or_undefined_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var $String = String;
       var $TypeError = TypeError;
       module.exports = function(argument) {
-        if (argument === void 0 || isObject(argument)) return argument;
+        if (argument === void 0 || isObject2(argument)) return argument;
         throw new $TypeError($String(argument) + " is not an object or undefined");
       };
     });
     an_object_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var $String = String;
       var $TypeError = TypeError;
       module.exports = function(argument) {
-        if (isObject(argument)) return argument;
+        if (isObject2(argument)) return argument;
         throw new $TypeError($String(argument) + " is not an object");
       };
     });
@@ -87406,7 +88318,7 @@ var init_pdf2 = __esm({
       var DESCRIPTORS = descriptors_namespaceFn2();
       var globalThis2 = global_this_namespaceFn2();
       var isCallable = is_callable_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var hasOwn = has_own_property_namespaceFn2();
       var classof = classof_namespaceFn2();
       var tryToString = try_to_string_namespaceFn2();
@@ -87451,18 +88363,18 @@ var init_pdf2 = __esm({
         BigUint64Array: 8
       };
       var isView = function isView2(it) {
-        if (!isObject(it)) return false;
+        if (!isObject2(it)) return false;
         var klass = classof(it);
         return klass === "DataView" || hasOwn(TypedArrayConstructorsList, klass) || hasOwn(BigIntArrayConstructorsList, klass);
       };
       var getTypedArrayConstructor = function(it) {
         var proto = getPrototypeOf(it);
-        if (!isObject(proto)) return;
+        if (!isObject2(proto)) return;
         var state = getInternalState(proto);
         return state && hasOwn(state, TYPED_ARRAY_CONSTRUCTOR) ? state[TYPED_ARRAY_CONSTRUCTOR] : getTypedArrayConstructor(proto);
       };
       var isTypedArray = function(it) {
-        if (!isObject(it)) return false;
+        if (!isObject2(it)) return false;
         var klass = classof(it);
         return hasOwn(TypedArrayConstructorsList, klass) || hasOwn(BigIntArrayConstructorsList, klass);
       };
@@ -87549,7 +88461,7 @@ var init_pdf2 = __esm({
         defineBuiltInAccessor(TypedArrayPrototype, TO_STRING_TAG, {
           configurable: true,
           get: function() {
-            return isObject(this) ? this[TYPED_ARRAY_TAG] : void 0;
+            return isObject2(this) ? this[TYPED_ARRAY_TAG] : void 0;
           }
         });
         for (NAME in TypedArrayConstructorsList) if (globalThis2[NAME]) {
@@ -87806,9 +88718,9 @@ var init_pdf2 = __esm({
     });
     document_create_element_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var globalThis2 = global_this_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var document2 = globalThis2.document;
-      var EXISTS = isObject(document2) && isObject(document2.createElement);
+      var EXISTS = isObject2(document2) && isObject2(document2.createElement);
       module.exports = function(it) {
         return EXISTS ? document2.createElement(it) : {};
       };
@@ -88145,14 +89057,14 @@ var init_pdf2 = __esm({
     });
     inherit_if_required_namespaceFn = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var isCallable = is_callable_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var setPrototypeOf = object_set_prototype_of_namespaceFn2();
       module.exports = function($this, dummy, Wrapper) {
         var NewTarget, NewTargetPrototype;
         if (
           // it can work only with native `setPrototypeOf`
           setPrototypeOf && // we haven't completely correct pre-ES6 way for getting `new.target`, so use this
-          isCallable(NewTarget = dummy.constructor) && NewTarget !== Wrapper && isObject(NewTargetPrototype = NewTarget.prototype) && NewTargetPrototype !== Wrapper.prototype
+          isCallable(NewTarget = dummy.constructor) && NewTarget !== Wrapper && isObject2(NewTargetPrototype = NewTarget.prototype) && NewTargetPrototype !== Wrapper.prototype
         ) setPrototypeOf($this, NewTargetPrototype);
         return $this;
       };
@@ -88172,7 +89084,7 @@ var init_pdf2 = __esm({
     internal_state_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var NATIVE_WEAK_MAP = weak_map_basic_detection_namespaceFn2();
       var globalThis2 = global_this_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var createNonEnumerableProperty = create_non_enumerable_property_namespaceFn2();
       var hasOwn = has_own_property_namespaceFn2();
       var shared = shared_store_namespaceFn2();
@@ -88188,7 +89100,7 @@ var init_pdf2 = __esm({
       var getterFor = function(TYPE) {
         return function(it) {
           var state;
-          if (!isObject(it) || (state = get(it)).type !== TYPE) {
+          if (!isObject2(it) || (state = get(it)).type !== TYPE) {
             throw new TypeError2("Incompatible receiver, " + TYPE + " required");
           }
           return state;
@@ -88291,19 +89203,19 @@ var init_pdf2 = __esm({
       };
     });
     is_possible_prototype_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       module.exports = function(argument) {
-        return isObject(argument) || argument === null;
+        return isObject2(argument) || argument === null;
       };
     });
     is_pure_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       module.exports = false;
     });
     is_raw_json_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var getInternalState = internal_state_namespaceFn2().get;
       module.exports = function isRawJSON(O) {
-        if (!isObject(O)) return false;
+        if (!isObject2(O)) return false;
         var state = getInternalState(O);
         return !!state && state.type === "RawJSON";
       };
@@ -88557,7 +89469,7 @@ var init_pdf2 = __esm({
     iterators_core_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var fails = fails_namespaceFn2();
       var isCallable = is_callable_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var create = object_create_namespaceFn2();
       var getPrototypeOf = object_get_prototype_of_namespaceFn2();
       var defineBuiltIn = define_built_in_namespaceFn2();
@@ -88574,7 +89486,7 @@ var init_pdf2 = __esm({
           if (PrototypeOfArrayIteratorPrototype !== Object.prototype) IteratorPrototype = PrototypeOfArrayIteratorPrototype;
         }
       }
-      var NEW_ITERATOR_PROTOTYPE = !isObject(IteratorPrototype) || fails(function() {
+      var NEW_ITERATOR_PROTOTYPE = !isObject2(IteratorPrototype) || fails(function() {
         var test = {};
         return IteratorPrototype[ITERATOR].call(test) !== test;
       });
@@ -88908,7 +89820,7 @@ var init_pdf2 = __esm({
     });
     object_set_prototype_of_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var uncurryThisAccessor = function_uncurry_this_accessor_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var requireObjectCoercible = require_object_coercible_namespaceFn2();
       var aPossiblePrototype = a_possible_prototype_namespaceFn2();
       module.exports = Object.setPrototypeOf || ("__proto__" in {} ? (function() {
@@ -88924,7 +89836,7 @@ var init_pdf2 = __esm({
         return function setPrototypeOf(O, proto) {
           requireObjectCoercible(O);
           aPossiblePrototype(proto);
-          if (!isObject(O)) return O;
+          if (!isObject2(O)) return O;
           if (CORRECT_SETTER) setter(O, proto);
           else O.__proto__ = proto;
           return O;
@@ -88934,13 +89846,13 @@ var init_pdf2 = __esm({
     ordinary_to_primitive_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var call = function_call_namespaceFn2();
       var isCallable = is_callable_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var $TypeError = TypeError;
       module.exports = function(input2, pref) {
         var fn, val;
-        if (pref === "string" && isCallable(fn = input2.toString) && !isObject(val = call(fn, input2))) return val;
-        if (isCallable(fn = input2.valueOf) && !isObject(val = call(fn, input2))) return val;
-        if (pref !== "string" && isCallable(fn = input2.toString) && !isObject(val = call(fn, input2))) return val;
+        if (pref === "string" && isCallable(fn = input2.toString) && !isObject2(val = call(fn, input2))) return val;
+        if (isCallable(fn = input2.valueOf) && !isObject2(val = call(fn, input2))) return val;
+        if (pref !== "string" && isCallable(fn = input2.toString) && !isObject2(val = call(fn, input2))) return val;
         throw new $TypeError("Can't convert object to primitive value");
       };
     });
@@ -89014,11 +89926,11 @@ var init_pdf2 = __esm({
     };
     promise_resolve_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var anObject = an_object_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var newPromiseCapability = new_promise_capability_namespaceFn2();
       module.exports = function(C, x) {
         anObject(C);
-        if (isObject(x) && x.constructor === C) return x;
+        if (isObject2(x) && x.constructor === C) return x;
         var promiseCapability = newPromiseCapability.f(C);
         var resolve5 = promiseCapability.resolve;
         resolve5(x);
@@ -89345,7 +90257,7 @@ var init_pdf2 = __esm({
     };
     to_primitive_namespaceFn2 = /* @__PURE__ */ __webpack_require__2.cw((module) => {
       var call = function_call_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var isSymbol = is_symbol_namespaceFn2();
       var getMethod = get_method_namespaceFn2();
       var ordinaryToPrimitive = ordinary_to_primitive_namespaceFn2();
@@ -89353,13 +90265,13 @@ var init_pdf2 = __esm({
       var $TypeError = TypeError;
       var TO_PRIMITIVE = wellKnownSymbol("toPrimitive");
       module.exports = function(input2, pref) {
-        if (!isObject(input2) || isSymbol(input2)) return input2;
+        if (!isObject2(input2) || isSymbol(input2)) return input2;
         var exoticToPrim = getMethod(input2, TO_PRIMITIVE);
         var result;
         if (exoticToPrim) {
           if (pref === void 0) pref = "default";
           result = call(exoticToPrim, input2, pref);
-          if (!isObject(result) || isSymbol(result)) return result;
+          if (!isObject2(result) || isSymbol(result)) return result;
           throw new $TypeError("Can't convert object to primitive value");
         }
         if (pref === void 0) pref = "number";
@@ -90139,7 +91051,7 @@ var init_pdf2 = __esm({
       var uncurryThis = function_uncurry_this_namespaceFn2();
       var call = function_call_namespaceFn2();
       var isCallable = is_callable_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var isArray = is_array_namespaceFn2();
       var hasOwn = has_own_property_namespaceFn2();
       var toString = to_string_namespaceFn2();
@@ -90180,7 +91092,7 @@ var init_pdf2 = __esm({
         var unmodified = node && val === node.value;
         var context = unmodified && typeof node.source == "string" ? { source: node.source } : {};
         var elementRecordsLen, keys, len, i, P;
-        if (isObject(val)) {
+        if (isObject2(val)) {
           var nodeIsArray = isArray(val);
           var nodes = unmodified ? node.nodes : nodeIsArray ? [] : {};
           if (nodeIsArray) {
@@ -90384,7 +91296,7 @@ var init_pdf2 = __esm({
       var fails = fails_namespaceFn2();
       var isArray = is_array_namespaceFn2();
       var isCallable = is_callable_namespaceFn2();
-      var isObject = is_object_namespaceFn2();
+      var isObject2 = is_object_namespaceFn2();
       var create = object_create_namespaceFn2();
       var isRawJSON = is_raw_json_namespaceFn2();
       var isSymbol = is_symbol_namespaceFn2();
@@ -90474,7 +91386,7 @@ var init_pdf2 = __esm({
         return kind === "Number" && hasInternalSlot(thisNumberValue, it) || kind === "String" && hasInternalSlot(stringValueOf, it) || kind === "Boolean" && hasInternalSlot(booleanValueOf, it) || !!bigIntValueOf && kind === "BigInt" && hasInternalSlot(bigIntValueOf, it);
       };
       var isSerializedAsObject = function(it) {
-        if (!isObject(it) || isCallable(it) || isArray(it)) return false;
+        if (!isObject2(it) || isCallable(it) || isArray(it)) return false;
         try {
           return !isBoxedPrimitive(it);
         } catch (error) {
@@ -90485,7 +91397,7 @@ var init_pdf2 = __esm({
         return {
           toJSON: function() {
             var element = holder[key];
-            if (isObject(element) || typeof element == "bigint") {
+            if (isObject2(element) || typeof element == "bigint") {
               var elementToJSON = element.toJSON;
               if (isCallable(elementToJSON)) element = call(elementToJSON, element, key);
             }
@@ -118288,7 +119200,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
 
 // ../packages/cli/src/pdf.ts
 import { readFileSync as readFileSync4 } from "node:fs";
-import { relative as relative4 } from "node:path";
+import { relative as relative5 } from "node:path";
 function loadPdfjs() {
   pdfjsPromise ??= (async () => {
     const warn3 = console.warn;
@@ -118310,13 +119222,15 @@ function loadPdfjs() {
 async function readPdfFacts(path, opts = {}) {
   const data = new Uint8Array(readFileSync4(path));
   const facts = await extractPdfFacts(data, await loadPdfjs());
-  if (which("pdffonts")) {
-    const r = await run("pdffonts", [path], { timeoutMs: 3e4 });
+  const pdffonts = which("pdffonts");
+  const docker = pdffonts ? void 0 : opts.docker && which("docker");
+  if (pdffonts) {
+    const r = await run(pdffonts, [path], { timeoutMs: 3e4 });
     if (r.code === 0) facts.fonts = parsePdffonts(r.stdout);
-  } else if (opts.docker) {
-    const rel2 = `./${relative4(opts.docker.root, path).split("\\").join("/")}`;
+  } else if (opts.docker && docker) {
+    const rel2 = `./${relative5(opts.docker.root, path).split("\\").join("/")}`;
     const r = await run(
-      "docker",
+      docker,
       dockerToolArgs(opts.docker.image, opts.docker.root, "pdffonts", [rel2]),
       {
         timeoutMs: 6e4
@@ -118336,7 +119250,7 @@ var init_pdf3 = __esm({
 });
 
 // ../packages/cli/src/verapdf.ts
-import { relative as relative5 } from "node:path";
+import { relative as relative6 } from "node:path";
 function verapdfFlavour(pdfuaPart) {
   return pdfuaPart === 1 ? "ua1" : "ua2";
 }
@@ -118354,18 +119268,22 @@ async function runVeraPdf(pdf, env, opts = {}) {
       } catch (err) {
         return { compliant: false, failures: [], error: String(err) };
       }
-      r = win ? await run("verapdf", quoted, {
+      r = win ? await run(local, quoted, {
         timeoutMs: 18e4,
         shell: true
-      }) : await run("verapdf", [...args, pdf.startsWith("-") ? `./${pdf}` : pdf], {
+      }) : await run(local, [...args, pdf.startsWith("-") ? `./${pdf}` : pdf], {
         timeoutMs: 18e4
       });
     } else {
       const { image, root } = opts.docker;
-      const rel2 = `./${relative5(root, pdf).split("\\").join("/")}`;
-      r = await run("docker", dockerToolArgs(image, root, "verapdf", [...args, rel2]), {
-        timeoutMs: 3e5
-      });
+      const rel2 = `./${relative6(root, pdf).split("\\").join("/")}`;
+      r = await run(
+        which("docker", env) ?? "docker",
+        dockerToolArgs(image, root, "verapdf", [...args, rel2]),
+        {
+          timeoutMs: 3e5
+        }
+      );
       if (r.code === 125)
         return {
           compliant: false,
@@ -118401,7 +119319,7 @@ var init_version = __esm({
 
 // ../packages/cli/src/check.ts
 import { existsSync as existsSync4 } from "node:fs";
-import { join as join5, relative as relative6 } from "node:path";
+import { join as join5, relative as relative7 } from "node:path";
 function sourcesOf(inp) {
   if (!inp.sources) {
     const files = listFiles(inp.root);
@@ -118484,16 +119402,7 @@ function missingPdfReason(inp) {
   if (inp.factsError) return `Could not read ${inp.pdfPath}: ${inp.factsError}`;
   return missingReason(inp, inp.pdfPath);
 }
-function mergeOutput(output, pdfProblems) {
-  const has = (re) => output.problems.some((p) => re.test(p.rule));
-  const extra = pdfProblems.filter(
-    (p) => p.rule === "pdf-unresolved-reference" ? !has(/undefined-reference|reference-undefined/) : !has(/undefined-citation|citation-undefined/)
-  );
-  if (extra.length === 0) return output;
-  const problems = [...output.problems, ...extra];
-  return { ...output, status: statusOf(problems), problems, summary: outputSummary(problems) };
-}
-function bibliographyAttribution(config, bib = config.bib) {
+function bibliographyAttribution(config, bib = config.bib, texFiles) {
   const root = config.root;
   const bblRel = join5(config.build.auxDir, `${config.jobname}.bbl`).split("\\").join("/");
   const bblAbs = insideRootOrUndefined(root, bblRel);
@@ -118514,7 +119423,8 @@ function bibliographyAttribution(config, bib = config.bib) {
     }
   }
   const bbl = { path: bblRel.replace(/^\.\//, ""), text: bblText };
-  return (problems) => attributeBibliography(problems, { bbl, bibs });
+  const tex = texFiles ?? readTexFiles(root, listFiles(root));
+  return (problems) => attributeBibliography(problems, { bbl, bibs, texFiles: tex });
 }
 function buildAndOutput(inp, wanted) {
   const out = [];
@@ -118535,7 +119445,7 @@ function buildAndOutput(inp, wanted) {
     return out;
   }
   const analyzed = analyzeLog(inp.log, { root: inp.root });
-  const attribute = bibliographyAttribution(inp.config);
+  const attribute = bibliographyAttribution(inp.config, inp.config.bib, sourcesOf(inp).texFiles);
   const build2 = { ...analyzed.build, problems: attribute(analyzed.build.problems) };
   const output = { ...analyzed.output, problems: attribute(analyzed.output.problems) };
   if (wanted.has("build")) out.push(build2);
@@ -118545,15 +119455,15 @@ function buildAndOutput(inp, wanted) {
 }
 async function references(inp, opts) {
   const { config, root } = inp;
-  const bibFiles = opts.bib ?? config.bib;
-  if (bibFiles.length === 0)
+  const bibFiles2 = opts.bib ?? config.bib;
+  if (bibFiles2.length === 0)
     return skipped2("references", "No .bib file found (set `bib:` in overfull.yml)");
   const entries = [];
   const parseProblems = [];
   const missingFiles = [];
   const discovered = !opts.bib && config.bibDiscovered;
   const outside = [];
-  for (const file of bibFiles) {
+  for (const file of bibFiles2) {
     const abs = discovered ? insideRootOrUndefined(root, file) : insideRoot(root, file, "Bibliography file");
     if (abs === void 0) {
       outside.push(file);
@@ -118585,7 +119495,7 @@ async function references(inp, opts) {
     fix: "Pass it explicitly with `--bib` from a directory that contains it, or move it into the project.",
     data: { file: f }
   }));
-  if (missingFiles.length + outside.length === bibFiles.length) {
+  if (missingFiles.length + outside.length === bibFiles2.length) {
     if (!outside.length)
       return skipped2("references", `Bibliography not found: ${missingFiles.join(", ")}`);
     return {
@@ -118616,8 +119526,18 @@ async function references(inp, opts) {
   const env = opts.env ?? process.env;
   let cache2;
   if (opts.cache !== false) {
-    const path = refsCachePath(root, config.references.cache, env);
-    const project = config.references.cache === "project";
+    const mode = refsCacheMode(opts.projectCache, env);
+    const path = refsCachePath(root, mode, env);
+    const project = mode === "project";
+    if (config.references.cache === "project" && !project) {
+      extra.push({
+        rule: "refs-cache-ignored",
+        check: "references",
+        severity: "info",
+        message: "Ignored `references.cache: project` in overfull.yml: a project cannot choose to trust its own cache",
+        fix: "Use `--project-cache` or set OVERFULL_REFS_CACHE=project in your environment if you want the cache in .overfull/."
+      });
+    }
     const link = project ? symlinkOnPath(root, path) : void 0;
     if (project && isCI(env)) {
       cache2 = new MemoryCache();
@@ -118637,7 +119557,7 @@ async function references(inp, opts) {
         check: "references",
         severity: "info",
         message: `Ignored ${rel(root, path)}: ${rel(root, link)} is a symlink, so the cache may be a file from the repository`,
-        fix: "Replace the symlink with a real directory, or drop `references.cache: project`."
+        fix: "Replace the symlink with a real directory, or drop `--project-cache` / OVERFULL_REFS_CACHE=project."
       });
     } else cache2 = new FileCache(path);
   }
@@ -118656,9 +119576,10 @@ async function references(inp, opts) {
     ignore: config.references.ignore,
     ...config.references.requireCite ? { requireProvenance: true } : {},
     // The CLI asks CrossRef about retractions; the core library leaves it off by default.
-    checkRetractions: true
+    checkRetractions: true,
+    ...testRefsTiming(env)
   };
-  const results = await verifyEntries(toVerify, refsOptions);
+  const results = await verifyWithMemo(toVerify, refsOptions, opts.refsMemo);
   cache2?.save();
   const result = refsCheck(results, {
     entries: toVerify,
@@ -118673,6 +119594,21 @@ async function references(inp, opts) {
     return { ...result, status: statusOf(result.problems) };
   }
   return result;
+}
+async function verifyWithMemo(entries, refsOptions, memo) {
+  if (!memo) return verifyEntries(entries, refsOptions);
+  const todo = entries.filter((e) => !memo.has(memoKey(e)));
+  const fresh = todo.length ? await verifyEntries(todo, refsOptions) : [];
+  todo.forEach((e, i) => {
+    const r = fresh[i];
+    if (r && keepable(r)) memo.set(memoKey(e), r);
+  });
+  let next = 0;
+  return entries.map((e) => {
+    if (todo[next] === e) return fresh[next++];
+    const { location: _old, ...kept } = memo.get(memoKey(e));
+    return e.line ? { ...kept, location: { line: e.line, ...e.file ? { file: e.file } : {} } } : kept;
+  });
 }
 function buildFailed(inp, results) {
   const build2 = results.find((r) => r.check === "build");
@@ -118709,6 +119645,18 @@ async function accessibility(inp, opts, results) {
     ...verapdf === null ? { verapdfNotRun: await verapdfNotRun(opts) } : {}
   });
 }
+function arxivBbl(config, files) {
+  if (!config.profile.arxiv) return {};
+  const path = config.main.replace(/\.tex$/i, ".bbl");
+  if (!files.includes(path)) return {};
+  const abs = insideRootOrUndefined(config.root, path);
+  try {
+    const text2 = abs ? readIfExists(abs) : void 0;
+    return text2 === void 0 ? {} : { bbl: { path, text: text2 } };
+  } catch {
+    return {};
+  }
+}
 function venue(inp) {
   const { config } = inp;
   if (!inp.facts && !existsSync4(join5(config.root, config.main)))
@@ -118720,7 +119668,8 @@ function venue(inp) {
     ...inp.log !== void 0 ? { log: inp.log } : {},
     texFiles,
     files,
-    main: config.main
+    main: config.main,
+    ...arxivBbl(config, files)
   });
   if (result.status === "skipped" && !inp.facts) return skipped2("venue", missingPdfReason(inp));
   if (skippedFiles.length) {
@@ -118781,9 +119730,9 @@ async function runCheck(opts = {}) {
     checks: results
   };
 }
-function sarifFallbackFile(cwd, env, configPath, main3) {
+function sarifFallbackFile(cwd, env, configPath, main2) {
   try {
-    const cfg = loadConfig(cwd, configPath, env, main3 ? { main: main3 } : {});
+    const cfg = loadConfig(cwd, configPath, env, main2 ? { main: main2 } : {});
     return existsSync4(join5(cfg.root, cfg.main)) ? cfg.main : void 0;
   } catch {
     return void 0;
@@ -118795,7 +119744,7 @@ function exitCodeFor(report, failOn) {
   if (failOn === "warning" && report.status === "warn") return 1;
   return 0;
 }
-var skipped2, rel;
+var skipped2, rel, memoKey, keepable;
 var init_check3 = __esm({
   "../packages/cli/src/check.ts"() {
     "use strict";
@@ -118815,14 +119764,103 @@ var init_check3 = __esm({
       problems: [],
       skippedReason: reason
     });
-    rel = (root, abs) => relative6(root, abs).split("\\").join("/") || ".";
+    rel = (root, abs) => relative7(root, abs).split("\\").join("/") || ".";
+    memoKey = (e) => JSON.stringify([e.file ?? "", e.raw]);
+    keepable = (r) => r.reason !== "offline" && r.status !== "error" && (r.status !== "unverifiable" || r.reason === "skipped by author");
   }
 });
 
-// src/index.ts
-import { appendFileSync, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname as dirname5, join as join6, relative as relative7, resolve as resolve4 } from "node:path";
+// ../packages/cli/src/gcc.ts
+function gccLine(p) {
+  const severity = SEVERITY[p.severity];
+  const page = p.location?.page && !p.location.file ? `page ${p.location.page}: ` : "";
+  const message = `${page}${oneLine(p.message)} [${p.rule}]`;
+  const file = p.location?.file;
+  if (!file) return `overfull: ${severity}: ${message}`;
+  return `${oneLine(file)}:${p.location?.line ?? 1}:1: ${severity}: ${message}`;
+}
+function formatGcc(report) {
+  const lines = sortedProblems(report).map(gccLine);
+  return lines.length ? `${lines.join("\n")}
+` : "";
+}
+var SEVERITY, WORKSPACE, VSCODE_TASKS;
+var init_gcc = __esm({
+  "../packages/cli/src/gcc.ts"() {
+    "use strict";
+    init_src();
+    SEVERITY = { error: "error", warning: "warning", info: "note" };
+    WORKSPACE = "${workspaceFolder}";
+    VSCODE_TASKS = `${JSON.stringify(
+      {
+        version: "2.0.0",
+        tasks: [
+          {
+            label: "overfull check",
+            type: "shell",
+            command: "overfull",
+            args: ["check", "--gcc"],
+            options: { cwd: WORKSPACE },
+            group: "test",
+            presentation: { reveal: "silent", clear: true },
+            problemMatcher: {
+              owner: "overfull",
+              source: "overfull",
+              fileLocation: ["relative", WORKSPACE],
+              pattern: {
+                regexp: "^(.+?):(\\d+):(\\d+): (error|warning|note): (.*) \\[([a-z0-9-]+)\\]$",
+                file: 1,
+                line: 2,
+                column: 3,
+                severity: 4,
+                message: 5,
+                code: 6
+              }
+            }
+          }
+        ]
+      },
+      null,
+      2
+    )}
+`;
+  }
+});
+
+// ../packages/cli/src/report.ts
+function renderReport(report, format, opts) {
+  const root = opts.root ? { root: opts.root } : {};
+  switch (format) {
+    case "json":
+      return formatJson(report);
+    case "markdown":
+      return formatMarkdown(report);
+    case "html":
+      return formatHtml(report);
+    case "gcc":
+      return formatGcc(report);
+    case "sarif": {
+      const fallbackFile = sarifFallbackFile(opts.cwd, opts.env, opts.configPath, opts.main);
+      return formatSarif(report, { ...root, ...fallbackFile ? { fallbackFile } : {} });
+    }
+    case "annotations": {
+      const lines = githubAnnotations(report, {
+        ...root,
+        ...opts.annotationLimit ? { limit: opts.annotationLimit } : {}
+      });
+      return lines.length ? `${lines.join("\n")}
+` : "";
+    }
+  }
+}
+var init_report2 = __esm({
+  "../packages/cli/src/report.ts"() {
+    "use strict";
+    init_src();
+    init_check3();
+    init_gcc();
+  }
+});
 
 // ../packages/cli/src/index.ts
 init_src();
@@ -118843,7 +119881,8 @@ Commands:
   init [thesis|paper|slides] [dir]   Create a project from a template
   build [main.tex]                   Compile with latexmk (local or Docker) and check the log
   check                              Check log, PDF, references, accessibility, venue rules
-  cite <doi | arXiv:id | "title">    Add a verified BibTeX entry; prints its key
+  cite <doi | arXiv:id | ACL id | PMID | PMCID | "title">
+                                     Add a verified BibTeX entry; prints its key
   pages <range>                      Render PDF pages to PNG (e.g. 3, 2-5, 1,4,7)
   diff [--base ref]                  Build a PDF marking changes since a git revision
   explain <rule>                     What a rule means and how to fix it
@@ -118856,11 +119895,17 @@ Run \`overfull <command> --help\` for options. Docs: https://amet13.github.io/ov
 
 // ../packages/cli/src/index.ts
 init_pdf3();
+init_report2();
 init_safety();
 init_version();
 
+// src/main.ts
+import { appendFileSync, mkdtempSync, writeFileSync as writeFileSync3 } from "node:fs";
+import { tmpdir } from "node:os";
+import { join as join6, relative as relative8, resolve as resolve4 } from "node:path";
+
 // src/inputs.ts
-import { isAbsolute as isAbsolute4, resolve as resolve3 } from "node:path";
+import { isAbsolute as isAbsolute5, resolve as resolve3 } from "node:path";
 function input(env, name) {
   const v = env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`];
   const t = v?.trim();
@@ -118884,7 +119929,7 @@ function readInputs(env, workspace) {
   const bib = splitList(input(env, "bib"));
   const opt = (name) => input(env, name);
   const check2 = {
-    cwd: isAbsolute4(workingDirectory) ? workingDirectory : resolve3(workspace, workingDirectory),
+    cwd: isAbsolute5(workingDirectory) ? workingDirectory : resolve3(workspace, workingDirectory),
     env,
     // The Action only checks existing outputs; it never starts containers.
     engine: "local",
@@ -118919,15 +119964,14 @@ ${delimiter2}
 `;
 }
 
-// src/index.ts
-function setOutput(name, value) {
-  const file = process.env.GITHUB_OUTPUT;
-  if (file) appendFileSync(file, outputRecord(name, value));
-  else process.stdout.write(`${name}=${escapeData2(value)}
+// src/main.ts
+async function run2(env, write) {
+  const setOutput = (name, value) => {
+    const file = env.GITHUB_OUTPUT;
+    if (file) appendFileSync(file, outputRecord(name, value));
+    else write(`${name}=${escapeData2(value)}
 `);
-}
-async function main2() {
-  const env = process.env;
+  };
   const workspace = env.GITHUB_WORKSPACE ?? process.cwd();
   const inputs = readInputs(env, workspace);
   for (const c of inputs.check.checks ?? []) {
@@ -118937,40 +119981,32 @@ async function main2() {
   }
   const report = await runCheck(inputs.check);
   const guard = stopCommands();
-  process.stdout.write(
+  write(
     `${guard.start}${neutralizeWorkflowCommands(formatHuman(report, { color: true, verbose: true }))}${guard.end}`
   );
-  if (inputs.annotations) {
-    const root = relative7(workspace, resolve4(inputs.check.cwd ?? workspace)) || ".";
-    for (const line of githubAnnotations(report, { root, limit: 50 }))
-      process.stdout.write(`${line}
-`);
-  }
+  const cwd = resolve4(inputs.check.cwd ?? workspace);
+  const render = { cwd, env, root: relative8(workspace, cwd) || "." };
+  if (inputs.annotations)
+    write(renderReport(report, "annotations", { ...render, annotationLimit: 50 }));
   if (inputs.summary && env.GITHUB_STEP_SUMMARY) {
-    appendFileSync(env.GITHUB_STEP_SUMMARY, `${formatMarkdown(report)}
+    appendFileSync(env.GITHUB_STEP_SUMMARY, `${renderReport(report, "markdown", render)}
 `);
   }
-  const reportPath = join6(env.RUNNER_TEMP ?? tmpdir(), "overfull-report.json");
-  writeFileSync2(reportPath, formatJson(report));
+  const reportDir = env.RUNNER_TEMP ?? mkdtempSync(join6(tmpdir(), "overfull-"));
+  const reportPath = join6(reportDir, "overfull-report.json");
+  writeFileSync3(reportPath, renderReport(report, "json", render));
   if (inputs.sarif) {
-    const cwd = resolve4(inputs.check.cwd ?? workspace);
-    const fallbackFile = sarifFallbackFile(cwd, env);
-    const sarifPath = resolve4(workspace, inputs.sarif);
-    mkdirSync2(dirname5(sarifPath), { recursive: true });
-    writeFileSync2(
-      sarifPath,
-      formatSarif(report, {
-        root: relative7(workspace, cwd) || ".",
-        ...fallbackFile ? { fallbackFile } : {}
-      })
-    );
-    setOutput("sarif", sarifPath);
+    const target = reportTarget(workspace, inputs.sarif, 'Input "sarif"');
+    writeReport(target, renderReport(report, "sarif", render));
+    setOutput("sarif", target.path);
   }
   setOutput("status", report.status);
   setOutput("report", reportPath);
   return exitCodeFor(report, inputs.failOn);
 }
-main2().then(
+
+// src/index.ts
+run2(process.env, (text2) => process.stdout.write(text2)).then(
   (code3) => {
     process.exitCode = code3;
   },

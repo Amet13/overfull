@@ -65,37 +65,100 @@ export function stripTags(s: string): string {
   return out;
 }
 
+/** The character for a numeric entity, or U+FFFD when the number is not a code point. */
+export function codePointText(n: number): string {
+  // Out of range (> U+10FFFF) or a lone surrogate half: String.fromCodePoint would throw
+  // or produce broken text, and one bad entity must not stop the whole run.
+  if (!Number.isInteger(n) || n < 0 || n > 0x10ffff || (n >= 0xd800 && n <= 0xdfff)) {
+    return '\uFFFD';
+  }
+  return String.fromCodePoint(n);
+}
+
+/**
+ * Replaces each `<![CDATA[…]]>` section with its content, in one linear pass. (A lazy
+ * regular expression rescans to the end of the text for every unclosed `<![CDATA[`,
+ * which is quadratic on a crafted answer.) An unclosed section is left as it is.
+ */
+export function stripCdata(s: string): string {
+  const open = '<![CDATA[';
+  let out = '';
+  let i = 0;
+  for (;;) {
+    const start = s.indexOf(open, i);
+    if (start < 0) break;
+    const end = s.indexOf(']]>', start + open.length);
+    if (end < 0) break;
+    out += s.slice(i, start) + s.slice(start + open.length, end);
+    i = end + 3;
+  }
+  return out + s.slice(i);
+}
+
+/** Decodes `&#x…;` and `&#…;` without throwing on numbers that are not code points. */
+export function decodeNumericEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-f]+);/gi, (_m, h: string) => codePointText(Number.parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, d: string) => codePointText(Number(d)));
+}
+
 /** Decodes entities and removes HTML/JATS/MathML tags (CrossRef titles contain `<i>`, `<sub>`…). */
 export function stripMarkup(s: string): string {
   // Entities first, so an encoded tag (`&lt;i&gt;`) is removed like a written one.
-  const decoded = s
-    .replace(/&#x([0-9a-f]+);/gi, (_m, h: string) => String.fromCodePoint(Number.parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number(d)))
-    .replace(/&([a-z]+);/gi, (m, name: string) => ENTITIES[name.toLowerCase()] ?? m);
+  const decoded = decodeNumericEntities(s).replace(
+    /&([a-z]+);/gi,
+    (m, name: string) => ENTITIES[name.toLowerCase()] ?? m,
+  );
   return stripTags(decoded).replace(/\s+/g, ' ').trim();
 }
 
-/** ASCII-folds plain text: strips diacritics, spells out Greek, lowercases. */
+/**
+ * Folds plain text for comparison: lowercases, strips diacritics and other combining
+ * marks (after NFKD), spells out Greek letters and folds a few Latin letters (ß, ø, æ…).
+ * Letters of other scripts (Cyrillic, Arabic, CJK…) are kept as they are.
+ */
 export function foldText(plain: string): string {
   return plain
     .toLowerCase()
-    .replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `)
-    .replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c)
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '');
+    .replace(/\p{M}/gu, '')
+    .replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `)
+    .replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c);
 }
+
+/** Scripts written without spaces between words: each character counts as a word. */
+const NO_SPACE_SCRIPTS = /([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu;
 
 /** Normalized word list for a title written in TeX (bib) or markup (records). */
 function titleWords(title: string, isTex = true): string[] {
   const plain = isTex ? texToPlain(title) : stripMarkup(title);
   return foldText(plain)
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(NO_SPACE_SCRIPTS, ' $1 ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
     .split(' ')
     .filter(Boolean);
 }
 
-/** Normalized title string: lowercase ASCII words separated by single spaces. */
+/**
+ * The title normalization used before Unicode letters were kept: ASCII letters and
+ * digits only. Provenance hashes written by `overfull cite` until then cover this form.
+ */
+export function asciiNormalizeTitle(title: string): string {
+  return texToPlain(title)
+    .toLowerCase()
+    .replace(/[α-ωϑϕς]/g, (c) => ` ${GREEK_NAMES[c] ?? c} `)
+    .replace(/[ßøæœłðþıŋ]/g, (c) => FOLD[c] ?? c)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/**
+ * Normalized title string: lowercase words (letters and digits of any script) separated
+ * by single spaces. Empty when the title has no letter or digit at all.
+ */
 export function normalizeTitle(title: string, isTex = true): string {
   return titleWords(title, isTex).join(' ');
 }
@@ -145,7 +208,7 @@ export function titleSimilarity(bibTitle: string, recordTitle: string): number {
 /** Folded surname for comparison: `Erd{\H{o}}s` → `erdos`, `van der Aalst` → `van der aalst`. */
 export function foldName(name: string): string {
   return foldText(stripMarkup(name))
-    .replace(/[^a-z\s-]+/g, '')
+    .replace(/[^\p{L}\s-]+/gu, '')
     .replace(/[\s-]+/g, ' ')
     .trim();
 }

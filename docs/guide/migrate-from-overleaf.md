@@ -8,8 +8,9 @@ section: Start
 You do not have to leave Overleaf to use Overfull. Keep writing there and pick
 the way that fits how often you want a check.
 
-- **A quick look:** download the source zip and drop it on the [browser
-  check](https://amet13.github.io/overfull/check/). Nothing to install.
+- **A quick look:** download the source zip, the PDF and the log, and drop
+  them on the [browser check](https://amet13.github.io/overfull/check/).
+  Nothing to install.
 - **Every change:** link the project to GitHub with Overleaf's GitHub sync and
   run the [GitHub Action](./action.md) on the repository.
 
@@ -20,25 +21,43 @@ the way that fits how often you want a check.
    .zip file** button does the same.
    ([Overleaf: Downloading a project](https://docs.overleaf.com/managing-projects-and-files/downloading-a-project),
    read 2026-11-10.)
-2. Open the [browser check](https://amet13.github.io/overfull/check/) and drop the zip on it, or use
-   **Choose files or a .zip**. You can also drop or choose the unzipped folder.
-3. The page finds the main file (`main.tex`, else the only top-level `.tex`
+2. Download the PDF and the build log too: the zip has neither, and without them
+   the page cannot check the build, the output or accessibility. Recompile, open
+   **Logs and output files** next to the PDF preview, and download the PDF and
+   the log file there.
+3. Open the [browser check](https://amet13.github.io/overfull/check/) and drop the
+   zip, the PDF and the log on it, or use **Choose files or a .zip**. You can also
+   drop or choose the unzipped folder.
+4. The page finds the main file (`main.tex`, else the only top-level `.tex`
    with a `\documentclass`; if several fit, it asks you to choose) and the
    `.bib` files, then runs the reference check and the venue checks that need
-   only source files.
+   only source files, and with the PDF and log also the build, output and
+   accessibility checks.
+5. Choose the profile: the built-in ones (`generic`, `thesis`, `paper`,
+   `arxiv`, `double-blind`) or one of the 12 [venue profiles](./venues.md#venues-included)
+   (NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, AISTATS, ACL Rolling Review, EMNLP,
+   ACM, IEEE, Springer LNCS). When the project has an `overfull.yml` with a
+   line such as `profile: neurips-2026`, the page selects that profile and says
+   so. Other settings in `overfull.yml` (an inline profile, `venue:` overrides,
+   ignored rules) are applied only by `overfull check`.
+
+**What only `overfull check` does.** The page lists what it cannot do: build
+the document, run veraPDF (full PDF/UA validation), and ask arXiv and DBLP,
+which do not answer requests from web pages. An entry with a DOI or arXiv id
+that the page could not confirm points you to `overfull check`.
 
 The zip is unpacked in your browser and never uploaded. Reference lookups are
-the only network requests, and you can switch them off with **Verify references
-online**.
+the only network requests ([what they send](./references.md#what-leaves-your-machine)),
+and you can switch them off with **Verify references online**. DOIs registered
+with CrossRef or DataCite (Zenodo, figshare, arXiv) are resolved; DOIs from
+other registration agencies, such as mEDRA, JaLC or KISTI, are blocked by the
+site's security policy and stay unchecked: run `overfull check` for those.
 
 **What the zip does not contain.** Overleaf says the zip holds the source files
 only ([same page](https://docs.overleaf.com/managing-projects-and-files/downloading-a-project)).
-It has no PDF or build log, so the page cannot check the build, the output or
-accessibility from the zip alone. To add them, download the PDF from Overleaf
-and, if you want the build check, the log from **Logs and output files**
-(check Overleaf's documentation for which files that menu offers), and drop
-those on the page with the zip, or after it. The `.log` and `.pdf` that have the same name
-as the main file are used.
+It has no PDF or build log, hence step 2. You can drop the PDF and log with the
+zip or after it; the `.log` and `.pdf` that have the same name as the main file
+are used.
 
 **Limits.** At most 2,000 files, 200 MB unpacked, and 50 MB per file. Encrypted
 and ZIP64 archives are refused with a message. Absolute paths, paths with `..`,

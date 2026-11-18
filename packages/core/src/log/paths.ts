@@ -25,6 +25,11 @@ export function spacedPathLength(text: string, start: number): number {
 
 const SPACED_PATH_AT = new RegExp(`^${SPACED_PATH_SOURCE}(?=[\\s()[\\]{}<>"]|$)`, 'i');
 
+/** True when a path as printed in a log lies in the TeX distribution (`…/texmf-dist/…`). */
+export function isDistributionPath(path: string): boolean {
+  return DISTRIBUTION_DIR.test(path.trim().replace(/\\/g, '/'));
+}
+
 export function basename(path: string): string {
   const parts = path.split('/');
   return parts[parts.length - 1] || path;

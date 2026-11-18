@@ -1,33 +1,38 @@
-# Build context for docker/Dockerfile is the repository root.
-# Keep it small: only sources needed to build the overfull CLI.
-.git/
+# Build context for docker/Dockerfile is the repository root. An allow-list: only
+# what the Dockerfile copies. Add a path here when you add a COPY line.
+*
+
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!scripts/build-standalone.mjs
+!docker/pnpm/package.json
+!docker/pnpm/package-lock.json
+!docker/verapdf-auto-install.xml
+!docker/overfull
+!packages/core/
+!packages/cli/
+!templates/
+
+# Inside the allowed directories: no build output, dependencies or tests.
 **/node_modules/
 **/dist/
-!action/dist/
-**/.astro/
-coverage/
-dist-standalone/
-out/
-assets/
+**/test/
+**/*.tsbuildinfo
 **/.overfull/
-*.tsbuildinfo
+**/.DS_Store
 
-# LaTeX outputs anywhere in the tree (templates, corpus)
-**/*.pdf
-**/*.aux
-**/*.log
-**/*.fls
-**/*.fdb_latexmk
-**/*.synctex.gz
-**/*.bbl
-**/*.bcf
-**/*.blg
-**/*.run.xml
-**/*.toc
-**/*.out
-
-# Editor / OS
-.vscode/
-.DS_Store
-*.swp
-*~
+# LaTeX outputs left in a template after a local build
+templates/**/*.pdf
+templates/**/*.aux
+templates/**/*.log
+templates/**/*.fls
+templates/**/*.fdb_latexmk
+templates/**/*.synctex.gz
+templates/**/*.bbl
+templates/**/*.bcf
+templates/**/*.blg
+templates/**/*.run.xml
+templates/**/*.toc
+templates/**/*.out

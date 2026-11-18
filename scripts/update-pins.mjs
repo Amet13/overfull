@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Updates the pins Dependabot cannot: Node.js and veraPDF in docker/Dockerfile (version and
-// SHA-256), and pnpm in package.json (packageManager) together with docker/pnpm.
+// SHA-256), the Debian snapshot the TeX images install from (DEBIAN_SNAPSHOT), and pnpm in
+// package.json (packageManager) together with docker/pnpm.
 //
 //   node scripts/update-pins.mjs            write the changes, print what changed
 //   node scripts/update-pins.mjs --check    print what would change, exit 1 if anything would
@@ -9,19 +10,21 @@
 // the hashes come from nodejs.org's SHASUMS256.txt. veraPDF takes the newest greenfield
 // installer on software.verapdf.org; its hash is computed from the download, the same file
 // the image build checks. pnpm takes the newest release of the pinned major from the npm
-// registry. Nothing is changed when a source cannot be read.
+// registry. DEBIAN_SNAPSHOT follows the TeX Live base digests (which Dependabot moves): it
+// becomes the newer of the two bases' own Debian snapshots, read from their image config on
+// Docker Hub. Nothing is changed when a source cannot be read.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const check = process.argv.includes('--check');
 const changes = [];
 
-async function get(url, as = 'text') {
-  const res = await fetch(url, { headers: { 'user-agent': 'overfull-update-pins' } });
+async function get(url, as = 'text', headers = {}) {
+  const res = await fetch(url, { headers: { 'user-agent': 'overfull-update-pins', ...headers } });
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
   return as === 'json'
     ? res.json()
@@ -90,6 +93,62 @@ async function verapdf(docker) {
   return setArg(setArg(docker, 'VERAPDF_VERSION', latest), 'VERAPDF_SHA256', sha);
 }
 
+/**
+ * The Debian snapshot (YYYYMMDDTHHMMSSZ) a Debian-based image was built from, from its image
+ * config: the official Debian images record `debian.sh ... '@<epoch>'` as their first step.
+ */
+export function snapshotOf(config) {
+  const first = config?.history?.[0]?.created_by ?? '';
+  const epoch = /debian\.sh .*'@(\d+)'/.exec(first)?.[1];
+  if (!epoch) return undefined;
+  return new Date(Number(epoch) * 1000)
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d+Z$/, 'Z');
+}
+
+/** The newest of the current snapshot and the bases' snapshots. */
+export function newestSnapshot(current, stamps) {
+  return [current, ...stamps.filter(Boolean)].sort().at(-1);
+}
+
+/** The amd64 image config of `repo@digest` on Docker Hub. */
+async function hubConfig(repo, digest) {
+  const { token } = await get(
+    `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${repo}:pull`,
+    'json',
+  );
+  const auth = { authorization: `Bearer ${token}` };
+  const reg = `https://registry-1.docker.io/v2/${repo}`;
+  const index = await get(`${reg}/manifests/${digest}`, 'json', {
+    ...auth,
+    accept: 'application/vnd.oci.image.index.v1+json',
+  });
+  const amd64 = index.manifests?.find((m) => m.platform?.architecture === 'amd64')?.digest;
+  if (!amd64) throw new Error(`${repo}@${digest}: no amd64 image`);
+  const manifest = await get(`${reg}/manifests/${amd64}`, 'json', {
+    ...auth,
+    accept: 'application/vnd.oci.image.manifest.v1+json',
+  });
+  return get(`${reg}/blobs/${manifest.config.digest}`, 'json', auth);
+}
+
+async function debianSnapshot(docker) {
+  const current = argOf(docker, 'DEBIAN_SNAPSHOT');
+  const bases = [...docker.matchAll(/^FROM texlive\/texlive:\S+@(sha256:[0-9a-f]{64})/gm)];
+  if (!current || bases.length === 0) return docker;
+  const stamps = [];
+  for (const [, digest] of bases) {
+    const stamp = snapshotOf(await hubConfig('texlive/texlive', digest));
+    if (!stamp) throw new Error(`texlive/texlive@${digest}: no Debian snapshot in its history`);
+    stamps.push(stamp);
+  }
+  const latest = newestSnapshot(current, stamps);
+  if (latest === current) return docker;
+  changes.push(`Debian snapshot ${current} → ${latest}`);
+  return setArg(docker, 'DEBIAN_SNAPSHOT', latest);
+}
+
 async function pnpm() {
   const pkgPath = join(root, 'package.json');
   const pkg = readFileSync(pkgPath, 'utf8');
@@ -115,21 +174,25 @@ async function pnpm() {
   });
 }
 
-const dockerPath = join(root, 'docker', 'Dockerfile');
-const before = readFileSync(dockerPath, 'utf8');
-let after = before;
-for (const step of [node, verapdf]) {
-  try {
-    after = await step(after);
-  } catch (err) {
-    console.error(`warning: ${step.name}: ${err.message}; left as it is`);
+async function main() {
+  const dockerPath = join(root, 'docker', 'Dockerfile');
+  const before = readFileSync(dockerPath, 'utf8');
+  let after = before;
+  for (const step of [node, verapdf, debianSnapshot]) {
+    try {
+      after = await step(after);
+    } catch (err) {
+      console.error(`warning: ${step.name}: ${err.message}; left as it is`);
+    }
   }
+  try {
+    await pnpm();
+  } catch (err) {
+    console.error(`warning: pnpm: ${err.message}; left as it is`);
+  }
+  if (!check && after !== before) writeFileSync(dockerPath, after);
+  console.log(changes.length ? changes.join('\n') : 'All pins are current.');
+  if (check && changes.length) process.exitCode = 1;
 }
-try {
-  await pnpm();
-} catch (err) {
-  console.error(`warning: pnpm: ${err.message}; left as it is`);
-}
-if (!check && after !== before) writeFileSync(dockerPath, after);
-console.log(changes.length ? changes.join('\n') : 'All pins are current.');
-if (check && changes.length) process.exitCode = 1;
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) await main();

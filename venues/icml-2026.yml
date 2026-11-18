@@ -5,6 +5,7 @@ source:
   - https://icml.cc/Conferences/2026/CallForPapers
   - https://icml.cc/Conferences/2026/AuthorInstructions
 checkedOn: 2026-11-10
+deadline: 2026-01-28
 extends: double-blind
 paper: letter
 pageLimit:
@@ -21,6 +22,9 @@ styleFiles:
 textBlock:
   widthMm: 171.5
   leftMm: 19.6
+anonymizedByClass:
+  package: icml2026
+  unlessOptions: [accepted, preprint]
 notes: >-
   Final versions of accepted papers get one extra page for the main paper. The call
   allows generative AI tools and encourages authors to explain notable uses in their
@@ -28,3 +32,4 @@ notes: >-
   from icml2026.zip downloaded on 2026-11-10. The ICML 2027 call page exists but has no
   content yet.
   Text block: 6.75 in wide, 0.77 in from the left edge (icml2026.sty).
+  icml2026.sty prints "Anonymous Authors" unless the accepted or preprint option is given.

@@ -7,6 +7,7 @@ import {
   duplicateProblems,
   publishedVersionProblems,
   retractedProblems,
+  retractionUncheckedProblems,
   uncitedProblems,
 } from './extra.js';
 import type { RefResult } from './types.js';
@@ -35,8 +36,8 @@ export const refsRules: RuleInfo[] = [
     severity: 'info',
     title: 'Project reference cache ignored',
     summary:
-      'With `references.cache: project`, lookups are cached in `.overfull/cache/refs.json` inside the project. That file is repository content: in CI (any provider, with or without a .git directory) it is never read, and anywhere a cache reached through a symlink is not used, because it could mark references as verified that were never looked up. Every reference is looked up again.',
-    fix: 'Keep `.overfull/` out of git (add it to .gitignore) and make sure it is a real directory, not a symlink; or drop `references.cache: project` to use the user cache directory.',
+      "With `--project-cache` (or `OVERFULL_REFS_CACHE=project`), lookups are cached in `.overfull/cache/refs.json` inside the project. That file is repository content: in CI (any provider, with or without a .git directory) it is never read, and anywhere a cache reached through a symlink is not used, because it could mark references as verified that were never looked up. `references.cache: project` in the project's own overfull.yml is ignored for the same reason. Every reference is looked up again.",
+    fix: 'Keep `.overfull/` out of git (add it to .gitignore) and make sure it is a real directory, not a symlink. To keep the cache in the project, pass `--project-cache` or set `OVERFULL_REFS_CACHE=project` in your own environment, not in overfull.yml.',
   },
   {
     id: 'reference-not-found',
@@ -127,6 +128,15 @@ export const refsRules: RuleInfo[] = [
     summary:
       'CrossRef records a retraction or withdrawal for the work this entry matched (publisher notices and Retraction Watch data). Citing it as sound evidence misleads readers. Needs the lookup to find the work by DOI; entries without a DOI are not checked for this.',
     fix: 'Read the retraction notice. Replace the work with one that stands, or cite it only to say it was retracted, together with the notice.',
+  },
+  {
+    id: 'reference-retraction-unchecked',
+    check: 'references',
+    severity: 'info',
+    title: 'Retraction check incomplete',
+    summary:
+      'CrossRef could not be asked whether some matched works are retracted or withdrawn (a request failed or its answer was unreadable). Works it did answer for were checked; the others were not.',
+    fix: 'Run `overfull check` again later. Answers are kept for one day, so the next run asks only about the works that were missed.',
   },
   {
     id: 'reference-published-version',
@@ -533,6 +543,7 @@ export function refsCheck(results: RefResult[], opts: RefsCheckOptions = {}): Ch
       })
       .map((r) => unprovenProblem(r, byKey.get(r.key))),
     ...retractedProblems(results, byKey),
+    ...retractionUncheckedProblems(results),
     ...publishedVersionProblems(results, byKey),
     ...(opts.entries ? duplicateProblems(opts.entries) : []),
     ...(opts.reportUncited && opts.entries && opts.citedKeys

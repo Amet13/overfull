@@ -141,6 +141,19 @@ describe('logRules', () => {
     }
   });
 
+  it('has a corpus case for every rule, except the ones that cannot have one', () => {
+    // tex-error is the fallback for TeX errors no other rule explains: any real log that
+    // fires it should get its own rule instead of a corpus case. font-feature-missing reads
+    // a warning that fontspec 2.9 (TeX Live 2026) no longer prints for OpenType fonts, so
+    // no document produces it on the TeX Live the corpus is verified against; logs from
+    // older TeX Live still carry it (tested in log-parser.test.ts).
+    const exempt = new Set(['tex-error', 'font-feature-missing']);
+    for (const rule of logRules) {
+      if (exempt.has(rule.id)) expect(rule.corpus, rule.id).toBeUndefined();
+      else expect(rule.corpus, `${rule.id} needs a corpus case`).toBeTruthy();
+    }
+  });
+
   it('points only at existing corpus cases that fire the rule', () => {
     for (const rule of logRules) {
       if (!rule.corpus) continue;

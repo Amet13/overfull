@@ -1,6 +1,6 @@
 export { citedKeys, citesAll } from './cited.js';
 export { formatBibEntry } from './format.js';
-export { hasOthers, type PersonName, parseNames } from './names.js';
+export { type PersonName, parseNames } from './names.js';
 export {
   type BibEntry,
   type BibParseIssue,

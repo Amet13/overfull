@@ -13,9 +13,11 @@ on:
 permissions:
   contents: read
 
+# A pull request's newer push cancels the older run. Everywhere else every commit gets
+# its own verdict: release.yml and image.yml need ci's success on that exact commit.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The automation (autorelease, maintenance) dispatches ci on its own automation/* branch,
 # because a pull request opened with GITHUB_TOKEN starts no workflow without a maintainer's
@@ -58,12 +60,47 @@ jobs:
       - name: Version bump script still finds every version
         run: node scripts/bump-version.mjs 99.0.0 --dry-run > /dev/null
       # Dependabot cannot rebuild action/dist; after its PR merges, regenerate.yml opens a
-      # PR with the rebuilt bundle. Every other change must commit the rebuilt bundle.
+      # PR with the rebuilt bundle. Every other change must commit the rebuilt bundle. (ci
+      # also runs on a Dependabot branch, started by automerge.sh after it merged main in.)
       - name: Bundled Action is up to date
-        if: github.actor != 'dependabot[bot]'
+        if: github.actor != 'dependabot[bot]' && !startsWith(github.head_ref || github.ref_name, 'dependabot/')
         run: |
           pnpm --filter overfull-action build
           git diff --exit-code -- action/dist
+      - name: install.sh works (local fake release)
+        run: sh scripts/test-install.sh
+
+  # engines.node is >=22: the oldest supported Node lines run the unit tests and the
+  # single-file CLI (overfull.cjs), which people run with whatever Node they have.
+  node-versions:
+    name: Node ${{ matrix.node }}
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'automation/') || github.event.pull_request.head.repo.full_name != github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        timeout-minutes: 5
+      - run: pnpm build
+      - run: pnpm test
+      - name: Standalone CLI runs, creates a project and checks it
+        run: |
+          node scripts/build-standalone.mjs
+          node dist-standalone/overfull.cjs --version
+          node dist-standalone/overfull.cjs init paper "$RUNNER_TEMP/sa-paper" --no-git
+          test -f "$RUNNER_TEMP/sa-paper/main.tex"
+          cd "$RUNNER_TEMP/sa-paper" && node "$GITHUB_WORKSPACE/dist-standalone/overfull.cjs" check references.bib --offline --fail-on never
 
   cross-os:
     name: Unit tests (${{ matrix.os }})
@@ -97,6 +134,14 @@ jobs:
           node dist-standalone/overfull.cjs init paper "$RUNNER_TEMP/sa-paper" --no-git
           test -f "$RUNNER_TEMP/sa-paper/main.tex"
           test -f "$RUNNER_TEMP/sa-paper/.agents/skills/add-citation/SKILL.md"
+      # The installers here, not in jobs of their own: one macOS runner per run, not two.
+      - name: install.sh works (local fake release)
+        if: runner.os != 'Windows'
+        run: sh scripts/test-install.sh
+      - name: install.ps1 works (local fake release)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-install.ps1
 
   changes:
     name: What changed
@@ -132,6 +177,12 @@ jobs:
   # Three images, built in parallel (each reuses the layer cache of image.yml's builds
   # on main, so an unchanged TeX layer is never rebuilt). The CLI is a separate, small
   # layer: a code change rebuilds only that.
+  #
+  # The image jobs here only read the layer cache (cache-from, no cache-to). image.yml
+  # writes the same scopes from main, which every branch can read; were ci to write them
+  # too, ci and image.yml would overwrite each other's entries on main, and every pull
+  # request would add multi-GB entries of its own that nothing else can read, pushing
+  # main's entries out of the repository's 10 GB cache.
   image-full:
     name: Full image, corpus
     needs: changes
@@ -152,7 +203,10 @@ jobs:
           load: true
           tags: overfull:ci
           cache-from: type=gha,scope=overfull-linux-amd64
-          cache-to: type=gha,scope=overfull-linux-amd64,mode=max
+      # Every built-in path runs the image as a non-root user; a font list readable only
+      # by root costs about a minute per LaTeX start.
+      - name: LaTeX starts fast for a non-root user
+        run: bash docker/smoke/start-time.sh overfull:ci 20
       - name: Corpus reproduces every rule on TeX Live 2026
         run: docker run --rm -v "$PWD:/repo" -w /repo -e OVERFULL_TEX_LOCAL=1 overfull:ci node scripts/corpus.mjs --verify
 
@@ -177,7 +231,19 @@ jobs:
           load: true
           tags: overfull:ci-slim
           cache-from: type=gha,scope=slim-linux-amd64
-          cache-to: type=gha,scope=slim-linux-amd64,mode=max
+      - name: LaTeX starts fast for a non-root user, also on a read-only root filesystem
+        run: |
+          bash docker/smoke/start-time.sh overfull:ci-slim 20
+          bash docker/smoke/start-time.sh overfull:ci-slim 20 --read-only
+      # Offline, as a non-root user: each venue class, the common packages, XeLaTeX, the
+      # fonts and latexdiff are in the image (no on-demand install can hide a gap).
+      - name: The slim image has what it promises, offline
+        run: docker run --rm --network none -u 1000:1000 -e HOME=/tmp -v "$PWD/docker/smoke:/smoke:ro" overfull:ci-slim sh /smoke/slim.sh
+      - name: On-demand install works for a non-root user
+        run: |
+          dir="$(mktemp -d)" && chmod 777 "$dir"
+          printf '%s\n' '\documentclass{article}\usepackage{chemfig}' '\begin{document}\chemfig{A-B}\end{document}' > "$dir/main.tex"
+          docker run --rm -u 1000:1000 -e HOME=/tmp -v "$dir:/work" -w /work overfull:ci-slim overfull build
       # The image the template workflow uses: every template must build in it and pass
       # its own preflight (a package missing from the image is installed on demand and
       # named in the log, so the image's package list can be completed).
@@ -185,6 +251,16 @@ jobs:
         run: bash scripts/e2e-templates.sh overfull:ci-slim out
       - name: The paper template's arXiv build (pdfLaTeX) works in the slim image
         run: docker run --rm -v "$PWD/out/paper:/work" -w /work overfull:ci-slim latexmk -pdf -jobname=paper-arxiv
+      # The template workflow's pull request step.
+      - name: overfull diff works in the slim image
+        working-directory: out/paper
+        run: |
+          git init -q && git add -A
+          git -c user.name=ci -c user.email=ci@example.invalid commit -qm base
+          sed -i 's/\\end{document}/Changed in CI.\n\\end{document}/' main.tex
+          git -c user.name=ci -c user.email=ci@example.invalid commit -qam change
+          docker run --rm -v "$PWD:/work" -w /work overfull:ci-slim overfull diff --base HEAD~1
+          test -s overfull-diff.pdf
       - name: Action runs on a built template
         id: action
         uses: ./
@@ -224,7 +300,6 @@ jobs:
           load: true
           tags: overfull:ci-check
           cache-from: type=gha,scope=check-linux-amd64
-          cache-to: type=gha,scope=check-linux-amd64,mode=max
       - name: The check-only image checks a built project and has no TeX
         run: |
           docker run --rm overfull:ci-check sh -c 'overfull --version && verapdf --version && ! command -v lualatex'
@@ -236,18 +311,25 @@ jobs:
 
   # image.yml publishes every image for amd64 and arm64. The jobs above test the amd64
   # builds; these build the arm64 ones (natively, with image.yml's layer cache), so a
-  # step that breaks only on arm64 fails here, not after the merge.
+  # step that breaks only on arm64 fails here, not after the merge. On main, image.yml
+  # builds arm64 anyway (and publishes only once ci passed), so they run there only in
+  # the weekly scheduled run.
+  #
+  # The Dockerfile already runs `overfull --version` and `verapdf --version` in the
+  # check image, so that one is only built (cache-only output, no export into Docker).
+  # The TeX images are loaded, which costs a few minutes: the non-root start-time
+  # smoke test needs a container of the real image.
   image-arm64:
     name: Image (${{ matrix.name }}, arm64)
     needs: changes
-    if: needs.changes.outputs.tex == 'true'
+    if: needs.changes.outputs.tex == 'true' && (github.ref != 'refs/heads/main' || github.event_name == 'schedule')
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: full, target: overfull, flavor: full, scope: overfull-linux-arm64 }
-          - { name: slim, target: overfull, flavor: slim, scope: slim-linux-arm64 }
-          - { name: check, target: check, flavor: full, scope: check-linux-arm64 }
+          - { name: full, target: overfull, flavor: full, scope: overfull-linux-arm64, output: "type=docker,name=overfull:ci-arm64" }
+          - { name: slim, target: overfull, flavor: slim, scope: slim-linux-arm64, output: "type=docker,name=overfull:ci-arm64" }
+          - { name: check, target: check, flavor: full, scope: check-linux-arm64, output: "type=cacheonly" }
     runs-on: ubuntu-26.04-arm
     timeout-minutes: 45
     steps:
@@ -262,18 +344,14 @@ jobs:
           file: docker/Dockerfile
           target: ${{ matrix.target }}
           build-args: TEX_FLAVOR=${{ matrix.flavor }}
-          load: true
-          tags: overfull:ci-arm64
+          outputs: ${{ matrix.output }}
           cache-from: type=gha,scope=${{ matrix.scope }}
-          cache-to: type=gha,scope=${{ matrix.scope }},mode=max
       - name: The CLI and its tools run
-        env:
-          TARGET: ${{ matrix.target }}
+        if: matrix.target == 'overfull'
         run: |
           docker run --rm overfull:ci-arm64 sh -c 'overfull --version && verapdf --version'
-          if [ "$TARGET" = overfull ]; then
-            docker run --rm overfull:ci-arm64 sh -c 'lualatex --version | head -1 && latexmk --version | head -2'
-          fi
+          docker run --rm overfull:ci-arm64 sh -c 'lualatex --version | head -1 && latexmk --version | head -2'
+          bash docker/smoke/start-time.sh overfull:ci-arm64 20
 
   site:
     name: Website
@@ -315,34 +393,13 @@ jobs:
         run: pnpm --filter site exec playwright install-deps chromium
       - run: pnpm --filter site test:e2e
 
-  installers:
-    name: Installers (${{ matrix.os }})
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'automation/') || github.event.pull_request.head.repo.full_name != github.repository
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-26.04, macos-26, windows-2025]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: install.sh
-        if: runner.os != 'Windows'
-        run: sh scripts/test-install.sh
-      - name: install.ps1
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./scripts/test-install.ps1
-
   # The one check the main ruleset requires: it passes only when every job above passed
   # or was skipped on purpose, so a pull request cannot be merged while a job is still
   # queued or after one failed.
   passed:
     name: CI passed
     if: always()
-    needs: [node, cross-os, changes, image-full, image-slim, image-check, image-arm64, site, installers]
+    needs: [node, node-versions, cross-os, changes, image-full, image-slim, image-check, image-arm64, site]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -356,18 +413,20 @@ jobs:
             exit 1
           fi
 
-  # The automation dispatches this workflow on its automation/* branches with GITHUB_TOKEN,
-  # and GitHub starts no workflow_run (automerge, watchdog) when such a run finishes. So
-  # the run finishes the job itself: it merges the pull request when everything passed,
-  # or keeps one issue open while it fails.
+  # The automation dispatches this workflow on its automation/* branches with GITHUB_TOKEN
+  # (and automerge.sh on a Dependabot branch it brought up to date with main), and GitHub
+  # starts no workflow_run (automerge, watchdog) when such a run finishes. So the run
+  # finishes the job itself: it merges the pull request when everything passed, starts
+  # itself once more when a job never got a runner, or keeps one issue open while it
+  # fails. A cancelled run says nothing.
   automation:
     name: Merge or report the automation pull request
     needs: passed
     if: >-
-      always() && github.event_name == 'workflow_dispatch' &&
-      startsWith(github.ref, 'refs/heads/automation/')
+      always() && !cancelled() && github.event_name == 'workflow_dispatch' &&
+      (startsWith(github.ref, 'refs/heads/automation/') || startsWith(github.ref, 'refs/heads/dependabot/'))
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: write
       pull-requests: write
@@ -375,12 +434,15 @@ jobs:
       checks: read
       issues: write
     steps:
-      # The scripts from main, not from the branch under test.
+      # The scripts (and the path filters automerge.sh reads) from main, not from the
+      # branch under test.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: main
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            .github/workflows
       - name: Merge, or report the failure
         env:
           GH_TOKEN: ${{ github.token }}
@@ -392,23 +454,31 @@ jobs:
         run: |
           title="Automation failed: ci on $BRANCH"
           : > "$RUNNER_TEMP/body.md"
-          if [ "$PASSED" = success ]; then
-            bash .github/scripts/issue.sh "$title" "$RUNNER_TEMP/body.md"
-            suite="$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID" --jq .check_suite_id)"
-            bash .github/scripts/automerge.sh "$BRANCH" "$SHA" "$suite"
-            exit 0
+          case "$PASSED" in
+            success)
+              bash .github/scripts/issue.sh "$title" "$RUNNER_TEMP/body.md"
+              suite="$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID" --jq .check_suite_id)"
+              # CodeQL, started next to ci, may still be running.
+              AUTOMERGE_WAIT=600 bash .github/scripts/automerge.sh "$BRANCH" "$SHA" "$suite"
+              exit 0 ;;
+            cancelled | skipped) echo "The run was $PASSED: nothing to report."; exit 0 ;;
+          esac
+          missed="$(bash .github/scripts/watchdog.sh missed "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT")"
+          if [ "$missed" -gt 0 ]; then
+            runs="$(gh api "repos/$GH_REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&event=workflow_dispatch" --jq .total_count)"
+            if [ "$runs" -lt 2 ]; then
+              gh workflow run ci.yml --ref "$BRANCH"
+              echo "A job never got a runner (GitHub capacity): started ci on $BRANCH once more."
+              exit 0
+            fi
           fi
-          missed="$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" --paginate \
-            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .check_run_url' |
-            while read -r url; do gh api "${url#https://api.github.com/}/annotations" --jq '.[].message'; done |
-            grep -cE 'not acquired by Runner|lost communication with the server' || true)"
           {
             echo "ci failed on \`$BRANCH\`, so its pull request was not merged."
             echo
             echo "Run: $URL"
             if [ "$missed" -gt 0 ]; then
               echo
-              echo "A job never got a runner (GitHub capacity): re-run the failed jobs."
+              echo "A job never got a runner (GitHub capacity), also when ci ran again: re-run the failed jobs."
             fi
             echo
             echo "This issue closes itself when ci next passes on the branch."

@@ -1,0 +1,13 @@
+# Line endings: LF everywhere, also on Windows checkouts (the shell scripts, the
+# Makefiles and the recorded fixtures must stay byte-identical).
+* text=auto eol=lf
+
+# Real TeX logs, kept byte for byte (TeX writes a stray carriage return now and then).
+corpus/**/*.log -text
+
+# Generated files: collapsed in diffs on GitHub and left out of language stats.
+# Regenerate them instead of editing (CONTRIBUTING.md says how).
+action/dist/** linguist-generated=true -diff
+packages/core/src/**/*.generated.ts linguist-generated=true -diff
+packages/core/test/fixtures/refs/http.json linguist-generated=true -diff
+packages/core/test/fixtures/refs/http-sources.json linguist-generated=true -diff
