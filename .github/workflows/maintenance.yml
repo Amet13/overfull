@@ -1,7 +1,8 @@
 # The repository's scheduled upkeep, one job per task. Each runs on its own schedule,
 # and any one can be started by hand (Actions → maintenance → Run workflow → task).
 #   update-pins         Tuesdays: Node.js, veraPDF and pnpm pins Dependabot cannot update (pull request).
-#   sources-health      Wednesdays: every reference source answers for a known work and an invented title (issue).
+#   sources-health      Wednesdays: every reference source answers for a known work and an invented title,
+#                       and the OVERFULL_LIVE lookup tests pass (issue).
 #   bench               3rd of the month: the reference-check benchmark against the live indexes (pull request).
 #   venues-watch        5th of the month: venue pages changed since last read, next editions, style-file hashes (issue, pull request).
 #   refresh-recordings  9th of the month: the live answers the offline reference tests replay, recorded again (pull request).
@@ -76,13 +77,31 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        timeout-minutes: 5
       - name: Probe the reference sources
         # Keyless, like most users: a 429 from OpenAlex or Semantic Scholar (a shared
         # budget used up) is listed as a note, not as a broken source.
         run: node scripts/sources-health.mjs | tee "$RUNNER_TEMP/report.md"
+      - name: Run the live lookup tests
+        # packages/core/test/refs.live.test.ts, which pull request CI skips. A failure is
+        # added to the issue below; it does not fail the job.
+        env:
+          OVERFULL_LIVE: "1"
+        run: |
+          if ! pnpm exec vitest run packages/core/test/refs.live.test.ts > "$RUNNER_TEMP/live.txt" 2>&1; then
+            {
+              printf '\n## Live lookup tests failed\n\n```text\n'
+              tail -n 40 "$RUNNER_TEMP/live.txt"
+              printf '```\n'
+            } >> "$RUNNER_TEMP/report.md"
+          fi
+          tail -n 5 "$RUNNER_TEMP/live.txt"
       - name: Open, update or close the issue
         env:
           GH_TOKEN: ${{ github.token }}
