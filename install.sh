@@ -75,7 +75,7 @@ sum_of() { awk -v f="$1" '{ n = $2; sub(/^\*/, "", n); if (n == f) { print $1; e
 want="$(sum_of "$asset")"
 [ -n "$want" ] || err "SHA256SUMS has no entry for $asset"
 
-# Releases since 3.2 also ship each executable gzip-compressed (about a third of the
+# Releases since 3.1.1 also ship each executable gzip-compressed (about a third of the
 # size). Both the compressed download and the unpacked file are checked.
 want_gz="$(sum_of "$asset.gz")"
 if [ -n "$want_gz" ] && command -v gzip >/dev/null 2>&1; then

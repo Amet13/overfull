@@ -11,7 +11,7 @@ pnpm build
 pnpm test
 ```
 
-You need Node 26 or newer and pnpm 12 (`corepack enable` or
+You need Node 22 or newer (CI runs 22, 24 and 26) and pnpm 12 (`corepack enable` or
 `npm install -g pnpm@12`). Docker is needed for anything that
 compiles LaTeX (corpus, templates, end-to-end tests).
 
@@ -77,10 +77,27 @@ pnpm templates:check
 pnpm venues:check
 ```
 
+If you changed `site/` or `docs/` (the guide is built into the website), also run
+the site checks:
+
+```bash
+pnpm --filter site check && pnpm --filter site build
+```
+
 If you changed `action/src` or anything it bundles, rebuild the Action and
 commit `action/dist`: `pnpm --filter overfull-action build` (CI checks it).
 
 `make help` lists the Docker tasks: `make image`, `make corpus`, `make e2e`.
+
+The end-to-end test of `overfull build` and `overfull check` in Docker is skipped
+unless you ask for it. Build the image first (`make image` tags it
+`overfull:dev`), then run:
+
+```bash
+OVERFULL_E2E=1 pnpm test packages/cli/test/e2e.test.ts
+```
+
+It uses `$OVERFULL_IMAGE` when set, else `overfull:dev`.
 
 ## Cutting a release (maintainers)
 

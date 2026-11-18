@@ -6,20 +6,37 @@
 //                                               expected rules fire (and fixed.tex is clean)
 //   node scripts/corpus.mjs --check   [id...]   check the committed main.log files only (no Docker)
 //
-// The TeX Live image can be overridden with OVERFULL_TEX_IMAGE. Runs with plain `node` (26 or newer):
-// the TypeScript sources of @overfull/core are loaded through Node's built-in type stripping.
+//   node scripts/corpus.mjs --print-image       print the TeX Live image the cases compile in
+//
+// The TeX Live image is the one docker/Dockerfile pins for its texbase-full stage (read from
+// the Dockerfile, so the corpus and the images cannot drift apart); OVERFULL_TEX_IMAGE
+// overrides it. Runs with plain `node` (22.18 or newer): the TypeScript sources of
+// @overfull/core are loaded through Node's built-in type stripping.
 
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { cp, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DEFAULT_IMAGE =
-  'texlive/texlive:latest@sha256:6530544393bd37b4aec8801292231ff61599aca43a04571306479a21591e87dd';
-const IMAGE = process.env.OVERFULL_TEX_IMAGE || DEFAULT_IMAGE;
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
+
+/** The image of the Dockerfile's `texbase-full` stage (`FROM texlive/texlive:…@sha256:… AS texbase-full`). */
+function dockerfileTexImage() {
+  const dockerfile = readFileSync(join(ROOT, 'docker/Dockerfile'), 'utf8');
+  const m = /^FROM\s+(texlive\/texlive:\S+@sha256:[0-9a-f]{64})\s+AS\s+texbase-full\s*$/m.exec(
+    dockerfile,
+  );
+  if (!m)
+    throw new Error(
+      'docker/Dockerfile has no pinned `FROM texlive/texlive:…@sha256:… AS texbase-full`',
+    );
+  return m[1];
+}
+
+const IMAGE = process.env.OVERFULL_TEX_IMAGE || dockerfileTexImage();
 const CORPUS = join(ROOT, 'corpus');
 const CONCURRENCY = Number(process.env.OVERFULL_CORPUS_JOBS || 4);
 const ENGINES = new Set(['lualatex', 'pdflatex', 'xelatex']);
@@ -214,11 +231,17 @@ async function verify(cases, { recompile }) {
 
 async function main() {
   const [mode, ...ids] = process.argv.slice(2);
+  if (mode === '--print-image') {
+    console.log(IMAGE);
+    return true;
+  }
   const cases = await loadCases(ids);
   if (mode === '--capture') return capture(cases);
   if (mode === '--verify') return verify(cases, { recompile: true });
   if (mode === '--check') return verify(cases, { recompile: false });
-  console.error('usage: node scripts/corpus.mjs --capture|--verify|--check [case-id...]');
+  console.error(
+    'usage: node scripts/corpus.mjs --capture|--verify|--check [case-id...] | --print-image',
+  );
   return false;
 }
 

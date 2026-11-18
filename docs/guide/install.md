@@ -12,7 +12,7 @@ them run the same checks.
 | --- | --- |
 | Docker only | The Docker image and the template Makefile |
 | No Docker, no Node | The [one-line installer](#one-line-install) or the single-file download from GitHub Releases; builds then need a local TeX Live |
-| Git, Node.js 26+, pnpm and Docker | [From source](#from-source), to work on Overfull itself |
+| Git, Node.js 22+, pnpm and Docker | [From source](#from-source), to work on Overfull itself |
 | VS Code + Docker | The Dev Container |
 | Overleaf | Git sync to a local or GitHub copy |
 
@@ -96,7 +96,7 @@ The installer prints a `PATH` line if the directory is not on your `PATH`.
 Set `OVERFULL_VERSION=v3.1.0` to install a specific release and
 `OVERFULL_INSTALL_DIR` to install somewhere else. Native builds exist for Linux
 (x64, arm64), macOS (Apple silicon and Intel) and Windows (x64); anywhere else,
-use `overfull.cjs` with Node.js 26, or Docker.
+use `overfull.cjs` with Node.js 22 or newer, or Docker.
 
 To do it by hand, download your file from
 [GitHub Releases](https://github.com/amet13/overfull/releases)
@@ -106,7 +106,7 @@ To do it by hand, download your file from
 rename it to `overfull`, and make it executable.
 
 Each executable is about 150 MB, almost all of it the Node.js runtime it carries.
-Since 3.2 every release also has a gzip copy (`overfull-linux-x64.gz` and so on,
+Since 3.1.1 every release also has a gzip copy (`overfull-linux-x64.gz` and so on,
 about 50 MB, also listed in `SHA256SUMS`); the installers download that one and
 check both the compressed file and the unpacked executable. By hand:
 `gzip -d overfull-linux-x64.gz`.

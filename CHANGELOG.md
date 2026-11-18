@@ -30,6 +30,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ### Changed
 
+- Node.js 22 or newer is enough (`engines` was `>=26`; nothing needed it). CI also
+  runs the unit tests and the single-file `overfull.cjs` on Node 22 and 24, and
+  `overfull doctor` accepts Node 22.
+- `scripts/corpus.mjs` compiles in the TeX Live image `docker/Dockerfile` pins
+  instead of a second, older pin; `--print-image` shows it.
+- Repository: `.gitattributes` keeps LF line endings and marks `action/dist`, the
+  generated venue module and the recorded HTTP fixtures as generated.
 - Releases: the automatic release is a minor version when `[Unreleased]` has
   `### Added` entries (a patch otherwise), its section is dated and keeps one
   heading of each kind, and dependency bumps are folded into one line. The
