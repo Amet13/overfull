@@ -27,6 +27,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   in review mode (NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, AISTATS, ACL/ARR, EMNLP, acmart).
 - Corpus cases for no-line-to-end, hyperref-error, command-already-defined,
   unknown-package-option, bibliography-stale, float-too-large and font-feature-missing.
+- Browser check: the twelve venue profiles, and the `profile:` of an
+  `overfull.yml` in a dropped .zip or folder ("Profile from overfull.yml").
+- Browser check: files picked or dropped one by one have the .zip limits (50 MB
+  each, 200 MB in all); a larger build log keeps its first and last 8 MB.
+- Site: an "Install the command" link in the home page hero.
 
 ### Changed
 
@@ -50,6 +55,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   says arXiv compiles with pdfLaTeX or XeLaTeX.
 - Reports: every format lists problems in one order, and Markdown renders `code` in
   messages like HTML (only matched backtick pairs).
+- Browser check: says it runs most of the checks of `overfull check`, and what
+  only the CLI does (build, veraPDF, arXiv and DBLP); the privacy note lists what
+  goes to doi.org, CrossRef, DataCite and OpenAlex; Overleaf users are told to
+  add the PDF and log, which the source zip lacks.
+- Browser check: after a run you start, focus moves to the report heading, and on
+  phones the report scrolls into view.
+- References: when arXiv may not be asked (the browser check), an arXiv id is
+  looked up by its DataCite DOI at doi.org first, then at OpenAlex.
+- Site: the theme toggle keeps one label ("Dark theme") and shows its state with
+  `aria-pressed`; shorter page descriptions.
 
 ### Fixed
 
@@ -92,6 +107,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   "overfull boxs" is "overfull boxes".
 - Log: an error raised inside a TeX Live package while it loads points at the project file
   that loaded it, not at the package's line.
+- Browser check: DataCite DOIs (Zenodo, figshare, arXiv, software) failed as a
+  network error, because the page's Content-Security-Policy blocked the host
+  doi.org redirects to. It now allows data.crosscite.org and api.datacite.org,
+  and no longer lists export.arxiv.org and dblp.org, which the page never calls.
+- Browser check: an entry that has an arXiv id or DOI but could not be checked
+  says to run `overfull check`, not to "add the DOI".
+- Browser check: an empty file is named ("the file is empty") instead of a
+  report of 0 checks.
+- Site: wide tables in the guide scroll with the keyboard (a focusable region
+  around each table), and the hero terminal sample wraps instead of being cut off.
 
 ### Security
 
