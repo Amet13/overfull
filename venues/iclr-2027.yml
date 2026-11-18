@@ -6,6 +6,7 @@ source:
   - https://iclr.cc/Conferences/2027/AuthorGuidelines
   - https://iclr.cc/Conferences/2027/AIPolicyForAuthors
 checkedOn: 2026-11-10
+deadline: 2026-09-25
 extends: double-blind
 pageLimit:
   max: 9

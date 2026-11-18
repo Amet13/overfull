@@ -122,6 +122,14 @@ that accept requests from web pages:
 | CrossRef | `api.crossref.org` | Title, first author's surname and year. |
 | OpenAlex | `api.openalex.org` | Title; a DOI or arXiv's DOI of a preprint. |
 
+The page may only connect to these hosts (its Content Security Policy). So it
+resolves DOIs registered with CrossRef and DataCite (Zenodo, figshare, arXiv,
+many datasets and software), but not DOIs from other registration agencies,
+such as mEDRA, JaLC or KISTI: doi.org sends those to the agency's own host,
+which the page may not reach, and the entry is reported as not checked. Run
+`overfull check` for them: the command line is not limited to these hosts. The page does
+not ask arXiv, DBLP, Semantic Scholar, Europe PMC or the ACL Anthology either.
+
 Other commands that use the network send nothing about your paper:
 `overfull doctor` asks `api.crossref.org` for an empty result to see whether it
 answers; `overfull build` with Docker pulls the image from `ghcr.io` and, when a

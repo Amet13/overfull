@@ -35,6 +35,7 @@ const KEYS = [
   'year',
   'source',
   'checkedOn',
+  'deadline',
   'paper',
   'pageLimit',
   'anonymous',
@@ -105,6 +106,11 @@ export function validateProfile(raw, file) {
     if (!validDate(s)) err('"checkedOn" must be a date like 2026-11-10');
     else if (s > new Date().toISOString().slice(0, 10)) err('"checkedOn" is in the future');
     data.checkedOn = s;
+  }
+  if (raw.deadline !== undefined && raw.deadline !== null) {
+    const s = raw.deadline instanceof Date ? raw.deadline.toISOString().slice(0, 10) : raw.deadline;
+    if (!validDate(s)) err('"deadline" must be a date like 2027-05-15');
+    data.deadline = s;
   }
   if (raw.paper !== undefined) {
     if (!['a4', 'letter', 'any'].includes(raw.paper)) err('"paper" must be a4, letter or any');

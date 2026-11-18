@@ -6,6 +6,7 @@ source:
   - https://neurips.cc/Conferences/2026/MainTrackHandbook
   - https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip
 checkedOn: 2026-11-10
+deadline: 2026-05-06
 extends: double-blind
 paper: letter
 pageLimit:

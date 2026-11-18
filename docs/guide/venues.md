@@ -52,6 +52,7 @@ Each file records where its values came from, so you can check them:
 | `year` | The venue year, or `rolling`. |
 | `source` | Official pages the values were read from. Required. |
 | `checkedOn` | The day those pages were read (`YYYY-MM-DD`). Required. |
+| `deadline` | The full-paper submission deadline of that edition (`YYYY-MM-DD`), when the sources state it. |
 | `extends` | Built-in profile that supplies the other defaults (default `generic`). |
 | `paper` | `a4`, `letter` or `any`. |
 | `pageLimit` | `max`, optional `endLabel`, and the words `counts` and `excludes` describing what the venue counts. |
@@ -84,6 +85,10 @@ it works in the browser. Adding a venue is described in
 A profile whose `checkedOn` is more than 14 months old adds an info note,
 `venue-profile-stale`: it may be out of date. Read the venue's current pages
 (listed in the note) before you submit.
+
+The same note appears when the profile's `deadline` passed more than 30 days ago:
+the profile describes that edition, and the next one may have other rules. For a
+camera-ready version, follow the venue's final instructions.
 
 ## Venues included
 
@@ -204,7 +209,10 @@ With `anonymous: true` (or the `double-blind` profile), Overfull checks:
   ACL Rolling Review, EMNLP) the check is skipped while the class is loaded in
   review mode, and its fix names the option to change when it is not;
 - an acknowledgments section, which often names people and grants
-  (`anonymity-acknowledgments`, warning);
+  (`anonymity-acknowledgments`, warning). When there is a PDF, only an
+  acknowledgments heading printed in it counts, so a section that an `\if`
+  switch leaves out in anonymous mode (as in the paper template) is not
+  reported; without a PDF the sources are searched;
 - phrases such as "our previous work" (`anonymity-self-reference`, info).
 
 - links that can identify the authors (`anonymity-link`, warning): your own

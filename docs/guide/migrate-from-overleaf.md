@@ -33,10 +33,25 @@ the way that fits how often you want a check.
    `.bib` files, then runs the reference check and the venue checks that need
    only source files, and with the PDF and log also the build, output and
    accessibility checks.
+5. Choose the profile: the built-in ones (`generic`, `thesis`, `paper`,
+   `arxiv`, `double-blind`) or one of the 12 [venue profiles](./venues.md#venues-included)
+   (NeurIPS, ICML, ICLR, AAAI, CVPR, ECCV, AISTATS, ACL Rolling Review, EMNLP,
+   ACM, IEEE, Springer LNCS). When the project has an `overfull.yml` with a
+   line such as `profile: neurips-2026`, the page selects that profile and says
+   so. Other settings in `overfull.yml` (an inline profile, `venue:` overrides,
+   ignored rules) are applied only by `overfull check`.
+
+**What only `overfull check` does.** The page lists what it cannot do: build
+the document, run veraPDF (full PDF/UA validation), and ask arXiv and DBLP,
+which do not answer requests from web pages. An entry with a DOI or arXiv id
+that the page could not confirm points you to `overfull check`.
 
 The zip is unpacked in your browser and never uploaded. Reference lookups are
 the only network requests ([what they send](./references.md#what-leaves-your-machine)),
-and you can switch them off with **Verify references online**.
+and you can switch them off with **Verify references online**. DOIs registered
+with CrossRef or DataCite (Zenodo, figshare, arXiv) are resolved; DOIs from
+other registration agencies, such as mEDRA, JaLC or KISTI, are blocked by the
+site's security policy and stay unchecked: run `overfull check` for those.
 
 **What the zip does not contain.** Overleaf says the zip holds the source files
 only ([same page](https://docs.overleaf.com/managing-projects-and-files/downloading-a-project)).

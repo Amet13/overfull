@@ -44,6 +44,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 - `overfull init --here --vscode` writes `.vscode/tasks.json`: an `overfull check` task whose problems show in VS Code's Problems panel. Opt-in, not part of `--all`.
 - `start-paper` skill: the venue ids and how to move to a venue's style kit (official class unchanged, paper size, and building without tagging for IEEEtran and llncs).
 - A root `AGENTS.md` for agents working on this repository.
+- Venue profiles: an optional `deadline` (the edition's full-paper submission
+  deadline, filled in for the eight yearly profiles from their calls for papers);
+  more than 30 days after it, `venue-profile-stale` says the profile is for a past edition.
 
 ### Changed
 
@@ -96,6 +99,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 - Template workflow renamed to `.github/workflows/preflight.yml` (also what `init --here --ci` writes): the preflight runs before the arXiv build, the arXiv build is checked with `--profile arxiv`, and the PR diff also runs after a failed check.
 - arXiv guidance in the templates and skills: arXiv runs Biber itself on the uploaded `.bib` (TeX Live 2025, no TeX Live 2026 yet); ship a `.bbl` only when `arxiv-bbl-version` accepts it; `make arxiv` keeps `paper.pdf`.
 - Agent instructions: `--engine docker` only for a missing package, `\DocumentMetadata` before `\documentclass`, the PDF standard stays, and the Beamer exception is written down.
+- Images: the TeX images install Debian packages from snapshot.debian.org at a
+  pinned date (`DEBIAN_SNAPSHOT`, moved by `scripts/update-pins.mjs` with the base
+  digests), and check the Microsoft core fonts against their SHA-256 before installing
+  them, so a rebuild gives the same packages and a SourceForge outage fails loudly.
+- Check image: veraPDF runs on a jlink'd OpenJDK 25 with only the modules it needs
+  (the same Java version as the TeX images) instead of Debian's OpenJDK 21 JRE, and
+  without veraPDF's GUI jar: 229 MB to 178 MB compressed content.
+- CI: the image jobs in `ci.yml` only read the layer cache that `image.yml` writes;
+  the full image's cache keeps only its own layers (`mode=min`).
 
 ### Fixed
 
@@ -164,6 +176,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   around each table), and the hero terminal sample wraps instead of being cut off.
 - Templates' `.gitignore` ignored PDF figures (`*.pdf`); it now ignores only PDFs in the project folder, and `notes/reviews.md`.
 - `sync-templates` deletes the template copies of files removed from `shared/agents/`.
+- `anonymity-acknowledgments` reads the PDF when there is one, so the paper
+  template's anonymous mode (which leaves the acknowledgments out with an `\if`
+  switch) no longer warns; without a PDF the sources are searched as before.
+- Docs: the browser check's venue profiles, `profile:` from `overfull.yml`,
+  DataCite DOIs and what only `overfull check` does; DOIs from other registration
+  agencies (mEDRA, JaLC, KISTI) are blocked by the site's security policy.
 
 ### Security
 
