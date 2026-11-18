@@ -135,7 +135,8 @@ describe('the command reference matches each command --help', async () => {
     for (const c of commands) {
       for (const choice of usageChoices(helps.get(c) as string)) {
         if (!(syn.get(c) ?? '').includes(choice)) wrong.push(`cli.md synopsis of ${c}: ${choice}`);
-        const escaped = choice.replace(/\|/g, '\\|');
+        // How the choice is written in a Markdown table cell.
+        const escaped = choice.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
         const body = section(c);
         if (choice.startsWith('[') && !body.includes(escaped) && !body.includes(choice))
           wrong.push(`## ${c}: ${choice}`);
