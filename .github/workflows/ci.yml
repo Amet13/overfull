@@ -70,6 +70,38 @@ jobs:
       - name: install.sh works (local fake release)
         run: sh scripts/test-install.sh
 
+  # engines.node is >=22: the oldest supported Node lines run the unit tests and the
+  # single-file CLI (overfull.cjs), which people run with whatever Node they have.
+  node-versions:
+    name: Node ${{ matrix.node }}
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'automation/') || github.event.pull_request.head.repo.full_name != github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        timeout-minutes: 5
+      - run: pnpm build
+      - run: pnpm test
+      - name: Standalone CLI runs, creates a project and checks it
+        run: |
+          node scripts/build-standalone.mjs
+          node dist-standalone/overfull.cjs --version
+          node dist-standalone/overfull.cjs init paper "$RUNNER_TEMP/sa-paper" --no-git
+          test -f "$RUNNER_TEMP/sa-paper/main.tex"
+          cd "$RUNNER_TEMP/sa-paper" && node "$GITHUB_WORKSPACE/dist-standalone/overfull.cjs" check references.bib --offline --fail-on never
+
   cross-os:
     name: Unit tests (${{ matrix.os }})
     if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'automation/') || github.event.pull_request.head.repo.full_name != github.repository
@@ -365,7 +397,7 @@ jobs:
   passed:
     name: CI passed
     if: always()
-    needs: [node, cross-os, changes, image-full, image-slim, image-check, image-arm64, site]
+    needs: [node, node-versions, cross-os, changes, image-full, image-slim, image-check, image-arm64, site]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:

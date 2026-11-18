@@ -67,7 +67,7 @@ try {
   $want = $sums[$asset]
   if (-not $want) { Fail "SHA256SUMS has no entry for $asset" }
 
-  # Releases since 3.2 also ship the executable gzip-compressed (about a third of the
+  # Releases since 3.1.1 also ship the executable gzip-compressed (about a third of the
   # size). Both the compressed download and the unpacked file are checked.
   $wantGz = $sums["$asset.gz"]
   if ($wantGz) {

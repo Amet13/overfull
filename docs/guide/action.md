@@ -174,7 +174,8 @@ in the same image as `make build`, a PDF that builds locally builds in CI.
 
 ## Reference lookups in CI
 
-The references check queries CrossRef, doi.org, arXiv and DBLP from the runner.
+The references check queries the public indexes from the runner (see
+[What leaves your machine](./references.md#what-leaves-your-machine)).
 Set `mailto` so CrossRef requests go to its polite pool. To add OpenAlex title
 search, pass the key as an environment variable on the step:
 

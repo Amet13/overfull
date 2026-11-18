@@ -2,8 +2,9 @@
 
 Three images, each multi-arch (linux/amd64, linux/arm64) with a build provenance
 attestation (`gh attestation verify oci://ghcr.io/amet13/overfull:3-slim --repo amet13/overfull`).
-Tags follow the release: `3`, `3.1`, `3.1.2`, plus `edge` (main) and `sha-<commit>`,
-each with the image's suffix. `-slim` tags exist from 3.1.2 on.
+Tags follow the release: the major (`3`), the minor (`3.1`) and the full version
+(`3.1.<patch>`), plus `edge` (main) and `sha-<commit>`, each with the image's suffix.
+`-slim` tags exist from 3.1.2 on.
 
 | Image | What it has | Download |
 | --- | --- | --- |
@@ -41,8 +42,8 @@ git directory for `overfull diff`.
 - **Check** when the PDF is built elsewhere and you only want the checks, veraPDF
   included.
 
-`:3-medium`, the image slim replaced, is another name for slim, kept for the rest
-of 3.x.
+`:3-medium`, the image slim replaced, is another name for slim. It is kept for
+3.x and removed in 4.0: use `:3-slim`.
 
 ## Run it as yourself
 

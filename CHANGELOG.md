@@ -31,6 +31,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ### Changed
 
+- Docs: "How it compares" covers Overleaf's built-in Citation Reviewer, and the
+  Overleaf page tells you to download the PDF and log from "Logs and output
+  files" for the browser check.
+- Node.js 22 or newer is enough (`engines` was `>=26`; nothing needed it). CI also
+  runs the unit tests and the single-file `overfull.cjs` on Node 22 and 24, and
+  `overfull doctor` accepts Node 22.
+- `scripts/corpus.mjs` compiles in the TeX Live image `docker/Dockerfile` pins
+  instead of a second, older pin; `--print-image` shows it.
+- Repository: `.gitattributes` keeps LF line endings and marks `action/dist`, the
+  generated venue module and the recorded HTTP fixtures as generated.
+- Releases: the automatic release is a minor version when `[Unreleased]` has
+  `### Added` entries (a patch otherwise), its section is dated and keeps one
+  heading of each kind, and dependency bumps are folded into one line. The
+  changelog is linted like the other Markdown files.
 - References: requests to CrossRef are spaced (one at a time, about 1.1 s apart
   without `mailto`; three at a time, about 0.35 s apart with it).
 - References: the title-search cache key includes the first author sent to
@@ -54,6 +68,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ### Fixed
 
+- Docs: the privacy notes in the FAQ, SECURITY.md and the guide listed only some
+  of the services that receive data. One list in
+  [References](docs/guide/references.md#what-leaves-your-machine) now says which
+  service receives what (DOI; title, first author and year; arXiv, PubMed and ACL
+  ids), for the command line and the browser check, and a test keeps it in step
+  with the code.
+- Docs: the CLI reference missed `guard`, `check --project-cache`, the ACL, PMID and
+  PMCID ids of `cite`, `guard --hook codex` and venue ids for `--profile`, and said
+  every command takes `--json` (`mcp` does not). A test now compares the reference,
+  the README and `overfull --help` with each command's `--help`.
+- README: the Claude Code plugin install command (`/plugin marketplace add
+  amet13/overfull`, then `/plugin install overfull@overfull`); the repository is not
+  a GitHub template.
 - Releases: the images are tagged before the GitHub release and `v3` are created, so a release can no longer come out without its images
 - References: titles in Cyrillic, Chinese, Arabic and other non-Latin scripts
   were always reported as not found; a title without letters or digits is now
@@ -109,21 +136,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 Changes merged since v3.1.1, each after the full test suite and the template
 builds passed. Released automatically by autorelease.yml.
 
-### Changed
-
-- Automation PRs merge themselves when CI passes
-- CI: no duplicate runs on automation PRs; re-run jobs that never got a runner
-- CI: catch failures before main; stop timing tests failing on slow runners
-- Slim image and on-demand installs: retry when a CTAN mirror fails
-- Docs: on-demand installs cover missing biblatex styles
-- Install biblatex-ieee in the slim image; install missing biblatex styles on demand
-- Test: check for script and img tags in any letter case (CodeQL js/bad-tag-filter)
-- Docker: install libatomic1 where Node.js runs in the builder
-- Website: real CLI output on the home page, tool-first check page, report download; docs
-- Docker and CI: slim image, CLI layer apart from TeX, parallel image jobs, release by retag
-- CLI: faster start, one check with many report files, HTML report, batched arXiv, TeX packages on demand
-- Bump the npm group across 1 directory with 3 updates (#96)
-
 Faster everywhere: a slim image, parallel CI, releases that retag instead of
 rebuilding, and a quicker CLI.
 
@@ -156,6 +168,18 @@ rebuilding, and a quicker CLI.
 - The template workflows build with `overfull build` and run `overfull check`
   once (annotations, job summary and an HTML report).
 - The scheduled upkeep is one `maintenance.yml` workflow.
+- Automation PRs merge themselves when CI passes
+- CI: no duplicate runs on automation PRs; re-run jobs that never got a runner
+- CI: catch failures before main; stop timing tests failing on slow runners
+- Slim image and on-demand installs: retry when a CTAN mirror fails
+- Docs: on-demand installs cover missing biblatex styles
+- Install biblatex-ieee in the slim image; install missing biblatex styles on demand
+- Test: check for script and img tags in any letter case (CodeQL js/bad-tag-filter)
+- Docker: install libatomic1 where Node.js runs in the builder
+- Website: real CLI output on the home page, tool-first check page, report download; docs
+- Docker and CI: slim image, CLI layer apart from TeX, parallel image jobs, release by retag
+- CLI: faster start, one check with many report files, HTML report, batched arXiv, TeX packages on demand
+- Dependency updates: npm group (#96).
 
 ### Fixed
 
@@ -167,31 +191,15 @@ rebuilding, and a quicker CLI.
 Changes merged since v3.1.0, each after the full test suite and the template
 builds passed. Released automatically by autorelease.yml.
 
-### Changed
+### Added
 
-- Fix the slow trailing-punctuation regex in parseDoi (CodeQL js/polynomial-redos)
-- Cleanup: remove the plan, unexport 32 more declarations, share the identifier checks
-- Automation runs without API keys or repository secrets
-- Format log/paths.ts
-- Drop npm publishing: Overfull ships only through GitHub
-- Revert "npm: publish the single-file CLI as `overfull` when an NPM_TOKEN secret exists"
-- Rebuild the bundled Action
-- Changelog for the next release; plan status
-- npm: publish the single-file CLI as `overfull` when an NPM_TOKEN secret exists
-- Venue profiles: ECCV 2026 and AISTATS 2027, from the official pages and kits
-- Remove an unused log helper; format
-- Export only what other modules use (55 declarations were exported for nothing)
-- Skills: trim add-citation, fix outdated sources and rules
-- Keep outside data current: source health, recording refresh, venue kits and page changes
-- Rewrite ARCHITECTURE.md from the code as it is; --profile help names venue ids
-- Smaller downloads, one name per command, declared dependencies
-- CI survives mirror outages; tests for bibliography attribution, Semantic Scholar, MCP framing
-- cite: write the published version when arXiv names one; never write collection
-- Reports: nothing checked is not a pass; one finding per missing key; clearer summaries
-- References: call an invented title not found when CrossRef and one more index agree
-- Plan: keep outside data current (source health, recordings, venue kits and pages)
-- Add an improvement plan from a fresh audit of 3.1.0
-- Fix the open CodeQL findings
+- Venue profiles: ECCV 2026 and AISTATS 2027.
+- Releases ship a gzip copy of each executable (about 50 MB instead of 150 MB);
+  the installers use it and check both files.
+- Automation: a weekly health check of every reference source, a monthly refresh
+  of the recorded answers the tests replay, style-file hashes that follow each
+  venue's official kit (new `kit` field), and venue-page change diffs in the
+  monthly venue issue (`node scripts/venues-watch.mjs --accept <id>`).
 
 ### Changed
 
@@ -216,16 +224,29 @@ builds passed. Released automatically by autorelease.yml.
   DOI, keeping the arXiv id; it never writes the non-standard `collection` field.
 - `overfull --help` lists `init --here` (`adopt` stays an alias).
 - Many lookup failures caused by a bot wall fold into one warning.
-
-### Added
-
-- Venue profiles: ECCV 2026 and AISTATS 2027.
-- Releases ship a gzip copy of each executable (about 50 MB instead of 150 MB);
-  the installers use it and check both files.
-- Automation: a weekly health check of every reference source, a monthly refresh
-  of the recorded answers the tests replay, style-file hashes that follow each
-  venue's official kit (new `kit` field), and venue-page change diffs in the
-  monthly venue issue (`node scripts/venues-watch.mjs --accept <id>`).
+- Fix the slow trailing-punctuation regex in parseDoi (CodeQL js/polynomial-redos)
+- Cleanup: remove the plan, unexport 32 more declarations, share the identifier checks
+- Automation runs without API keys or repository secrets
+- Format log/paths.ts
+- Drop npm publishing: Overfull ships only through GitHub
+- Revert "npm: publish the single-file CLI as `overfull` when an NPM_TOKEN secret exists"
+- Rebuild the bundled Action
+- Changelog for the next release; plan status
+- npm: publish the single-file CLI as `overfull` when an NPM_TOKEN secret exists
+- Venue profiles: ECCV 2026 and AISTATS 2027, from the official pages and kits
+- Remove an unused log helper; format
+- Export only what other modules use (55 declarations were exported for nothing)
+- Skills: trim add-citation, fix outdated sources and rules
+- Keep outside data current: source health, recording refresh, venue kits and page changes
+- Rewrite ARCHITECTURE.md from the code as it is; --profile help names venue ids
+- Smaller downloads, one name per command, declared dependencies
+- CI survives mirror outages; tests for bibliography attribution, Semantic Scholar, MCP framing
+- cite: write the published version when arXiv names one; never write collection
+- Reports: nothing checked is not a pass; one finding per missing key; clearer summaries
+- References: call an invented title not found when CrossRef and one more index agree
+- Plan: keep outside data current (source health, recordings, venue kits and pages)
+- Add an improvement plan from a fresh audit of 3.1.0
+- Fix the open CodeQL findings
 
 ### Fixed
 
@@ -237,9 +258,9 @@ builds passed. Released automatically by autorelease.yml.
   exported, two dead functions and the improvement plan are removed, and the
   DOI and arXiv checks share their assessment and failure handling.
 
-## [v3.1.0] - Any project first
+## [v3.1.0] - 2026-11-10
 
-Overfull now starts from the paper you already have: one command checks any
+**Any project first.** Overfull now starts from the paper you already have: one command checks any
 LaTeX project, and templates become one way in among several.
 
 ### Added
@@ -312,7 +333,7 @@ LaTeX project, and templates become one way in among several.
 - Guide: existing project, CI and Overleaf come first; new pages on existing
   projects, MCP, accuracy and evals.
 
-## [v3.0.0] - Overfull
+## [v3.0.0] - 2026-11-10
 
 tex-thesis becomes **Overfull**, a preflight kit for LaTeX papers and theses
 that works with AI coding agents and by hand. The version continues the
@@ -389,6 +410,7 @@ as `templates/thesis`.
 ## [v2.4.0] - 2026-04-12
 
 ### Added
+
 - README redesign with PDF screenshots, badge rows, comparison table, "Who is this for?" section, and star history graph
 - `SECURITY.md` with vulnerability reporting policy and supply-chain hardening documentation
 - Dual licensing: `LICENSE` pointer file, `LICENSE-GPL` (GPLv3), `LICENSE-CC-BY-SA` (CC BY-SA 4.0)
@@ -403,6 +425,7 @@ as `templates/thesis`.
 - `SOURCE_DATE_EPOCH` support for reproducible PDF builds
 
 ### Changed
+
 - Consolidated two Dockerfiles into single multi-stage Dockerfile (base, devcontainer, lint, builder, scratch)
 - Updated `.devcontainer/devcontainer.json` to reference root Dockerfile with `target: devcontainer`
 - Pinned pre-commit and all pip dependencies by SHA256 hash in `.devcontainer/requirements.txt`
@@ -414,11 +437,13 @@ as `templates/thesis`.
 - Updated `CONTRIBUTING.md` with dual license references
 
 ### Removed
+
 - Separate `.devcontainer/Dockerfile` (consolidated into root Dockerfile)
 
 ## [v2.3.0] - 2026-03-04
 
 ### Added
+
 - `latexindent` support via `.latexindent.yaml` and pre-commit hook
 - New `make` targets: `build-thesis`, `build-slides`, `watch-thesis`, `watch-slides`, `fmt`, `fmt-check`
 - New cleanup target: `clean-all` (includes Docker artifact cleanup)
@@ -426,6 +451,7 @@ as `templates/thesis`.
 - Enhanced issue/PR templates for reproducible reports and reviews
 
 ### Changed
+
 - Pinned Docker base image by digest in project and devcontainer Dockerfiles
 - Pinned GitHub Actions workflow dependencies to commit SHAs
 - Expanded Dependabot config to update pinned Docker/Actions/pre-commit refs
@@ -437,18 +463,22 @@ as `templates/thesis`.
 ## [v2.2.0] - 2026-02-21
 
 ### Added
+
 - Modernized LaTeX template and open-source project tooling baseline.
 
 ### Changed
+
 - Optimized CI lint job to run natively instead of through Docker.
 - Refreshed README and release-facing project documentation.
 
 ## [v2.1.0] - 2026-02-07
 
 ### Added
+
 - Direct links to build artifacts for easier template consumption.
 
 ### Changed
+
 - Migrated template workflow to LuaLaTeX.
 - Clarified README content and linked to the legacy template line.
 - Removed duplicated template/documentation content.
@@ -456,6 +486,7 @@ as `templates/thesis`.
 ## [v2.0.0] - 2026-02-07
 
 ### Changed
+
 - Introduced the v2 template refresh and structure improvements.
 - Translated and reworked README content.
 - Switched release workflow to use the default GitHub token.
@@ -464,15 +495,18 @@ as `templates/thesis`.
 ## [1.1.1] - 2024-09-24
 
 ### Changed
+
 - Updated font-related links and documentation references.
 - Bumped release tooling and maintenance automation.
 
 ## [1.0.3] - 2022-05-25
 
 ### Added
+
 - Buildx setup and multi-architecture build pipeline groundwork.
 
 ### Changed
+
 - Iterated CI workflow structure and environment variable handling.
 - Updated GitHub Actions runtime baseline to Ubuntu 22.04.
 - Removed package publishing step constrained by GitHub limits.
@@ -481,19 +515,23 @@ as `templates/thesis`.
 ## [1.0.2] - 2022-02-22
 
 ### Changed
+
 - Switched release references from commit SHA pins to tags.
 - Applied additional small release fixes.
 
 ## [1.0.1] - 2022-02-22
 
 ### Changed
+
 - Aligned release naming with the tag name.
 
 ## [1.0.0] - 2022-02-22
 
 ### Added
+
 - Initial public release of the thesis template repository.
 - Core thesis structure, chapter scaffolding, and appendix baseline.
 
 ### Changed
+
 - Iterative content, wording, and formatting refinements from initial development.

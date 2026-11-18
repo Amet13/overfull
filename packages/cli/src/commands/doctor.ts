@@ -80,6 +80,9 @@ async function reachable(url: string, f: typeof fetch): Promise<Item> {
   }
 }
 
+/** The oldest Node.js major version Overfull supports (`engines.node` in package.json). */
+export const MIN_NODE_MAJOR = 22;
+
 export async function doctorCommand(args: string[], io: Io): Promise<number> {
   const { values } = parse(
     args,
@@ -93,11 +96,11 @@ export async function doctorCommand(args: string[], io: Io): Promise<number> {
   const env = io.env;
   const items: Item[] = [];
   const major = Number(process.versions.node.split('.')[0]);
-  const nodeOk = major >= 26;
+  const nodeOk = major >= MIN_NODE_MAJOR;
   items.push({
     name: 'node',
     ok: nodeOk,
-    detail: `v${process.versions.node}${nodeOk ? '' : ' (need 26 or newer)'}`,
+    detail: `v${process.versions.node}${nodeOk ? '' : ` (need ${MIN_NODE_MAJOR} or newer)`}`,
   });
   items.push({ name: 'overfull', ok: true, detail: VERSION });
 

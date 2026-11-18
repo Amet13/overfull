@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { main } from '../src/main.js';
@@ -59,6 +59,20 @@ describe('overfull init', () => {
 });
 
 describe('overfull doctor', () => {
+  it('needs the Node version the package.json files declare, and this one passes', async () => {
+    const { MIN_NODE_MAJOR } = await import('../src/commands/doctor.js');
+    for (const file of ['../package.json', '../../../package.json']) {
+      const pkg = JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8')) as {
+        engines: { node: string };
+      };
+      expect(pkg.engines.node).toBe(`>=${MIN_NODE_MAJOR}`);
+    }
+    const io = memIo(tempDir());
+    await main(['doctor', '--json'], io);
+    const { items } = JSON.parse(io.stdoutText()) as { items: { name: string; ok: boolean }[] };
+    expect(items.find((i) => i.name === 'node')?.ok).toBe(true);
+  });
+
   it('lists tools; exits 1 only when nothing can build', async () => {
     const io = memIo(tempDir());
     const code = await main(['doctor'], io);

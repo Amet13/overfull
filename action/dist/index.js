@@ -119643,7 +119643,8 @@ Commands:
   init [thesis|paper|slides] [dir]   Create a project from a template
   build [main.tex]                   Compile with latexmk (local or Docker) and check the log
   check                              Check log, PDF, references, accessibility, venue rules
-  cite <doi | arXiv:id | "title">    Add a verified BibTeX entry; prints its key
+  cite <doi | arXiv:id | ACL id | PMID | PMCID | "title">
+                                     Add a verified BibTeX entry; prints its key
   pages <range>                      Render PDF pages to PNG (e.g. 3, 2-5, 1,4,7)
   diff [--base ref]                  Build a PDF marking changes since a git revision
   explain <rule>                     What a rule means and how to fix it

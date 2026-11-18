@@ -16,8 +16,10 @@ You will get an acknowledgment within 72 hours and a resolution target of 30 day
 ## Scope
 
 - The `overfull` CLI and `@overfull/core`: they read local files (logs, PDFs,
-  BibTeX) that may come from untrusted sources, and send reference titles and
-  DOIs to public indexes (CrossRef, doi.org, DBLP, arXiv, optionally OpenAlex).
+  BibTeX) that may come from untrusted sources, and send reference identifiers,
+  titles, first authors and years to public indexes. The full list of services
+  and what each receives is in
+  [What leaves your machine](docs/guide/references.md#what-leaves-your-machine).
 - The browser check on the website: files are processed in the browser and are
   never uploaded.
 - The Docker image and the GitHub Action.

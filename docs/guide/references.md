@@ -1,6 +1,6 @@
 ---
 title: References
-description: How Overfull verifies bibliography entries against CrossRef, doi.org, arXiv, DBLP and (with an API key) OpenAlex, the outcomes, false positives, opting out, configuration, offline use, and why it never calls a reference fake.
+description: How Overfull verifies bibliography entries against CrossRef, doi.org, arXiv, DBLP, OpenAlex, Semantic Scholar, Europe PMC and the ACL Anthology, what each service receives, the outcomes, false positives, opting out, configuration, offline use, and why it never calls a reference fake.
 order: 31
 section: Checks
 ---
@@ -87,6 +87,44 @@ Requests to CrossRef are spaced to stay inside its limits: one at a time,
 about 1.1 seconds apart, in the public pool; up to three at a time, about 0.35
 seconds apart, with a `mailto` (see [Configuration](#configuration)). arXiv
 requests are 3 seconds apart, as arXiv asks.
+
+## What leaves your machine
+
+This is the one list of what Overfull sends to outside services. Only the
+references check, `overfull cite`, `overfull guard --staged` and the MCP
+`check` and `cite` tools send anything, and only about the entries they look
+up. Your `.tex` sources, PDF, log and the rest of the `.bib` file never leave
+your machine. `--offline` sends nothing. Each service also sees your IP address,
+as with any web request, and caches mean a repeat run asks again only for what
+changed or expired.
+
+Command line, Action and MCP server:
+
+| Service | Host | What it receives | When |
+| --- | --- | --- | --- |
+| doi.org | `doi.org` | The DOI | An entry with a DOI; `cite <doi>`; `cite` of a preprint whose published version has a DOI. doi.org passes the request on to the DOI's registration agency (for example CrossRef, or DataCite through `data.crosscite.org`), which then sees the DOI too. |
+| CrossRef | `api.crossref.org` | Title, first author's surname and year; the DOIs of matched works; your `mailto` if set | Title search for an entry without a DOI or other identifier, and `cite "<title>"` (with `--author` and `--year`). The retraction check asks for the DOIs of the works that matched, up to 40 per request. |
+| DBLP | `dblp.org` | Title | Title search. |
+| arXiv | `export.arxiv.org` | arXiv ids; title | An entry with an arXiv id (one request for many ids), `cite arXiv:<id>`, and the second wave of a title search. |
+| OpenAlex | `api.openalex.org` | Title; a DOI, or arXiv's DOI `10.48550/arXiv.<id>`; your `mailto` and `OPENALEX_API_KEY` if set | A DOI or arXiv id when doi.org or arXiv cannot answer. Title search when `OPENALEX_API_KEY` is set, and without a key when DBLP gave no answer. |
+| Semantic Scholar | `api.semanticscholar.org` | Title; `SEMANTIC_SCHOLAR_API_KEY` if set | Title search, only when the indexes above found nothing. |
+| Europe PMC | `www.ebi.ac.uk` | PubMed id or PubMed Central id; title | An entry or `cite` with a PMID or PMCID, and the last title search fallback. |
+| ACL Anthology | `aclanthology.org` | ACL Anthology id | An entry or `cite` with an Anthology id or URL. |
+
+The browser check on the website reads your files in the browser and never
+uploads them. With "Verify references online" on, it asks only the services
+that accept requests from web pages:
+
+| Service | Host | What it receives |
+| --- | --- | --- |
+| doi.org | `doi.org` | The DOI (passed on to its registration agency, as above). |
+| CrossRef | `api.crossref.org` | Title, first author's surname and year. |
+| OpenAlex | `api.openalex.org` | Title; a DOI or arXiv's DOI of a preprint. |
+
+Other commands that use the network send nothing about your paper:
+`overfull doctor` asks `api.crossref.org` for an empty result to see whether it
+answers; `overfull build` with Docker pulls the image from `ghcr.io` and, when a
+TeX package is missing from the image, downloads it from a CTAN mirror.
 
 ## The outcomes
 

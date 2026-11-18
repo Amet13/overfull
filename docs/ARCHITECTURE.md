@@ -47,7 +47,8 @@ scripts/           build, sync, release, maintenance and installer-test scripts
 
 ## Tooling
 
-Node 26 LTS (the Action runs on Node 24, the newest Actions runtime), pnpm 12
+Node 26 LTS, supported from Node 22 (`engines`; CI also runs the tests on 22 and 24, and
+the Action runs on Node 24, the newest Actions runtime), pnpm 12
 workspaces, TypeScript 7, Vitest 5 with coverage floors, Biome 2, Astro 7,
 pdf.js 6. ESM only. The site stays on TypeScript 6 because `@astrojs/check`
 0.9.12 accepts only 5 or 6. Tests live in `packages/*/test/`, `site/tests/`,
@@ -125,26 +126,21 @@ provenance field (source, date, hash over the identifying fields), which `guard`
 checks.
 
 The browser check asks only the sources that allow requests from web pages:
-CrossRef, doi.org and OpenAlex.
+CrossRef, doi.org and OpenAlex. What each source receives is listed in
+[What leaves your machine](guide/references.md#what-leaves-your-machine), and
+`scripts/test/privacy-doc.test.ts` keeps that list in step with the request hosts
+in `refs/`.
 
 ## Command line
 
-```text
-overfull init --here [--agents] [--ci] [--make] [--hooks] [--all]   add Overfull to this project
-overfull init [thesis|paper|slides] [dir]                           start from a template
-overfull build [main.tex] [--engine auto|local|docker]              compile with latexmk, check the log
-overfull check [files] [--json|--markdown|--sarif|--annotations] [--checks a,b]
-               [--profile p] [--offline] [--refresh] [--fail-on error|warning|never] [--watch]
-overfull cite <doi | arXiv:id | ACL id | PMID | PMCID | "title"> [--bib f] [--key k]
-overfull guard --staged | --hook [claude|gemini|codex]              block hand-written .bib entries
-overfull mcp                                                        MCP server: check, cite, explain, pages, doctor
-overfull pages <range>                                              PDF pages to PNG
-overfull diff [--base ref]                                          PDF with changes highlighted (latexdiff)
-overfull explain <rule> | --list
-overfull doctor
-```
+Commands: `init` (and `init --here`, alias `adopt`), `build`, `check`, `cite`,
+`guard`, `mcp`, `pages`, `diff`, `explain` and `doctor`, one module each in
+`packages/cli/src/commands/`, loaded only when that command runs. Each command's
+`--help` is the source of truth for its flags; [the CLI reference](guide/cli.md)
+documents them, and `packages/cli/test/docs-reference.test.ts` fails when the
+reference, the README's command list or `overfull --help` drift from it.
 
-`adopt` is an alias of `init --here`. Without `overfull.yml`, `check` finds the
+Without `overfull.yml`, `check` finds the
 main file (`main.tex`, or the only `.tex` file with `\documentclass`) and says what
 it assumed. `check` never runs code the project chooses: `build.image` is used by
 `build` only.
@@ -189,7 +185,7 @@ automation only reports changes (see `MAINTAINING.md`).
 - **Executables** for Linux, macOS and Windows: a Node.js single-executable
   application (`scripts/build-standalone.mjs --sea`), about 150 MB, almost all of
   it the Node runtime; a gzip copy (about 50 MB) ships next to each. `overfull.cjs`
-  is the same program for an existing Node 26. `install.sh` and `install.ps1`
+  is the same program for an existing Node 22 or newer. `install.sh` and `install.ps1`
   check downloads against `SHA256SUMS`. Homebrew and Scoop files are generated
   per release. Releases carry build provenance.
 - **Images** (`docker/Dockerfile`): `ghcr.io/amet13/overfull:3` (TeX Live 2026 at

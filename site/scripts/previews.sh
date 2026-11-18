@@ -6,10 +6,10 @@
 # Builds each template in a temporary copy (the templates stay clean) with a
 # TeX Live image, then rasterises page 1 with poppler (pdftoppm). Run from the
 # repository root:
-#   sh site/scripts/previews.sh                 # uses overfull-tex:dev
-#   IMAGE=overfull:dev sh site/scripts/previews.sh
+#   sh site/scripts/previews.sh                 # uses overfull:dev (make image)
+#   IMAGE=ghcr.io/amet13/overfull:3 sh site/scripts/previews.sh
 set -eu
-image=${IMAGE:-overfull-tex:dev}
+image=${IMAGE:-overfull:dev}
 out=site/public/previews
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
