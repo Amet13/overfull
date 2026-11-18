@@ -495,3 +495,22 @@ describe('performance', () => {
     expect(result?.parsed.errors.length).toBeGreaterThan(1000);
   });
 });
+
+describe('fontspec feature warnings (older TeX Live)', () => {
+  it('reports a requested OpenType feature the font lacks', () => {
+    // fontspec before 2.9 printed this for OpenType fonts; 2.9 (TeX Live 2026) no longer
+    // checks OpenType features, so this rule has no corpus case.
+    const log = [
+      'This is LuaHBTeX, Version 1.18.0 (TeX Live 2024)  (format=lualatex 2024.6.1)',
+      '(./main.tex',
+      'Package fontspec Warning: ',
+      "(fontspec)                OpenType feature 'Style=Swash' (swsh) not",
+      "(fontspec)                available for font 'Latin Modern Roman' with",
+      "(fontspec)                script 'Latin' and language 'Default'.",
+      '',
+      ')',
+    ].join('\n');
+    const rules = analyzeLog(log).output.problems.map((p) => p.rule);
+    expect(rules).toContain('font-feature-missing');
+  });
+});

@@ -1,9 +1,9 @@
-This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)  (format=lualatex 2026.9.13) 17 NOV 2026 15:20
+This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)  (format=lualatex 2026.11.15)  18 NOV 2026 01:35
  restricted system commands enabled.
 **main.tex
 (./main.tex
-LaTeX2e <2026-06-01>
-L3 programming layer <2026-08-10>
+LaTeX2e <2026-11-01>
+L3 programming layer <2026-09-09>
 Lua module: luaotfload 2024-12-03 v3.29 Lua based OpenType font support
 Lua module: lualibs 2023-07-13 v2.76 ConTeXt Lua standard libraries.
 Lua module: lualibs-extended 2023-07-13 v2.76 ConTeXt Lua libraries -- extended 
@@ -41,9 +41,9 @@ Inserting `luaotfload.aux.set_xheight' in `luaotfload.patch_font'.
 Inserting `luaotfload.rewrite_fontname' in `luaotfload.patch_font'.
 Inserting `tracingstacklevels' in `input_level_string'. (/usr/local/texlive/202
 6/texmf-dist/tex/latex/base/article.cls
-Document Class: article 2025/01/22 v1.4n Standard LaTeX document class
+Document Class: article 2026-06-04 v1.4n Standard LaTeX document class
 (/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo
-File: size10.clo 2025/01/22 v1.4n Standard LaTeX file (size option)
+File: size10.clo 2026-06-04 v1.4n Standard LaTeX file (size option)
 luaotfload | db : Font names database loaded from /usr/local/texlive/2026/texmf-
 var/luatex-cache/generic/names/luaotfload-names.luc.gz)
 \c@part=\count274
@@ -59,10 +59,10 @@ var/luatex-cache/generic/names/luaotfload-names.luc.gz)
 \bibindent=\dimen149
 )
 (/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/biblatex.sty
-Package: biblatex 2026/08/13 v3.22 programmable bibliographies (PK/MW)
+Package: biblatex 2026/09/24 v3.22a programmable bibliographies (PK/MW)
 
 (/usr/local/texlive/2026/texmf-dist/tex/generic/pdftexcmds/pdftexcmds.sty
-Package: pdftexcmds 2020-06-27 v0.33 Utility functions of pdfTeX for LuaTeX (HO
+Package: pdftexcmds 2026-10-28 v0.34 Utility functions of pdfTeX for LuaTeX (HO
 )
 
 (/usr/local/texlive/2026/texmf-dist/tex/generic/infwarerr/infwarerr.sty
@@ -84,7 +84,7 @@ Package: etoolbox 2025/10/02 v2.5m e-TeX tools for LaTeX (JAW)
 \etb@tempcnta=\count282
 )
 (/usr/local/texlive/2026/texmf-dist/tex/latex/graphics/keyval.sty
-Package: keyval 2026-05-17 v1.15 key=value parser (DPC)
+Package: keyval 2026-06-01 v1.15 key=value parser (DPC)
 \KV@toks@=\toks18
 )
 (/usr/local/texlive/2026/texmf-dist/tex/latex/kvoptions/kvoptions.sty
@@ -101,7 +101,7 @@ Package: logreq 2010/08/04 v1.0 xml request logger
 File: logreq.def 2010/08/04 v1.0 logreq spec v1.0
 ))
 (/usr/local/texlive/2026/texmf-dist/tex/latex/base/ifthen.sty
-Package: ifthen 2024/03/16 v1.1e Standard LaTeX ifthen package (DPC)
+Package: ifthen 2026-06-01 v1.1e Standard LaTeX ifthen package (DPC)
 )
 (/usr/local/texlive/2026/texmf-dist/tex/latex/url/url.sty
 \Urlmuskip=\muskip17
@@ -168,7 +168,7 @@ Package biblatex Info: Trying to load biblatex default data model...
 Package biblatex Info: ... file 'blx-dm.def' found.
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/blx-dm.def
-File: blx-dm.def 2026/08/13 v3.22 biblatex datamodel (PK/MW)
+File: blx-dm.def 2026/09/24 v3.22a biblatex datamodel (PK/MW)
 )
 Package biblatex Info: Trying to load biblatex custom data model...
 Package biblatex Info: ... file 'biblatex-dm.cfg' not found.
@@ -262,13 +262,13 @@ Package biblatex Info: Trying to load compatibility code...
 Package biblatex Info: ... file 'blx-compat.def' found.
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/blx-compat.def
-File: blx-compat.def 2026/08/13 v3.22 biblatex compatibility (PK/MW)
+File: blx-compat.def 2026/09/24 v3.22a biblatex compatibility (PK/MW)
 )
 Package biblatex Info: Trying to load generic definitions...
 Package biblatex Info: ... file 'biblatex.def' found.
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/biblatex.def
-File: biblatex.def 2026/08/13 v3.22 biblatex compatibility (PK/MW)
+File: biblatex.def 2026/09/24 v3.22a biblatex compatibility (PK/MW)
 \c@textcitecount=\count398
 \c@textcitetotal=\count399
 \c@textcitemaxnames=\count400
@@ -287,12 +287,12 @@ Package biblatex Info: Trying to load bibliography style 'numeric'...
 Package biblatex Info: ... file 'numeric.bbx' found.
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/bbx/numeric.bbx
-File: numeric.bbx 2026/08/13 v3.22 biblatex bibliography style (PK/MW)
+File: numeric.bbx 2026/09/24 v3.22a biblatex bibliography style (PK/MW)
 Package biblatex Info: Trying to load bibliography style 'standard'...
 Package biblatex Info: ... file 'standard.bbx' found.
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/bbx/standard.bbx
-File: standard.bbx 2026/08/13 v3.22 biblatex bibliography style (PK/MW)
+File: standard.bbx 2026/09/24 v3.22a biblatex bibliography style (PK/MW)
 \c@bbx:relatedcount=\count407
 \c@bbx:relatedtotal=\count408
 ))
@@ -300,7 +300,7 @@ Package biblatex Info: Trying to load citation style 'numeric'...
 Package biblatex Info: ... file 'numeric.cbx' found.
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/cbx/numeric.cbx
-File: numeric.cbx 2026/08/13 v3.22 biblatex citation style (PK/MW)
+File: numeric.cbx 2026/09/24 v3.22a biblatex citation style (PK/MW)
 Package biblatex Info: Redefining '\cite'.
 Package biblatex Info: Redefining '\parencite'.
 Package biblatex Info: Redefining '\footcite'.
@@ -324,14 +324,14 @@ Package biblatex Info: LuaTeX detected.
 Package biblatex Info: Document encoding is UTF8 ....
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/l3kernel/expl3.sty
-Package: expl3 2026-08-10 L3 programming layer (loader) 
+Package: expl3 2026-09-09 L3 programming layer (loader) 
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/l3kernel/l3backend-luatex.def
-File: l3backend-luatex.def 2026-08-10 L3 backend support: PDF output (LuaTeX)
+File: l3backend-luatex.def 2026-09-09 L3 backend support: PDF output (LuaTeX)
 \l__color_backend_stack_int=\count409
 Inserting `l3color' in `luaotfload.parse_color'.))
 Package biblatex Info: ... and expl3
-(biblatex)             2026-08-10 L3 programming layer (loader) 
+(biblatex)             2026-09-09 L3 programming layer (loader) 
 (biblatex)             is new enough (at least 2020/04/06),
 (biblatex)             setting 'casechanger=expl3'.
 
@@ -339,12 +339,13 @@ Package biblatex Info: ... and expl3
 (/usr/local/texlive/2026/texmf-dist/tex/latex/l3packages/xparse/xparse.sty
 Package: xparse 2025-10-09 L3 Experimental document command parser
 )
-Package: blx-case-expl3 2026/08/13 v3.22 expl3 case changing code for biblatex
+Package: blx-case-expl3 2026/09/24 v3.22a expl3 case changing code for biblatex
+
 ))
 \@quotelevel=\count410
 \@quotereset=\count411
 
-(./main.aux)
+No file main.aux.
 
 \openout1 = main.aux
 LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 4.
@@ -366,7 +367,7 @@ LaTeX Font Info:    ... okay on input line 4.
 Package biblatex Info: Trying to load language 'english'...
 Package biblatex Info: ... file 'english.lbx' found.
 (/usr/local/texlive/2026/texmf-dist/tex/latex/biblatex/lbx/english.lbx
-File: english.lbx 2026/08/13 v3.22 biblatex localization (PK/MW)
+File: english.lbx 2026/09/24 v3.22a biblatex localization (PK/MW)
 )
 Package biblatex Info: LuaTeX detected.
 (biblatex)             Assuming input encoding 'utf8'.
@@ -376,20 +377,21 @@ Package biblatex Info: Automatic encoding selection.
 \openout3 = main.bcf
 Package biblatex Info: Trying to load bibliographic data...
 Package biblatex Info: ... file 'main.bbl' found.
+
 (./main.bbl)
 Package biblatex Info: Reference section=0 on input line 4.
 Package biblatex Info: Reference segment=0 on input line 4.
 
-LaTeX Warning: Citation 'lamport1994' on page 1 undefined on input line 6.
 
+LaTeX Warning: Citation 'lamport1994' on page 1 undefined on input line 6.
 
 [1
 
 {/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
 (./main.aux)
  ***********
-LaTeX2e <2026-06-01>
-L3 programming layer <2026-08-10>
+LaTeX2e <2026-11-01>
+L3 programming layer <2026-09-09>
  ***********
 
 
@@ -406,22 +408,24 @@ Package logreq Info: Writing requests to 'main.run.xml'.
 )
 
 Here is how much of LuaTeX's memory you used:
- 8828 strings out of 475635
+ 8881 strings out of 475522
  125165,1144653 words of node,token memory allocated
- 461 words of node memory still in use:
-   3 hlist, 1 vlist, 1 rule, 2 glue, 3 kern, 1 glyph, 4 attribute, 59 glue_spec,
+ 471 words of node memory still in use:
+   3 hlist, 1 vlist, 1 rule, 2 glue, 3 kern, 1 glyph, 4 attribute, 61 glue_spec,
  4 attribute_list, 1 write nodes
-   avail lists: 1:1,2:38,3:6,4:4,5:26,6:3,7:122,9:20,11:6
- 31657 multiletter control sequences out of 65536+600000
- 16 fonts using 855119 bytes
+   avail lists: 1:1,2:96,3:22,4:7,5:38,6:6,7:386,9:34,10:1,11:22
+ 31818 multiletter control sequences out of 65536+600000
+ 19 fonts using 1250183 bytes
  60i,5n,63p,692b,1619s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman10-bold.otf>
-</usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman10-regular.o
-tf>
-Output written on main.pdf (1 page, 6726 bytes).
+</usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman10-italic.ot
+f></usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman12-bold.ot
+f></usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman10-bold.ot
+f></usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman10-regular
+.otf>
+Output written on main.pdf (1 page, 13040 bytes).
 
-PDF statistics: 22 PDF objects out of 1000 (max. 8388607)
- 12 compressed objects within 1 object stream
+PDF statistics: 36 PDF objects out of 1000 (max. 8388607)
+ 20 compressed objects within 1 object stream
  0 named destinations out of 1000 (max. 1048576)
  1 words of extra memory for PDF output out of 10000 (max. 100000000)
 

@@ -12,6 +12,8 @@
 *.snm
 *.xdv
 *.bbl
+# Corpus cases may ship a .bbl on purpose (a stale bibliography).
+!corpus/**/*.bbl
 *.blg
 *.run.xml
 *.bcf

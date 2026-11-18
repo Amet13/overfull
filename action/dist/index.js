@@ -3618,8 +3618,7 @@ var init_rules = __esm({
         severity: "warning",
         title: "Font lacks a requested feature",
         summary: "fontspec could not apply a requested OpenType feature or script.",
-        fix: "Pick a font that supports it or drop the option.",
-        corpus: "font-feature-missing"
+        fix: "Pick a font that supports it or drop the option."
       }
     ];
   }
