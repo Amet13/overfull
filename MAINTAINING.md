@@ -16,6 +16,8 @@ is still yours.
 | Sundays | `ci.yml` | The full CI on `main`, so a change outside the repository (runner images, registries) is noticed without a commit. |
 | 1st of the month | `autorelease.yml` (propose) | When shipped files changed since the last release, opens "Release vX.Y.Z": a minor bump when `[Unreleased]` has `### Added` entries, else a patch bump (never a major one); a dated CHANGELOG section from `[Unreleased]` plus the commit subjects (dependency bumps folded into one line); rebuilt `action/dist`. |
 | Daily | `autorelease.yml` (publish) | When `package.json` holds a version that has no tag yet and CI passed on `main`, starts `release.yml` with publish: tag, GitHub release with executables, Homebrew and Scoop files, and the three images. Everything is built first (the images too, when `main` has none for that commit); the publishing job runs in the `release` environment, so it waits for your approval once you add a reviewer (see below), then tags the images and creates the release. |
+| After each release | `release.yml` (package-manifests) | Writes `Formula/overfull.rb` (Homebrew), `bucket/overfull.json` (Scoop), `flake.nix` (Nix) and `server.json` (MCP Registry) from the release's `SHA256SUMS` with `packaging/generate.mjs`, and opens an automation pull request (`automation/packaging`). This repository is itself the tap, the bucket and the flake, so no other repository or token is needed. |
+| 1st of the month | `maintenance.yml` (usage) | Records public usage counts in `metrics/usage.json`, one entry per month, and opens a pull request: downloads of each release file, stars, forks, and code-search counts of public workflows using `amet13/overfull@` and public `.bib` files with the `x-overfull` marker. Only public numbers that GitHub already shows; Overfull itself sends nothing anywhere. ghcr pull counts are not in the API without a sign-in, so they are not recorded. |
 | 3rd of the month | `maintenance.yml` (bench) | Runs the reference-check benchmark against the live indexes and opens a pull request with `bench/refs/results.json`; the accuracy page renders it. |
 | Wednesdays | `maintenance.yml` (sources-health) | Asks every reference source (doi.org, CrossRef, dblp, arXiv, OpenAlex, Semantic Scholar, ACL Anthology, Europe PMC) for one known work and one invented title. Sources that stop answering, answer with a bot wall, or no longer find the known work are listed in one issue: "Reference sources need a look". |
 | 5th of the month | `maintenance.yml` (venues-watch) | Compares every venue profile's official pages (and arXiv's build pages) with the text stored when a person last read them, and puts the changed lines, the next edition's call for papers, and profiles not checked for a year in one issue: "Venue profiles need a look". Also checks each style file against the venue's official kit and opens a pull request when a hash changed. |
@@ -46,6 +48,14 @@ merged on a red or missing check.
   pull request; the issue closes itself on the next successful run.
 - **Agent evals.** They cost money and run only when you start them
   (`evals/README.md`).
+- **The MCP Registry listing.** Nothing publishes to the official MCP Registry on
+  its own; you decide whether to list Overfull there. To do it, run Actions →
+  mcp-registry → Run workflow, first with "dry-run" ticked (it checks that
+  `server.json` names a released version and that the check image carries the
+  `io.modelcontextprotocol.server.name` label), then unticked. It signs in with
+  the workflow's GitHub OIDC token: no account, no secret, nothing to register.
+  Each version can be published once. The label is in images built from this
+  change on, so the first release after it is the first that can be listed.
 
 ## Repository settings this needs
 

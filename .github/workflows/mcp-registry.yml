@@ -1,0 +1,76 @@
+# Lists the released MCP server (server.json on main) in the official MCP Registry
+# (registry.modelcontextprotocol.io). Started by hand only: Actions → mcp-registry → Run
+# workflow. Nothing runs it on its own; the maintainer decides whether and when.
+#
+# No account and no secret: mcp-publisher signs in with this workflow's GitHub OIDC token
+# (`id-token: write`), which grants the io.github.Amet13/* names. The registry then checks
+# that the image in server.json is public and carries the label
+# io.modelcontextprotocol.server.name with the same name (docker/Dockerfile, check stage).
+# A version can be published once; server.json is updated by the release's
+# package-manifests pull request (release.yml).
+name: mcp-registry
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Only check server.json and the image; publish nothing
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-registry
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish server.json
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.9
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: main
+      - name: server.json names a released version and its labelled image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(jq -r .version server.json)"
+          image="$(jq -r '.packages[0].identifier' server.json)"
+          name="$(jq -r .name server.json)"
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$version" > /dev/null ||
+            { echo "::error file=server.json::v$version is not released"; exit 1; }
+          label="$(docker buildx imagetools inspect "$image" --format '{{json .Image}}' |
+            jq -r '(if has("config") then . else (.["linux/amd64"] // to_entries[0].value) end)
+              | .config.Labels["io.modelcontextprotocol.server.name"] // ""')"
+          [ "$label" = "$name" ] ||
+            { echo "::error::$image has io.modelcontextprotocol.server.name=\"$label\", server.json says \"$name\""; exit 1; }
+          echo "v$version, $image, label $label"
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Download and verify mcp-publisher
+        run: |
+          set -euo pipefail
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base="https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION"
+          curl -fsSLo "$RUNNER_TEMP/$archive" "$base/$archive"
+          curl -fsSLo "$RUNNER_TEMP/$archive.sigstore.json" "$base/$archive.sigstore.json"
+          cosign verify-blob \
+            --bundle "$RUNNER_TEMP/$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/$MCP_PUBLISHER_VERSION" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$RUNNER_TEMP/$archive"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" mcp-publisher
+      - name: Sign in with GitHub OIDC and publish
+        if: ${{ !inputs.dry-run }}
+        run: |
+          "$RUNNER_TEMP/mcp-publisher" login github-oidc
+          "$RUNNER_TEMP/mcp-publisher" publish

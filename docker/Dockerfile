@@ -231,12 +231,15 @@ RUN --mount=type=secret,id=build_ca,required=false \
     verapdf --version; pdfinfo -v; git --version
 
 # The version and labels come after the heavy layer above, so a release reuses it.
+# The MCP Registry lists this image only if io.modelcontextprotocol.server.name is the
+# name in server.json.
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="overfull (check only)" \
       org.opencontainers.image.description="The overfull CLI with veraPDF, poppler and git, without TeX Live: checks PDFs, logs and bibliographies built elsewhere" \
       org.opencontainers.image.source="https://github.com/amet13/overfull" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.version="${VERSION}"
+      org.opencontainers.image.version="${VERSION}" \
+      io.modelcontextprotocol.server.name="io.github.Amet13/overfull"
 
 COPY --from=node-dist /opt/node/bin/node /usr/local/bin/node
 COPY --from=builder /opt/overfull/overfull.cjs /opt/overfull/overfull.cjs

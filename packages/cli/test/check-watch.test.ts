@@ -105,11 +105,12 @@ describe('check --watch', () => {
     expect(calls).toBe(callsAfterFirst);
   });
 
-  it('refuses machine formats, and names --html too', async () => {
+  it('refuses machine formats, and names --html and --gcc too', async () => {
     const io = memIo(tempDir());
     expect(await main(['check', '--watch', '--json'], io)).toBe(2);
-    expect(io.stdoutText()).toContain('--sarif and --html');
+    expect(io.stdoutText()).toContain('--sarif, --html and --gcc');
     expect(await main(['check', '--watch', '--html'], memIo(tempDir()))).toBe(2);
+    expect(await main(['check', '--watch', '--gcc'], memIo(tempDir()))).toBe(2);
   });
 
   it('watches a build folder whose name starts with a dot (build.outDir)', () => {
