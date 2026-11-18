@@ -36,7 +36,7 @@ export default defineConfig({
         'action/src/index.ts',
       ],
       reporter: ['text-summary'],
-      thresholds: { lines: 90, branches: 76, functions: 88, statements: 88 },
+      thresholds: { lines: 94, branches: 82, functions: 95, statements: 92 },
     },
   },
 });
