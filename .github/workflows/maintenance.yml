@@ -5,6 +5,7 @@
 #   bench               3rd of the month: the reference-check benchmark against the live indexes (pull request).
 #   venues-watch        5th of the month: venue pages changed since last read, next editions, style-file hashes (issue, pull request).
 #   refresh-recordings  9th of the month: the live answers the offline reference tests replay, recorded again (pull request).
+#   usage               1st of the month: public usage counts (downloads, stars, code search) added to metrics/usage.json (pull request).
 # Pull requests are merged by automerge.yml when CI passes; issues close themselves
 # when the next run finds nothing. watchdog.yml reports a failed run.
 name: maintenance
@@ -16,12 +17,13 @@ on:
     - cron: "17 4 3 * *"
     - cron: "11 6 5 * *"
     - cron: "23 6 9 * *"
+    - cron: "41 5 1 * *"
   workflow_dispatch:
     inputs:
       task:
         description: Task to run
         type: choice
-        options: [update-pins, sources-health, bench, venues-watch, refresh-recordings]
+        options: [update-pins, sources-health, bench, venues-watch, refresh-recordings, usage]
 
 permissions:
   contents: read
@@ -214,3 +216,33 @@ jobs:
             echo "failures with the diff of the recordings before changing any expectation."
           } > "$RUNNER_TEMP/body.md"
           bash .github/scripts/automation-pr.sh recordings "Refresh recorded reference-source answers" "$RUNNER_TEMP/body.md"
+
+  usage:
+    name: usage
+    if: github.event.schedule == '41 5 1 * *' || inputs.task == 'usage'
+    concurrency:
+      group: maintenance-usage
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      # Only public numbers GitHub already shows; no telemetry. Code search with
+      # GITHUB_TOKEN may be refused or rate limited: that count is then null this month.
+      - name: Record this month's public usage counts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/usage-metrics.mjs --summary "$RUNNER_TEMP/body.md"
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/automation-pr.sh usage "Usage counts ($(date -u +%Y-%m))" "$RUNNER_TEMP/body.md"
