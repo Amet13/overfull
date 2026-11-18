@@ -8241,6 +8241,28 @@ function expandMacros(text2, macros) {
   }
   return out;
 }
+function acknowledgmentProblems(ctx) {
+  const files = ctx.texFiles ?? [];
+  const sourceHits = grepTex(files, ACK_SOURCE);
+  const pages2 = ctx.facts?.pages ?? [];
+  const problem3 = (location2) => ({
+    rule: "anonymity-acknowledgments",
+    check: "venue",
+    severity: "warning",
+    message: "Acknowledgments section in an anonymous submission",
+    ...location2 ? { location: location2 } : {},
+    fix: "Remove or comment out acknowledgments until the camera-ready version"
+  });
+  if (pages2.some((p) => p.text.trim() !== "")) {
+    const page = pages2.find((p) => p.text.split("\n").some((l) => ACK_HEADING.test(l)));
+    if (!page) return [];
+    const hit = sourceHits[0];
+    return [
+      problem3(hit ? { file: hit.file, line: hit.line, page: page.number } : { page: page.number })
+    ];
+  }
+  return sourceHits.map((hit) => problem3({ file: hit.file, line: hit.line }));
+}
 function optionNames(optional) {
   if (!optional) return [];
   return optional.split(",").map((o) => o.trim()).filter((o) => o && !/=\s*false\s*$/i.test(o)).map((o) => o.replace(/\s*=.*$/s, ""));
@@ -8322,17 +8344,7 @@ function anonymityProblems(ctx, profile) {
       fix: authorFix(profile, cls)
     });
   }
-  const ack = /\\(?:section|chapter|subsection|paragraph|subsubsection)\*?\s*\{\s*Acknowledg|\\begin\{acknowledg|\\acknowledg(?:e)?ments\b/i;
-  for (const hit of grepTex(files, ack)) {
-    problems.push({
-      rule: "anonymity-acknowledgments",
-      check: "venue",
-      severity: "warning",
-      message: "Acknowledgments section in an anonymous submission",
-      location: { file: hit.file, line: hit.line },
-      fix: "Remove or comment out acknowledgments until the camera-ready version"
-    });
-  }
+  problems.push(...acknowledgmentProblems(ctx));
   const self2 = /\b(?:our|my)\s+(?:previous|prior|earlier|own|recent)\s+(?:work|paper|papers|study|studies|publication|results?)\b/gi;
   for (const hit of grepTex(files, self2)) {
     problems.push({
@@ -8346,7 +8358,7 @@ function anonymityProblems(ctx, profile) {
   }
   return problems;
 }
-var ANON, MAX_BODY, MAX_ROUNDS;
+var ANON, MAX_BODY, MAX_ROUNDS, ACK_SOURCE, ACK_HEADING;
 var init_anonymity = __esm({
   "../packages/core/src/venue/anonymity.ts"() {
     "use strict";
@@ -8354,6 +8366,8 @@ var init_anonymity = __esm({
     ANON = /anonym|blind|submission|paper\s*id|author\s*names?\s*(hidden|withheld)/i;
     MAX_BODY = 2e3;
     MAX_ROUNDS = 4;
+    ACK_SOURCE = /\\(?:section|chapter|subsection|paragraph|subsubsection)\*?\s*\{\s*Acknowledg|\\begin\{acknowledg|\\acknowledg(?:e)?ments\b/i;
+    ACK_HEADING = /^\s*(?:(?:\d+(?:\.\d+)*|[A-Z])\.?\s+)?(?:[Aa]cknowledge?ments?|ACKNOWLEDGE?MENTS?)(?:\s*[.:]?\s*$|\s*[.:]\s+\S)/;
   }
 });
 
@@ -8865,10 +8879,30 @@ var init_pages = __esm({
 });
 
 // ../packages/core/src/venue/stale.ts
+function utcDate(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s ?? "");
+  return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : void 0;
+}
 function staleProfileProblems(profile, now) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(profile.checkedOn ?? "");
-  if (!m) return [];
-  const checked = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  const sources = profile.source?.length ? ` (${profile.source.join(", ")})` : "";
+  const deadline = utcDate(profile.deadline);
+  if (deadline) {
+    const days = Math.floor((now.getTime() - deadline.getTime()) / DAY_MS2);
+    if (days > DEADLINE_GRACE_DAYS) {
+      return [
+        {
+          rule: "venue-profile-stale",
+          check: "venue",
+          severity: "info",
+          message: `Profile ${profile.id} is for an edition whose submission deadline (${profile.deadline}) passed ${days} days ago; a later edition may have other rules`,
+          fix: `For a camera-ready version, follow the venue's final instructions. For a later edition, read its call for papers${sources} and use its profile when there is one`,
+          data: { profile: profile.id, deadline: profile.deadline, days }
+        }
+      ];
+    }
+  }
+  const checked = utcDate(profile.checkedOn);
+  if (!checked) return [];
   const limit = new Date(checked);
   limit.setUTCMonth(limit.getUTCMonth() + STALE_AFTER_MONTHS);
   if (now.getTime() <= limit.getTime()) return [];
@@ -8878,16 +8912,18 @@ function staleProfileProblems(profile, now) {
       check: "venue",
       severity: "info",
       message: `Profile ${profile.id} was last checked against the venue's pages on ${profile.checkedOn}; it may be out of date`,
-      fix: `Read the venue's current instructions${profile.source?.length ? ` (${profile.source.join(", ")})` : ""} before you submit`,
+      fix: `Read the venue's current instructions${sources} before you submit`,
       data: { profile: profile.id, checkedOn: profile.checkedOn, months: STALE_AFTER_MONTHS }
     }
   ];
 }
-var STALE_AFTER_MONTHS;
+var STALE_AFTER_MONTHS, DEADLINE_GRACE_DAYS, DAY_MS2;
 var init_stale = __esm({
   "../packages/core/src/venue/stale.ts"() {
     "use strict";
     STALE_AFTER_MONTHS = 14;
+    DEADLINE_GRACE_DAYS = 30;
+    DAY_MS2 = 864e5;
   }
 });
 
@@ -8993,6 +9029,7 @@ var init_venues_generated = __esm({
           "https://aaai.org/authorkit27/"
         ],
         checkedOn: "2026-11-10",
+        deadline: "2026-07-28",
         paper: "letter",
         pageLimit: {
           max: 7,
@@ -9018,7 +9055,7 @@ var init_venues_generated = __esm({
             "submission"
           ]
         },
-        notes: 'The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for references. Acknowledgements are omitted from papers submitted for review. The author policy allows judicious use of generative AI tools; the pages read state no disclosure requirement. The hash is of aaai2027.sty (2027/10/21) from the AuthorKit27 archive downloaded on 2026-11-10. The AAAI-28 call page redirects to AAAI-26 content, so AAAI-27 is the latest published. Text block: 7 in wide, centred on US Letter (aaai2027.sty). aaai2027.sty prints "Anonymous submission" with the submission option.'
+        notes: 'The submission PDF can have up to 9 pages, with pages 8 and 9 reserved for references. Acknowledgements are omitted from papers submitted for review. The author policy allows judicious use of generative AI tools; the pages read state no disclosure requirement. The hash is of aaai2027.sty from the AuthorKit27 archive downloaded on 2026-11-10; its \\ProvidesPackage line gives the date 2027/10/21 (sic, in the official file). The AAAI-28 call page redirects to AAAI-26 content, so AAAI-27 is the latest published. Text block: 7 in wide, centred on US Letter (aaai2027.sty). aaai2027.sty prints "Anonymous submission" with the submission option.'
       },
       "acl-rolling-review": {
         id: "acl-rolling-review",
@@ -9088,6 +9125,7 @@ var init_venues_generated = __esm({
           "https://aistats.org/aistats2027/AISTATS2027PaperPack.zip"
         ],
         checkedOn: "2026-11-11",
+        deadline: "2026-10-06",
         paper: "letter",
         pageLimit: {
           max: 8,
@@ -9131,6 +9169,7 @@ var init_venues_generated = __esm({
           "https://media.eventhosts.cc/Conferences/CVPR2027/author-kit-CVPR2027-v1-latex.zip"
         ],
         checkedOn: "2026-11-10",
+        deadline: "2026-11-16",
         paper: "letter",
         pageLimit: {
           max: 8,
@@ -9171,6 +9210,7 @@ var init_venues_generated = __esm({
           "https://eccv.ecva.net/Conferences/2026/CallForPapers"
         ],
         checkedOn: "2026-11-11",
+        deadline: "2026-03-05",
         paper: "any",
         pageLimit: {
           max: 14,
@@ -9220,6 +9260,7 @@ var init_venues_generated = __esm({
           "https://acl-org.github.io/ACLPUB/formatting.html"
         ],
         checkedOn: "2026-11-10",
+        deadline: "2026-05-25",
         paper: "a4",
         pageLimit: {
           max: 8,
@@ -9252,6 +9293,7 @@ var init_venues_generated = __esm({
           "https://iclr.cc/Conferences/2027/AIPolicyForAuthors"
         ],
         checkedOn: "2026-11-10",
+        deadline: "2026-09-25",
         pageLimit: {
           max: 9,
           endLabel: "overfull:main-end",
@@ -9291,6 +9333,7 @@ var init_venues_generated = __esm({
           "https://icml.cc/Conferences/2026/AuthorInstructions"
         ],
         checkedOn: "2026-11-10",
+        deadline: "2026-01-28",
         paper: "letter",
         pageLimit: {
           max: 8,
@@ -9358,6 +9401,7 @@ var init_venues_generated = __esm({
           "https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip"
         ],
         checkedOn: "2026-11-10",
+        deadline: "2026-05-06",
         paper: "letter",
         pageLimit: {
           max: 9,
@@ -9588,7 +9632,7 @@ var init_rules3 = __esm({
         check: "venue",
         severity: "warning",
         title: "Acknowledgments in an anonymous submission",
-        summary: "Acknowledgments often name people, grants or institutions and break anonymity.",
+        summary: "Acknowledgments often name people, grants or institutions and break anonymity. With a PDF, only an acknowledgments heading printed in it counts; without one, the sources are searched.",
         fix: "Remove the acknowledgments until the camera-ready version."
       },
       {
@@ -9684,7 +9728,7 @@ var init_rules3 = __esm({
         check: "venue",
         severity: "info",
         title: "Venue profile may be out of date",
-        summary: "The profile was last compared with the venue\u2019s official pages more than 14 months ago. Page limits, style files and policies change between years.",
+        summary: "The profile is for an edition whose submission deadline passed more than 30 days ago, or it was last compared with the venue\u2019s official pages more than 14 months ago. Page limits, style files and policies change between years.",
         fix: "Read the venue\u2019s current author instructions (the profile lists its sources) and compare them with what Overfull reports."
       },
       {
