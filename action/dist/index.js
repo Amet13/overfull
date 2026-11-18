@@ -5083,7 +5083,7 @@ function readAnswer(host, read) {
     throw err;
   }
 }
-var SourceUnavailableError, MAX_RETRY_AFTER_MS, BREAKER_THRESHOLD, FIRST_BYTE_TIMEOUT_MS, CROSSREF, CROSSREF_PUBLIC, CROSSREF_POLITE, HttpClient;
+var SourceUnavailableError, MAX_RETRY_AFTER_MS, BREAKER_THRESHOLD, FIRST_BYTE_TIMEOUT_MS, SLOW_FIRST_BYTE_HOSTS, CROSSREF, CROSSREF_PUBLIC, CROSSREF_POLITE, HttpClient;
 var init_http = __esm({
   "../packages/core/src/refs/http.ts"() {
     "use strict";
@@ -5098,6 +5098,7 @@ var init_http = __esm({
     MAX_RETRY_AFTER_MS = 3e4;
     BREAKER_THRESHOLD = 2;
     FIRST_BYTE_TIMEOUT_MS = 4e3;
+    SLOW_FIRST_BYTE_HOSTS = /* @__PURE__ */ new Set(["www.ebi.ac.uk"]);
     CROSSREF = "api.crossref.org";
     CROSSREF_PUBLIC = { intervalMs: 1100, concurrent: 1 };
     CROSSREF_POLITE = { intervalMs: 350, concurrent: 3 };
@@ -5245,8 +5246,9 @@ var init_http = __esm({
         const controller = new AbortController();
         const onAbort = () => controller.abort(this.signal?.reason);
         this.signal?.addEventListener("abort", onAbort, { once: true });
-        let timedOutAfter = this.firstByteMs;
-        const firstByte = setTimeout(() => controller.abort(new Error("timeout")), this.firstByteMs);
+        const firstByteMs = SLOW_FIRST_BYTE_HOSTS.has(host) ? this.timeoutMs : this.firstByteMs;
+        let timedOutAfter = firstByteMs;
+        const firstByte = setTimeout(() => controller.abort(new Error("timeout")), firstByteMs);
         const total = setTimeout(() => {
           timedOutAfter = this.timeoutMs;
           controller.abort(new Error("timeout"));

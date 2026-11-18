@@ -4,6 +4,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseBib } from '../src/bib/index.js';
+import { getJson, HttpClient } from '../src/refs/http.js';
 import { verifyEntries } from '../src/refs/index.js';
 import { fast } from './helpers.js';
 
@@ -102,6 +103,32 @@ describe('per-host circuit breaker', () => {
       60_000,
     );
     expect(elapsed).toBeLessThan(5000);
+  });
+
+  it('waits the whole timeout for headers from Europe PMC, which searches before it answers', async () => {
+    vi.useFakeTimers();
+    // Headers after 7 s: past the 4 s first-byte limit, within the 10 s timeout.
+    const slow = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      await new Promise((resolve, reject) => {
+        const t = setTimeout(resolve, 7000);
+        init?.signal?.addEventListener('abort', () => {
+          clearTimeout(t);
+          reject(init.signal?.reason);
+        });
+      });
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+    const client = new HttpClient({ fetch: slow, ...fast });
+    const epmc = await settle(
+      getJson(client, 'https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=x'),
+      60_000,
+    );
+    expect(epmc.value.data).toEqual({ ok: true });
+    const other = await settle(
+      getJson(client, 'https://api.crossref.org/works?query=x').catch((e: Error) => e.message),
+      60_000,
+    );
+    expect(String(other.value)).toContain('timed out after 4000 ms');
   });
 });
 

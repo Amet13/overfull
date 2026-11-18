@@ -80,7 +80,8 @@ ignore stored answers, ask the indexes again and store the new ones.
 
 An index that times out or answers with a server error twice in a row is
 skipped for the rest of the run, so one slow service cannot stall the check. A
-request must start answering within 4 seconds and finish within 10. The
+request must start answering within 4 seconds and finish within 10 (Europe PMC,
+which searches before it starts answering, gets the whole 10). The
 indexes for one entry are asked at the same time, with the per-host spacing
 unchanged.
 
