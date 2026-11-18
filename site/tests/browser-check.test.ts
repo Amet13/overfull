@@ -93,4 +93,10 @@ describe('wrapTables', () => {
     expect(out).toContain('aria-label="Table: Exit"');
     expect(out).toContain('<h2 id="o">Options &amp; flags</h2>');
   });
+
+  it('never puts markup from a heading into a label', () => {
+    const out = wrapTables('<h2>&lt;scr<b></b>ipt&gt; tag</h2><table></table>');
+    expect(out).toContain('aria-label="Table: script tag"');
+    expect(out).not.toMatch(/aria-label="[^"]*[<>]/);
+  });
 });

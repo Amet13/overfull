@@ -29,7 +29,10 @@ export function wrapTables(html: string): string {
     /<(h[1-6])\b[^>]*>([\s\S]*?)<\/\1>|<table\b[\s\S]*?<\/table>/g,
     (all: string, tag: string | undefined, inner: string | undefined) => {
       if (tag) {
+        // Plain text for a label: tags out, entities decoded, and no angle brackets
+        // left at all (a label never needs them; attr() escapes the rest anyway).
         heading = decode((inner ?? '').replace(/<[^>]*>/g, ''))
+          .replace(/[<>]/g, '')
           .replace(/\s+/g, ' ')
           .trim();
         return all;
