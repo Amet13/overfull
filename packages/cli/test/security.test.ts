@@ -224,6 +224,66 @@ describe('C1: veraPDF flavour follows the PDF/UA claim', () => {
   });
 });
 
+describe.skipIf(POSIX_ONLY)('runVeraPdf fallbacks and errors', () => {
+  const OK =
+    '{"report":{"jobs":[{"validationResult":[{"compliant":true,"details":{"ruleSummaries":[]}}]}]}}';
+
+  it('returns null without a local veraPDF or Docker', async () => {
+    expect(await runVeraPdf('/tmp/x.pdf', { PATH: tempDir() })).toBeNull();
+  });
+
+  it('without a claim, tries UA-1 when UA-2 cannot run', async () => {
+    const log = join(tempDir(), 'args');
+    const bin = fakeBin({
+      verapdf: `echo "$@" >> ${log}\ncase "$*" in *ua2*) echo 'PDF 1.7 is not PDF 2.0' >&2; exit 1 ;; esac\necho '${OK}'`,
+    });
+    const res = await runVeraPdf('/tmp/x.pdf', { PATH: bin });
+    expect(res).toMatchObject({ compliant: true });
+    expect(res?.error).toBeUndefined();
+    const calls = readFileSync(log, 'utf8').trim().split('\n');
+    expect(calls.map((c) => c.split(' ')[1])).toEqual(['ua2', 'ua1']);
+  });
+
+  it('keeps the UA-2 error when UA-1 fails too, and does not retry a claimed part', async () => {
+    const bin = fakeBin({ verapdf: 'echo "$2 cannot open the file" >&2; exit 1' });
+    const res = await runVeraPdf('/tmp/x.pdf', { PATH: bin });
+    expect(res?.error).toBe('ua2 cannot open the file');
+    const log = join(tempDir(), 'args');
+    const claimed = fakeBin({ verapdf: `echo "$@" >> ${log}\nexit 1` });
+    expect((await runVeraPdf('/tmp/x.pdf', { PATH: claimed }, { pdfuaPart: 2 }))?.error).toBe(
+      'veraPDF produced no output',
+    );
+    expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
+  });
+
+  it('a PDF path that starts with a dash is passed as ./-name', async () => {
+    const log = join(tempDir(), 'args');
+    const bin = fakeBin({ verapdf: `echo "$@" >> ${log}\necho '${OK}'` });
+    await runVeraPdf('-x.pdf', { PATH: bin }, { pdfuaPart: 2 });
+    expect(readFileSync(log, 'utf8').trim()).toBe('--flavour ua2 --format json ./-x.pdf');
+  });
+
+  it('reports a Docker image that cannot start (exit 125)', async () => {
+    const root = tempDir();
+    const bin = fakeBin({
+      docker: "echo 'Unable to find image' >&2\necho 'pull access denied' >&2\nexit 125",
+    });
+    const res = await runVeraPdf(
+      join(root, 'paper.pdf'),
+      { PATH: bin },
+      {
+        pdfuaPart: 2,
+        docker: { image: 'img:1', root },
+      },
+    );
+    expect(res).toEqual({
+      compliant: false,
+      failures: [],
+      error: 'docker could not run img:1: pull access denied',
+    });
+  });
+});
+
 describe('C2: \\nocite{*} verifies every entry', () => {
   it('looks up uncited entries when the aux has \\citation{*}', async () => {
     const dir = tempDir();

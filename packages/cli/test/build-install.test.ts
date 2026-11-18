@@ -1,6 +1,8 @@
 /** Install-on-demand in the slim image: which missing files to install, and from which package. */
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Problem } from '@overfull/core';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   historicRepositories,
   installMissing,
@@ -10,6 +12,8 @@ import {
   remoteTlmgr,
   rolloverYear,
 } from '../src/commands/build.js';
+import { main } from '../src/main.js';
+import { fakeBin, memIo, tempDir } from './helpers.js';
 
 const p = (rule: string, file: string): Problem => ({
   rule,
@@ -260,3 +264,78 @@ describe('installMissing', () => {
     expect(t.calls).toHaveLength(1);
   });
 });
+
+describe.skipIf(process.platform === 'win32')(
+  'build --engine local installs missing packages',
+  () => {
+    const savedPath = process.env.PATH;
+    afterEach(() => {
+      process.env.PATH = savedPath;
+    });
+
+    const MISSING =
+      "(./main.tex\n! LaTeX Error: File `chemfig.sty' not found.\n! Emergency stop.\n";
+
+    /**
+     * Fake latexmk and tlmgr on PATH. latexmk fails on a missing chemfig.sty until a
+     * forced rebuild (-g) after the install; tlmgr first asks to update itself, then
+     * refuses the remote repository after a TeX Live rollover, then works against the
+     * frozen repository. Every tlmgr call is appended to `calls`.
+     */
+    function setup(env: Record<string, string>) {
+      const dir = tempDir();
+      writeFileSync(join(dir, 'main.tex'), '\\documentclass{article}\\usepackage{chemfig}\n');
+      const state = tempDir();
+      const calls = join(state, 'calls');
+      writeFileSync(calls, '');
+      writeFileSync(join(state, 'missing.log'), MISSING);
+      const bin = fakeBin({
+        latexmk: `if [ "$1" = -g ] && [ -f ${state}/installed ]; then
+  echo 'Output written on main.pdf (1 page).' > main.log; echo '%PDF-1.4' > main.pdf; exit 0
+fi
+cp ${state}/missing.log main.log; exit 12`,
+        tlmgr: `echo "$*" >> ${calls}
+if [ ! -f ${state}/self ]; then
+  if [ "$1 $2" = "update --self" ]; then touch ${state}/self; exit 0; fi
+  echo 'tlmgr itself needs to be updated.' >&2; exit 1
+fi
+if [ "$1" != --repository ]; then
+  echo 'Local TeX Live (2026) is older than remote repository (2027).' >&2; exit 1
+fi
+case "$3" in
+  search) printf 'chemfig:\\n\\ttexmf-dist/tex/latex/chemfig/chemfig.sty\\n' ;;
+  install) touch ${state}/installed ;;
+esac
+exit 0`,
+      });
+      process.env.PATH = `${bin}:${savedPath}`;
+      const io = memIo(dir, { PATH: process.env.PATH, ...env });
+      return { io, calls: () => readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean) };
+    }
+
+    it('updates tlmgr, falls back to the frozen repository, installs and builds again', async () => {
+      const { io, calls } = setup({ OVERFULL_TEX_INSTALL: '1' });
+      const code = await main(['build', '--engine', 'local'], io);
+      const err = io.stderrText();
+      expect(err).toContain('running `tlmgr update --self`');
+      expect(err).toContain('no longer current; using its frozen repository');
+      expect(err).toContain('Installing chemfig from CTAN');
+      const frozen = historicRepositories('2026')[0] as string;
+      expect(calls()).toEqual([
+        'search --global --file /chemfig.sty',
+        'update --self',
+        'search --global --file /chemfig.sty',
+        `--repository ${frozen} search --global --file /chemfig.sty`,
+        `--repository ${frozen} install chemfig`,
+      ]);
+      expect(code).toBe(0);
+    });
+
+    it('leaves tlmgr alone unless OVERFULL_TEX_INSTALL=1', async () => {
+      const { io, calls } = setup({});
+      expect(await main(['build', '--engine', 'local'], io)).toBe(1);
+      expect(calls()).toEqual([]);
+      expect(io.stdoutText()).toContain('chemfig');
+    });
+  },
+);
