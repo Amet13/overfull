@@ -65,6 +65,22 @@ describe('sources-health', () => {
     expect(report([{ source: 'semanticscholar', status: 'limited', detail: '' }])).toBe('');
   });
 
+  it('a 429 without a key on the second query (the invented title) is a note too', async () => {
+    // The known work answers, then the keyless budget runs out: issue 114 listed this
+    // as broken.
+    const s = healthySources();
+    const known = s.semanticScholarSearch;
+    s.semanticScholarSearch = async (c, t, k) => {
+      if (String(t).startsWith('Deep Residual')) return known(c, t, k);
+      throw new Error('api.semanticscholar.org answered HTTP 429');
+    };
+    const p = PROBES.find((x: { source: string }) => x.source === 'semanticscholar');
+    expect(((await probe(p, deps(s))) as Result).status).toBe('limited');
+    expect(((await probe(p, deps(s, { semanticScholarKey: 'k' }))) as Result).status).toBe(
+      'broken',
+    );
+  });
+
   it('a known work no longer found, or the invented control "found", is broken', async () => {
     const s = healthySources();
     s.crossrefSearch = async () => [{ title: 'Something else entirely' }];

@@ -10,7 +10,7 @@
 // the hashes come from nodejs.org's SHASUMS256.txt. veraPDF takes the newest greenfield
 // installer on software.verapdf.org; its hash is computed from the download, the same file
 // the image build checks. pnpm takes the newest release of the pinned major from the npm
-// registry. DEBIAN_SNAPSHOT follows the TeX Live base digests (which Dependabot moves): it
+// registry that is older than pnpm-workspace.yaml's minimumReleaseAge. DEBIAN_SNAPSHOT follows the TeX Live base digests (which Dependabot moves): it
 // becomes the newer of the two bases' own Debian snapshots, read from their image config on
 // Docker Hub. Nothing is changed when a source cannot be read.
 import { execFileSync } from 'node:child_process';
@@ -149,17 +149,36 @@ async function debianSnapshot(docker) {
   return setArg(docker, 'DEBIAN_SNAPSHOT', latest);
 }
 
+/** pnpm-workspace.yaml's `minimumReleaseAge`, in minutes (0 when it has none). */
+export function minimumReleaseAge(workspaceYaml) {
+  return Number(/^minimumReleaseAge:\s*(\d+)\s*$/m.exec(workspaceYaml)?.[1] ?? 0);
+}
+
+/**
+ * The newest release of `major` in a registry document that is at least `minAgeMinutes`
+ * old. pnpm refuses to install itself at a younger version (minimumReleaseAge), so a
+ * newer pin would break `pnpm install` for everyone until it matured.
+ */
+export function newestMature(meta, major, minAgeMinutes, now = Date.now()) {
+  const cutoff = now - minAgeMinutes * 60_000;
+  return Object.keys(meta.versions ?? {})
+    .filter((v) => /^\d+\.\d+\.\d+$/.test(v) && v.split('.')[0] === major)
+    .filter((v) => {
+      const published = Date.parse(meta.time?.[v] ?? '');
+      return Number.isFinite(published) && published <= cutoff;
+    })
+    .sort(cmpVersions)
+    .at(-1);
+}
+
 async function pnpm() {
   const pkgPath = join(root, 'package.json');
   const pkg = readFileSync(pkgPath, 'utf8');
   const current = /"packageManager":\s*"pnpm@([^"]+)"/.exec(pkg)?.[1];
   if (!current) return;
-  const major = current.split('.')[0];
   const meta = await get('https://registry.npmjs.org/pnpm', 'json');
-  const latest = Object.keys(meta.versions ?? {})
-    .filter((v) => /^\d+\.\d+\.\d+$/.test(v) && v.split('.')[0] === major)
-    .sort(cmpVersions)
-    .at(-1);
+  const workspace = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8');
+  const latest = newestMature(meta, current.split('.')[0], minimumReleaseAge(workspace));
   if (!latest || cmpVersions(latest, current) <= 0) return;
   changes.push(`pnpm ${current} → ${latest}`);
   if (check) return;

@@ -90,7 +90,7 @@ Errors inside the typeset bibliography are moved from the `.bbl` line to the
 ## References
 
 `refs/verify.ts` decides; `refs/search.ts` asks the sources; `refs/http.ts` is the
-polite client (first-byte 4 s and total 10 s timeouts, one retry on 429/5xx with
+polite client (first-byte 4 s, except Europe PMC, and total 10 s timeouts, one retry on 429/5xx with
 `Retry-After`, per-host spacing, and a circuit breaker: two failures, or one HTML
 answer from a JSON API, take a host out for the run).
 

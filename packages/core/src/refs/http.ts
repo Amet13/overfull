@@ -31,6 +31,12 @@ const MAX_RETRY_AFTER_MS = 30_000;
 const BREAKER_THRESHOLD = 2;
 /** Time allowed until response headers arrive. */
 const FIRST_BYTE_TIMEOUT_MS = 4000;
+/**
+ * Hosts that run the whole search before they send headers, so a healthy answer can
+ * start later than FIRST_BYTE_TIMEOUT_MS: Europe PMC's search took 0.6 to 15 s per
+ * request on 2026-11-18, whatever the query. They get the whole timeout instead.
+ */
+const SLOW_FIRST_BYTE_HOSTS = new Set(['www.ebi.ac.uk']);
 const CROSSREF = 'api.crossref.org';
 
 /**
@@ -230,8 +236,9 @@ export class HttpClient {
     const controller = new AbortController();
     const onAbort = () => controller.abort(this.signal?.reason);
     this.signal?.addEventListener('abort', onAbort, { once: true });
-    let timedOutAfter = this.firstByteMs;
-    const firstByte = setTimeout(() => controller.abort(new Error('timeout')), this.firstByteMs);
+    const firstByteMs = SLOW_FIRST_BYTE_HOSTS.has(host) ? this.timeoutMs : this.firstByteMs;
+    let timedOutAfter = firstByteMs;
+    const firstByte = setTimeout(() => controller.abort(new Error('timeout')), firstByteMs);
     const total = setTimeout(() => {
       timedOutAfter = this.timeoutMs;
       controller.abort(new Error('timeout'));

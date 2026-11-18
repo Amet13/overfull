@@ -103,11 +103,14 @@ export async function probe(p, deps) {
       return { error: err instanceof Error ? err.message : String(err) };
     }
   };
+  // A 429 without a key is the shared keyless budget, used up by other users of the
+  // runner's address, on either query; with a key it is a real problem.
+  const failed = (error) => {
+    const limited = /HTTP 429/.test(error) && p.keyed && !opts[p.keyed];
+    return { source: p.source, status: limited ? 'limited' : 'broken', detail: error };
+  };
   const known = await run(p.known);
-  if (known.error) {
-    const limited = /HTTP 429/.test(known.error) && p.keyed && !opts[p.keyed];
-    return { source: p.source, status: limited ? 'limited' : 'broken', detail: known.error };
-  }
+  if (known.error) return failed(known.error);
   const best = Math.max(0, ...known.records.map((r) => similarity(p.title, r.title ?? '')));
   if (best < 0.9) {
     return {
@@ -118,7 +121,7 @@ export async function probe(p, deps) {
   }
   if (p.invented) {
     const inv = await run(p.invented);
-    if (inv.error) return { source: p.source, status: 'broken', detail: inv.error };
+    if (inv.error) return failed(inv.error);
     const hit = inv.records.find((r) => similarity(INVENTED, r.title ?? '') >= 0.9);
     if (hit) {
       return {
