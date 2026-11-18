@@ -30,6 +30,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ### Changed
 
+- Docs: "How it compares" covers Overleaf's built-in Citation Reviewer, and the
+  Overleaf page tells you to download the PDF and log from "Logs and output
+  files" for the browser check.
 - Node.js 22 or newer is enough (`engines` was `>=26`; nothing needed it). CI also
   runs the unit tests and the single-file `overfull.cjs` on Node 22 and 24, and
   `overfull doctor` accepts Node 22.
