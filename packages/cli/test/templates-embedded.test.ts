@@ -53,7 +53,9 @@ describe('embedded templates (standalone build)', () => {
     expect(existsSync(join(dest, 'main.log'))).toBe(false);
     expect(existsSync(join(dest, 'paper.pdf'))).toBe(false);
     const link = join(dest, '.claude', 'skills');
-    if (lstatSync(link).isSymbolicLink()) expect(readlinkSync(link)).toBe('../.agents/skills');
+    // Windows reports the target with backslashes (..\.agents\skills); same link.
+    if (lstatSync(link).isSymbolicLink())
+      expect(readlinkSync(link).replaceAll('\\', '/')).toBe('../.agents/skills');
     expect(readFileSync(join(link, 'check', 'SKILL.md'), 'utf8')).toBe('skill');
     expect(existsSync(join(dest, 'thesis'))).toBe(false);
   });
