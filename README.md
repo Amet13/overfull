@@ -164,7 +164,7 @@ documents that prove each log rule on TeX Live 2026), `bench/` and `evals/`,
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Adding a venue is the most useful
 contribution: [Adding a venue](CONTRIBUTING.md#adding-a-venue).
 
-*Formerly **tex-thesis**. The name comes from LaTeX's `Overfull \hbox` warning.*
+*The name comes from LaTeX's `Overfull \hbox` warning.*
 
 ## License
 
