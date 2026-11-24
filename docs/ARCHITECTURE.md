@@ -101,7 +101,10 @@ Order for one entry:
    identifier decides on its own.
 2. Otherwise by title: CrossRef and dblp at the same time, then arXiv, then OpenAlex
    (always with `OPENALEX_API_KEY`; without a key, when dblp gave no answer), then
-   Semantic Scholar and Europe PMC until three sources have answered.
+   Semantic Scholar and Europe PMC until three sources have answered. dblp's
+   search API is behind a bot wall; when it cannot answer, dblp's SPARQL service is
+   asked instead (after a wall, for the rest of the run): a word search for candidate
+   titles, then the details of the five closest.
 3. `match.ts` compares title, authors and year: verified, mismatch (with the
    differing fields) or no match.
 

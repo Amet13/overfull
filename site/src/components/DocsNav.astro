@@ -60,8 +60,9 @@ const groups = groupDocs(docs);
   }
   summary {
     cursor: pointer;
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.09em;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.85em;
     padding: 0.5rem 0;
     border-bottom: 1px solid var(--hair);
     color: var(--ink-2);
@@ -70,8 +71,9 @@ const groups = groupDocs(docs);
     margin-top: 1rem;
   }
   .docs-nav-section {
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.09em;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.85em;
     color: var(--ink-3);
     margin: 0 0 0.3rem;
   }
@@ -82,19 +84,17 @@ const groups = groupDocs(docs);
   }
   li a {
     display: block;
-    padding: 0.22rem 0 0.22rem 0.7rem;
+    padding: 0.22rem 0;
     text-decoration: none;
-    border-left: 1px solid var(--hair);
     color: var(--ink-2);
   }
   li a:hover {
     color: var(--ink);
-    border-left-color: var(--ink);
+    text-decoration: underline;
+    text-decoration-color: var(--pencil);
   }
   li a[aria-current='page'] {
     color: var(--ink);
-    border-left: 3px solid var(--pencil);
-    padding-left: calc(0.7rem - 2px);
-    font-weight: 600;
+    font-weight: 700;
   }
 </style>

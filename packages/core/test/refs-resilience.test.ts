@@ -157,7 +157,8 @@ describe('answers of another shape than the API documents', () => {
     const reasons = (r?.failures ?? []).map((x) => x.reason);
     expect(reasons).toEqual(
       expect.arrayContaining([
-        'dblp.org returned unexpected data',
+        // The search API's odd answer sends dblp to its SPARQL service, which is odd too.
+        'dblp.org returned unexpected data; sparql.dblp.org returned unexpected data',
         'api.openalex.org returned unexpected data',
       ]),
     );

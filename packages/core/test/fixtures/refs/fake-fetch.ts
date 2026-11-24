@@ -21,6 +21,7 @@ interface Store {
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
+const DBLP_SPARQL = 'sparql.dblp.org';
 
 function fixturePath(name: string): string {
   return join(here, name);
@@ -46,7 +47,13 @@ function loadStore(): Store {
   }
   store = {
     requests: { ...main.requests, ...(extra.requests ?? {}) },
-    hostFallbacks: { ...main.hostFallbacks, ...(extra.hostFallbacks ?? {}) },
+    hostFallbacks: {
+      // Most recordings were made before dblp's SPARQL fallback, while dblp gave no answer
+      // at all: unrecorded SPARQL queries replay that (only sources-dblp.bib records them).
+      [DBLP_SPARQL]: { status: 503, contentType: 'text/plain', body: '' },
+      ...main.hostFallbacks,
+      ...(extra.hostFallbacks ?? {}),
+    },
   };
   return store;
 }

@@ -175,8 +175,8 @@ const venues = Object.entries(venueProfileData)
   .files-title {
     font-size: var(--s-1);
     font-weight: 400;
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.09em;
+    font-family: var(--sans);
+    font-weight: 600;
     color: var(--ink-3);
     border-bottom: 1px solid var(--hair);
     padding-bottom: 0.3rem;
@@ -215,8 +215,9 @@ const venues = Object.entries(venueProfileData)
   }
   .paste summary {
     cursor: pointer;
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.08em;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.85em;
     color: var(--ink-2);
     padding-block: 0.2rem;
   }
@@ -234,8 +235,8 @@ const venues = Object.entries(venueProfileData)
   }
   legend {
     font-size: var(--s-1);
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.09em;
+    font-family: var(--sans);
+    font-weight: 600;
     color: var(--ink-3);
     padding: 0;
     margin-bottom: 0.4rem;
@@ -287,8 +288,6 @@ const venues = Object.entries(venueProfileData)
     font-family: var(--sans);
     font-weight: 700;
     font-size: var(--s-2);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     color: var(--ink-3);
   }
   .files-list :global(.name) {
@@ -344,8 +343,8 @@ const venues = Object.entries(venueProfileData)
   .result-title {
     font-size: var(--s-1);
     font-weight: 400;
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.09em;
+    font-family: var(--sans);
+    font-weight: 600;
     color: var(--ink-3);
     border-bottom: 1px solid var(--hair);
     padding-bottom: 0.3rem;
@@ -380,7 +379,6 @@ const venues = Object.entries(venueProfileData)
   .notice {
     margin: 0;
     padding: 0.5rem 0.75rem;
-    border-left: 2px solid var(--warn);
     background: var(--warn-soft);
     font-size: var(--s-1);
     color: var(--ink);
@@ -420,13 +418,13 @@ const venues = Object.entries(venueProfileData)
     border-bottom: 2px solid var(--hair-strong);
     padding-bottom: 0.6rem;
     margin-bottom: 0.4rem;
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.1em;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.85em;
   }
   .ph-stamp {
     border: 1.5px dashed var(--hair-strong);
     padding: 0.1rem 0.5rem;
-    transform: rotate(-2deg);
   }
   .ph-row {
     display: grid;
@@ -440,7 +438,6 @@ const venues = Object.entries(venueProfileData)
     border-bottom: 0;
   }
   .ph-name {
-    font-variant-caps: small-caps;
   }
   .ph-line {
     height: 0.3rem;

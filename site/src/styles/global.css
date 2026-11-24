@@ -1,20 +1,44 @@
 /*
- * Overfull — galley proof.
- * The page is a typesetter's proof: a measured text block, notes in the
- * margin, corrections in red pencil, guides in non-photo blue.
+ * Overfull: the site is set like the papers it checks. Latin Modern and Fira
+ * Sans are the templates' own fonts; sections are numbered like \section;
+ * tables use booktabs rules (a heavy top and bottom rule, a light mid rule);
+ * red is an editor's correction, and the black box is TeX's overfull rule.
  */
 
+/* ---------- Fonts: Latin Modern from src/fonts (see its README); Fira Sans
+   and Commit Mono come from @fontsource, imported in Base.astro ---------- */
+@font-face {
+  font-family: "Latin Modern Roman";
+  src: url("../fonts/LM-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Latin Modern Roman";
+  src: url("../fonts/LM-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Latin Modern Roman";
+  src: url("../fonts/LM-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 /* ---------- Tokens ---------- */
 :root {
   color-scheme: light;
   /* Paper and ink */
-  --table: #e4e7e5; /* the light table the sheet lies on */
-  --paper: #f5f6f3; /* proof paper, neutral with a cool tint */
-  --paper-2: #eceeea; /* shaded boxes on the sheet */
-  --ink: #141a2b; /* blue-black */
-  --ink-2: #3c4458;
-  --ink-3: #555d70;
-  --hair: #c3c8cc;
+  --table: #fcfcfa;
+  --paper: #fcfcfa; /* the page: near white, no tint */
+  --paper-2: #f0f0ec; /* shaded boxes */
+  --ink: #111114; /* Latin Modern is light on screens: near-black ink */
+  --ink-2: #34343a;
+  --ink-3: #55555e;
+  --hair: #cfcfca;
   --hair-strong: #8d949c;
   /* Marks */
   --pencil: #b0122b; /* editor's red pencil */
@@ -29,7 +53,7 @@
   --slug: #0b0f19; /* the overfull rule */
   --focus: #0b57d0;
   /* Code */
-  --code-paper: #ebede8;
+  --code-paper: #f0f0ec;
   --code-ink: #1d2436;
   --code-comment: #5c6475;
   --code-keyword: #8c1023;
@@ -40,8 +64,8 @@
   --scroll-shade: #141a2b33;
 
   /* Type */
-  --serif: "Libertinus Serif", "Linux Libertine O", "STIX Two Text", Georgia, serif;
-  --sans: "Libertinus Sans", "Linux Biolinum O", "Gill Sans", sans-serif;
+  --serif: "Latin Modern Roman", "Latin Modern", "CMU Serif", Georgia, serif;
+  --sans: "Fira Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --mono: "Commit Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
   /* Modular scale, ratio 1.25 on a 19px base */
@@ -54,7 +78,7 @@
   --s4: 2.899rem;
   --s5: 3.624rem;
   --lh: 1.5;
-  --measure: 40rem; /* ≈ 66 characters of Libertinus at --s0 */
+  --measure: 40rem; /* about 70 characters of Latin Modern at --s0 */
   --margin-w: 14rem;
   --gap: 2.5rem;
 }
@@ -62,13 +86,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --table: #090c0d;
-    --paper: #111617;
-    --paper-2: #182021;
+    --table: #121212;
+    --paper: #121212;
+    --paper-2: #1c1c1c;
     --ink: #e3e8e2;
     --ink-2: #bfc8c3;
     --ink-3: #9aa59f;
-    --hair: #2c3638;
+    --hair: #333333;
     --hair-strong: #4f5c5e;
     --pencil: #ff8a78;
     --pencil-soft: #ff8a7824;
@@ -81,7 +105,7 @@
     --info: #92bdf5;
     --slug: #e9efe8;
     --focus: #8cc8ff;
-    --code-paper: #0c1112;
+    --code-paper: #1a1a1a;
     --code-ink: #dce3dd;
     --code-comment: #8f9a95;
     --code-keyword: #ff9e8e;
@@ -95,13 +119,13 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --table: #090c0d;
-  --paper: #111617;
-  --paper-2: #182021;
+  --table: #121212;
+  --paper: #121212;
+  --paper-2: #1c1c1c;
   --ink: #e3e8e2;
   --ink-2: #bfc8c3;
   --ink-3: #9aa59f;
-  --hair: #2c3638;
+  --hair: #333333;
   --hair-strong: #4f5c5e;
   --pencil: #ff8a78;
   --pencil-soft: #ff8a7824;
@@ -114,7 +138,7 @@
   --info: #92bdf5;
   --slug: #e9efe8;
   --focus: #8cc8ff;
-  --code-paper: #0c1112;
+  --code-paper: #1a1a1a;
   --code-ink: #dce3dd;
   --code-comment: #8f9a95;
   --code-keyword: #ff9e8e;
@@ -147,9 +171,8 @@ body {
   font-family: var(--serif);
   font-size: var(--s0);
   line-height: var(--lh);
-  font-variant-numeric: oldstyle-nums proportional-nums;
   font-kerning: normal;
-  font-feature-settings: "kern", "liga", "onum";
+  font-feature-settings: "kern", "liga";
   text-rendering: optimizeLegibility;
   overflow-wrap: break-word;
 }
@@ -179,16 +202,13 @@ h1,
 h2,
 h3,
 h4 {
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.15;
-  font-feature-settings: "kern", "liga", "lnum";
-  font-variant-numeric: lining-nums;
   text-wrap: balance;
   margin: 0;
 }
 h1 {
   font-size: var(--s4);
-  letter-spacing: -0.01em;
 }
 h2 {
   font-size: var(--s2);
@@ -229,7 +249,6 @@ pre {
   overflow-x: auto;
   background-color: var(--code-paper);
   color: var(--code-ink);
-  border-left: 2px solid var(--guide);
   tab-size: 2;
 }
 /*
@@ -270,7 +289,7 @@ hr {
 }
 
 ::selection {
-  background: var(--guide-soft);
+  background: var(--pencil-soft);
 }
 
 .sr-only {
@@ -301,8 +320,9 @@ hr {
 }
 
 .sc {
-  font-variant-caps: all-small-caps;
-  letter-spacing: 0.06em;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.85em;
   font-variant-numeric: lining-nums;
 }
 
@@ -318,13 +338,6 @@ hr {
   margin: 0 auto;
   min-height: 100vh;
   position: relative;
-  box-shadow: 0 0 0 1px var(--hair);
-}
-/* In lightbox mode the sheet glows faintly, like film on a light table */
-:root[data-theme="dark"] .sheet-paper {
-  box-shadow:
-    0 0 0 1px var(--hair),
-    0 0 60px -30px var(--guide-soft);
 }
 
 .frame {
@@ -338,11 +351,11 @@ hr {
   align-items: baseline;
   gap: 0.5rem 2rem;
   padding-block: 1.25rem 1rem;
-  border-bottom: 1px solid var(--hair);
+  border-bottom: 1px solid var(--ink);
 }
 .wordmark {
   font-size: var(--s1);
-  font-weight: 600;
+  font-weight: 700;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
@@ -353,7 +366,6 @@ hr {
   display: inline-block;
   width: 0;
   align-self: stretch;
-  border-left: 1px dashed var(--guide);
   margin-inline: 0.06em 0;
 }
 .wordmark .wm-slug {
@@ -384,9 +396,8 @@ hr {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-variant-caps: all-small-caps;
-  letter-spacing: 0.07em;
-  font-size: var(--s0);
+  font-family: var(--sans);
+  font-size: var(--s-1);
 }
 .nav a {
   text-decoration: none;
@@ -402,12 +413,12 @@ hr {
 .theme-toggle {
   order: 2;
   font: inherit;
-  font-variant-caps: all-small-caps;
-  letter-spacing: 0.07em;
+  font-family: var(--sans);
+  font-size: var(--s-1);
   background: none;
   color: var(--ink);
   border: 1px solid var(--hair-strong);
-  padding: 0.05rem 0.6rem 0.2rem;
+  padding: 0.1rem 0.6rem;
   cursor: pointer;
   min-height: 2rem;
 }
@@ -419,26 +430,23 @@ hr {
   color: var(--paper);
 }
 
-/* Running head: small caps label with a hairline, like a book's header */
+/* Running head: where the page sits (a breadcrumb), in the sans, as in a
+   book's header; no rule, no capitals. */
 .runhead {
-  display: flex;
-  align-items: baseline;
-  gap: 0.9rem;
-  font-variant-caps: all-small-caps;
-  letter-spacing: 0.09em;
+  font-family: var(--sans);
   font-size: var(--s-1);
   color: var(--ink-3);
-  margin: 0 0 1.5rem;
-  font-variant-numeric: lining-nums;
-}
-.runhead::after {
-  content: "";
-  flex: 1;
-  border-top: 1px solid var(--hair);
-  transform: translateY(-0.3em);
+  margin: 0 0 1.25rem;
 }
 .runhead .folio {
-  order: 2;
+  margin-left: 0.75rem;
+}
+
+/* Section numbers, as \section sets them: the number, a quad, the title */
+.secno {
+  display: inline-block;
+  min-width: 1.6em;
+  font-weight: 700;
 }
 
 /* Galley: the measured text block with a margin for notes */
@@ -455,8 +463,7 @@ hr {
   line-height: 1.4;
   color: var(--ink-2);
   margin: 0 0 1.25rem;
-  padding-left: 0.75rem;
-  border-left: 1px solid var(--guide);
+  padding-left: 1rem;
 }
 .marginal p {
   margin: 0 0 0.5em;
@@ -494,13 +501,6 @@ hr {
     padding-left: 0;
     border-left: 0;
   }
-  .marginal::before {
-    content: "";
-    display: block;
-    width: 1.5rem;
-    border-top: 1px solid var(--guide);
-    margin-bottom: 0.4rem;
-  }
 }
 
 section.block {
@@ -519,25 +519,16 @@ section.block::after {
   color: var(--ink-2);
 }
 
-/* Proofreader's caret: marks an insertion, used for "go here" links */
+/* "Go here" links: the sans, underlined, with the arrow LaTeX documents use */
 .caret-link {
-  font-variant-caps: all-small-caps;
-  letter-spacing: 0.07em;
-  text-decoration: none;
+  font-family: var(--sans);
+  font-size: var(--s-1);
   white-space: nowrap;
   display: inline-block;
   padding-block: 0.2rem;
-  border-bottom: 1px solid var(--pencil);
 }
-.caret-link::before {
-  content: "‸";
-  color: var(--pencil);
-  font-variant-caps: normal;
-  margin-right: 0.3em;
-  font-weight: 700;
-}
-.caret-link:hover {
-  border-bottom-width: 2px;
+.caret-link::after {
+  content: "\00a0→";
 }
 
 /* Command line strip */
@@ -546,7 +537,6 @@ section.block::after {
   font-size: 0.8rem;
   background-color: var(--code-paper);
   padding: 0.75rem 1rem;
-  border-left: 2px solid var(--guide);
   margin: 0 0 1rem;
   overflow-x: auto;
   white-space: pre;
@@ -564,7 +554,7 @@ section.block::after {
 .colophon {
   margin-top: 5rem;
   padding-block: 2rem 3rem;
-  border-top: 1px solid var(--hair);
+  border-top: 1px solid var(--ink);
   font-size: var(--s-1);
   color: var(--ink-2);
   display: grid;
@@ -573,9 +563,8 @@ section.block::after {
 }
 .colophon h2 {
   font-size: var(--s-1);
-  font-weight: 400;
-  font-variant-caps: all-small-caps;
-  letter-spacing: 0.09em;
+  font-family: var(--sans);
+  font-weight: 600;
   color: var(--ink-3);
   margin-bottom: 0.4rem;
 }
@@ -594,8 +583,6 @@ section.block::after {
   font-family: var(--sans);
   font-size: var(--s-2);
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 .sev-error .sev-tag,
@@ -633,8 +620,9 @@ section.block::after {
   min-width: 0;
 }
 .sheet-kicker {
-  font-variant-caps: all-small-caps;
-  letter-spacing: 0.1em;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.85em;
   color: var(--ink-3);
 }
 .sheet-target {
@@ -652,13 +640,8 @@ section.block::after {
   font-family: var(--sans);
   font-weight: 700;
   font-size: var(--s-2);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  padding: 0.35rem 0.6rem;
-  border: 2px solid currentColor;
-  outline: 1px solid currentColor;
-  outline-offset: 2px;
-  transform: rotate(-2.5deg);
+  padding: 0.2rem 0.55rem;
+  border: 1px solid currentColor;
   text-align: center;
   max-width: 11rem;
   line-height: 1.2;
@@ -696,8 +679,6 @@ section.block::after {
 .sheet-check-name {
   font-size: var(--s0);
   font-weight: 600;
-  font-variant-caps: small-caps;
-  letter-spacing: 0.03em;
 }
 .sheet-status {
   justify-self: end;
@@ -727,19 +708,11 @@ section.block::after {
   padding: 0 0 0 2.1rem;
 }
 .sheet-problem {
-  padding: 0.55rem 0 0.55rem 0.75rem;
-  border-left: 2px solid var(--hair);
-  margin-bottom: 0.35rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--hair);
 }
-.sheet-problem.sev-error {
-  border-left-color: var(--error);
-}
-.sheet-problem.sev-warning {
-  border-left-color: var(--warn);
-}
-.sheet-problem.sev-info {
-  border-left-color: var(--info);
-  border-left-style: dotted;
+.sheet-problem:first-child {
+  border-top: 0;
 }
 .sheet-problem-head {
   display: flex;
@@ -782,8 +755,9 @@ section.block::after {
 }
 .sheet-evidence summary {
   cursor: pointer;
-  font-variant-caps: all-small-caps;
-  letter-spacing: 0.08em;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.85em;
   color: var(--ink-3);
   margin-top: 0.3rem;
   width: max-content;
@@ -832,8 +806,7 @@ section.block::after {
 }
 .prose blockquote {
   margin: 1.5em 0;
-  padding: 0.2em 0 0.2em 1.1em;
-  border-left: 2px solid var(--pencil);
+  padding: 0 2em;
   color: var(--ink-2);
   font-style: italic;
 }
@@ -846,6 +819,8 @@ section.block::after {
 .prose table {
   border-collapse: collapse;
   width: 100%;
+  border-top: 1.5px solid var(--ink); /* \toprule */
+  border-bottom: 1.5px solid var(--ink); /* \bottomrule */
   font-size: var(--s-1);
   margin: 0 0 1.5em;
   font-variant-numeric: lining-nums tabular-nums;
@@ -856,16 +831,12 @@ section.block::after {
 .prose th,
 .prose td {
   text-align: left;
-  padding: 0.4rem 0.8rem 0.4rem 0;
-  border-bottom: 1px solid var(--hair);
+  padding: 0.35rem 0.8rem 0.35rem 0;
   vertical-align: top;
 }
 .prose th {
-  font-weight: 400;
-  font-variant-caps: all-small-caps;
-  letter-spacing: 0.07em;
-  color: var(--ink-3);
-  border-bottom: 1px solid var(--ink);
+  font-weight: 700;
+  border-bottom: 0.75px solid var(--ink); /* \midrule */
 }
 .prose img {
   height: auto;
@@ -912,13 +883,13 @@ select {
   border-color: var(--focus);
 }
 .btn {
-  font-family: var(--serif);
-  font-variant-caps: all-small-caps;
-  letter-spacing: 0.08em;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.85em;
   background: var(--ink);
   color: var(--paper);
   border: 1px solid var(--ink);
-  padding: 0.25rem 0.9rem 0.4rem;
+  padding: 0.3rem 0.9rem;
   cursor: pointer;
   min-height: 2.25rem;
 }

@@ -50,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ### Changed
 
+- Website: set in Latin Modern, the templates' own typeface (with Fira Sans), and laid out like a paper: numbered sections instead of capitalised labels, booktabs rules on tables, no window chrome, coloured side stripes or rotated stamps
 - Docs: "How it compares" covers Overleaf's built-in Citation Reviewer, and the
   Overleaf page tells you to download the PDF and log from "Logs and output
   files" for the browser check.
@@ -111,6 +112,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ### Fixed
 
+- Reference check: dblp answers again. Its search API now sends every automated request to a bot wall (HTTP 202, issue #114); the title search then asks dblp's SPARQL service (`sparql.dblp.org`) instead, and remembers the wall for the rest of the run
 - Reference check: Europe PMC gets the whole 10 s timeout to start answering, not 4 s; it runs the search before it sends headers, and healthy answers took up to 9 s
 - Maintenance: the weekly reference-source check no longer reports Semantic Scholar as broken when its keyless budget runs out on the second query (it is a note, as on the first)
 - Maintenance: the pin updater takes only pnpm releases at least as old as `minimumReleaseAge` (7 days); it had pinned pnpm 12.21.0 four days after release, and pnpm then refused to install itself locally until it was 7 days old

@@ -1,6 +1,8 @@
 // What record-sources.mjs records and what the refs-source-*.test.ts and refs-rules-*.test.ts
 // files replay: one entry per .bib file, with the verifyEntries options used for it.
 // `sources` limits which indexes are asked, so a fallback source can be exercised alone.
+// dblp's SPARQL service is recorded only for the cases that name dblp in `sources`; the
+// others replay it as unavailable (see fake-fetch.ts).
 export const CASES = [
   { file: 'sources-acl.bib', opts: {} },
   { file: 'sources-pubmed.bib', opts: {} },
@@ -9,6 +11,9 @@ export const CASES = [
   { file: 'sources-datacite.bib', opts: {} },
   { file: 'sources-retracted.bib', opts: { checkRetractions: true } },
   { file: 'sources-arxiv-doi.bib', opts: {} },
+  // dblp alone: its search API answers with a bot wall (recorded in http.json), so these
+  // go through its SPARQL service.
+  { file: 'sources-dblp.bib', opts: { sources: ['dblp'] } },
 ];
 
 export const LOOKUPS = [

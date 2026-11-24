@@ -87,6 +87,7 @@ const SOURCE_NAMES: Record<string, string> = {
   'doi.org': 'doi.org',
   'export.arxiv.org': 'arXiv',
   'dblp.org': 'dblp',
+  'sparql.dblp.org': 'dblp',
   'api.openalex.org': 'OpenAlex',
   'api.semanticscholar.org': 'Semantic Scholar',
   'aclanthology.org': 'ACL Anthology',

@@ -10,11 +10,12 @@ describe('testRefsTiming (test hook for request spacing)', () => {
     }
   });
 
-  it('turns the arXiv and CrossRef spacing off only with OVERFULL_TEST_NO_SPACING=1', () => {
+  it('turns the arXiv, CrossRef and dblp SPARQL spacing off only with OVERFULL_TEST_NO_SPACING=1', () => {
     expect(testRefsTiming({})).toEqual({});
     expect(testRefsTiming({ OVERFULL_TEST_NO_SPACING: '1' })).toEqual({
       arxivIntervalMs: 0,
       crossrefIntervalMs: 0,
+      dblpSparqlIntervalMs: 0,
       retryDelayMs: 0,
     });
   });
