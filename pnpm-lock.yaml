@@ -236,9 +236,12 @@ importers:
       '@fontsource/commit-mono':
         specifier: 5.3.0
         version: 5.3.0
-      '@fontsource/fira-sans':
-        specifier: 5.2.7
-        version: 5.2.7
+      '@fontsource/libertinus-sans':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource/libertinus-serif':
+        specifier: 5.3.0
+        version: 5.3.0
       '@overfull/core':
         specifier: workspace:*
         version: link:../packages/core
@@ -756,8 +759,11 @@ packages:
   '@fontsource/commit-mono@5.3.0':
     resolution: {integrity: sha512-Bs+zlEWHDgk/cCVWEMJJaA7LbBU3Ixi5Zums+SSwMKdm2N7RJ4P7jCJTwsMHRt5WFiXYB0tu0q9HMfkn0YsLsQ==}
 
-  '@fontsource/fira-sans@5.2.7':
-    resolution: {integrity: sha512-5DE4AealD/VnbwdzMgnpWfCttMQBbteNiK9DCJE7cVwZEbDTPLUoFDMMvxNQ498nZc5in7Mta9c/s+3Ehh0BAg==}
+  '@fontsource/libertinus-sans@5.3.0':
+    resolution: {integrity: sha512-DePvNVfVYTFW+Z2gAd6xB5WE25bmPpS7gPauLSPbiBGsTmcXKAIWymxgCh790OdMrDObpi8j8SY/fraip+L+QQ==}
+
+  '@fontsource/libertinus-serif@5.3.0':
+    resolution: {integrity: sha512-re9MYtKfLFxZxlcfV127IqG87wM7kYF9o//xfZufzsr2z22+tfKu5xRJwS9oMksI1fuyh5H9OWQFtVYM8ypiDg==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -3102,7 +3108,9 @@ snapshots:
 
   '@fontsource/commit-mono@5.3.0': {}
 
-  '@fontsource/fira-sans@5.2.7': {}
+  '@fontsource/libertinus-sans@5.3.0': {}
+
+  '@fontsource/libertinus-serif@5.3.0': {}
 
   '@img/colour@1.1.0':
     optional: true
