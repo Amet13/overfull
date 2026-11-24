@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Records real HTTP responses for the sources added after http.json: ACL Anthology,
-// Europe PMC, Semantic Scholar and CrossRef's retraction data.
+// Europe PMC, Semantic Scholar, CrossRef's retraction data and dblp's SPARQL service.
 //
 //   node packages/core/test/fixtures/refs/record-sources.mjs
 //
@@ -37,6 +37,7 @@ const { verifyEntries, lookup } = await import(pathToFileURL(join(src, 'refs/ind
 const { CASES, LOOKUPS } = await import(pathToFileURL(join(here, 'sources-cases.mjs')).href);
 
 const base = JSON.parse(readFileSync(join(here, 'http.json'), 'utf8'));
+const DBLP_SPARQL = 'sparql.dblp.org';
 
 function fixtureKey(url, accept) {
   const u = new URL(url);
@@ -114,10 +115,16 @@ try {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Set while a case that names dblp in `sources` runs; see sources-cases.mjs. */
+let recordDblpSparql = false;
+
 async function recordingFetch(url, init = {}) {
   const accept = init.headers?.Accept ?? '*/*';
   const key = fixtureKey(url, accept);
   const known = base.requests[key] ?? store.requests[key];
+  if (!known && new URL(url).host === DBLP_SPARQL && !recordDblpSparql) {
+    return new Response('', { status: 503 });
+  }
   if (known) {
     return new Response(known.status === 204 ? null : known.body, {
       status: known.status,
@@ -156,6 +163,7 @@ const common = {
 
 for (const { file, opts } of CASES) {
   const entries = parseBib(readFileSync(join(here, file), 'utf8'));
+  recordDblpSparql = opts.sources?.includes('dblp') === true;
   const results = await verifyEntries(entries, { ...common, ...opts });
   for (const r of results) {
     console.log(

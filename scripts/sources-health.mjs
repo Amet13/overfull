@@ -35,6 +35,8 @@ export const PROBES = [
     invented: (s, c, o) => s.crossrefSearch(c, { title: INVENTED }, o.mailto),
   },
   {
+    // The search API first, then dblp's SPARQL service when the search API is walled:
+    // broken only when neither answers.
     source: 'dblp',
     title: 'In Search of an Understandable Consensus Algorithm',
     known: (s, c) => s.dblpSearch(c, 'In Search of an Understandable Consensus Algorithm'),

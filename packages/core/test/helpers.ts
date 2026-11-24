@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { afterAll, onTestFinished } from 'vitest';
 
 /** Reference lookup options for tests: no request spacing and no retry delays. */
-export const fast = { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
+export const fast = {
+  arxivIntervalMs: 0,
+  crossrefIntervalMs: 0,
+  dblpSparqlIntervalMs: 0,
+  retryDelayMs: 0,
+};
 
 /** An arXiv API answer. */
 export const atom = (body: string): Response =>

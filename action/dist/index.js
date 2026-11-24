@@ -1219,8 +1219,8 @@ function sourceText(error) {
   return (error.source.before.replace(/^\.\.\./, "") + error.source.after).trim();
 }
 function firstContextBefore(error) {
-  const first2 = error.context[0] ?? "";
-  return first2.replace(/^l\.\d+ /, "").replace(/^<[^>]*> ?/, "");
+  const first3 = error.context[0] ?? "";
+  return first3.replace(/^l\.\d+ /, "").replace(/^<[^>]*> ?/, "");
 }
 function trailingControlSequence(text2) {
   return /\\([A-Za-z@]+|[^A-Za-z@\s])\s*$/.exec(text2)?.[1];
@@ -1559,11 +1559,11 @@ var init_explain = __esm({
     explainOptionClash = (m, error) => {
       const pkg = m[1] ?? "";
       const help = error.help.join("\n");
-      const first2 = /already been loaded with options:\s*\n?\s*\[([^\]]*)\]/.exec(help)?.[1];
+      const first3 = /already been loaded with options:\s*\n?\s*\[([^\]]*)\]/.exec(help)?.[1];
       const second = /load it with options\s*\n?\s*\[([^\]]*)\]/.exec(help)?.[1];
-      const options = [first2, second].flatMap((o) => (o ?? "").split(",")).map((o) => o.trim()).filter(Boolean);
+      const options = [first3, second].flatMap((o) => (o ?? "").split(",")).map((o) => o.trim()).filter(Boolean);
       const merged = [...new Set(options)].join(",");
-      const shown = first2 !== void 0 && second !== void 0 ? ` (${code(`[${first2}]`)} and ${code(`[${second}]`)})` : "";
+      const shown = first3 !== void 0 && second !== void 0 ? ` (${code(`[${first3}]`)} and ${code(`[${second}]`)})` : "";
       const arxiv = pkg === "hyperref" ? " Note that arXiv and many classes load hyperref themselves; use `\\hypersetup{\u2026}` for options instead of loading it again." : "";
       return {
         rule: "option-clash",
@@ -1573,7 +1573,7 @@ var init_explain = __esm({
         fix: merged ? `Load it once with all options: ${code(`\\usepackage[${merged}]{${pkg}}`)}. If the class or another package loads it first, put ${code(`\\PassOptionsToPackage{${merged}}{${pkg}}`)} before ${code("\\documentclass")}.` : `Remove the second ${code(`\\usepackage{${pkg}}`)} and merge its options into the first; use ${code("\\PassOptionsToPackage")} before ${code("\\documentclass")} if a class loads it.`,
         data: {
           package: pkg,
-          ...first2 !== void 0 ? { firstOptions: first2 } : {},
+          ...first3 !== void 0 ? { firstOptions: first3 } : {},
           ...second !== void 0 ? { secondOptions: second } : {}
         }
       };
@@ -2257,10 +2257,10 @@ var init_parse2 = __esm({
         }
         return parts;
       }
-      error(first2) {
-        const raw = [first2.text];
-        const fle = this.fileLineError(first2.text);
-        let message = (fle ? fle[3] ?? "" : (ERROR_START.exec(first2.text)?.[1] ?? "").trim()).slice(
+      error(first3) {
+        const raw = [first3.text];
+        const fle = this.fileLineError(first3.text);
+        let message = (fle ? fle[3] ?? "" : (ERROR_START.exec(first3.text)?.[1] ?? "").trim()).slice(
           0,
           MAX_MESSAGE_LENGTH
         );
@@ -2276,7 +2276,7 @@ var init_parse2 = __esm({
           context: [],
           help: [],
           raw: "",
-          logLine: first2.start + 1
+          logLine: first3.start + 1
         };
         if (this.runaway !== void 0) {
           error.runaway = this.runaway;
@@ -2549,14 +2549,14 @@ function occurrences(list2) {
 }
 function undefinedCitations(list2, notInBib) {
   return [...groupBy(list2, "key")].map(([key, items]) => {
-    const first2 = items[0];
+    const first3 = items[0];
     const missing = notInBib.has(key);
     return compact({
       rule: "undefined-citation",
       check: "output",
       severity: "error",
       message: `Citation ${code2(key)} is undefined${items.length > 1 ? ` (cited ${items.length} times)` : ""}`,
-      location: location(first2.file, first2.line, first2.page),
+      location: location(first3.file, first3.line, first3.page),
       detail: missing ? `The key ${code2(key)} is not in any loaded .bib file, so the PDF shows it in bold or as [?].` : `No bibliography entry has the key ${code2(key)}, so the PDF shows it in bold or as [?].`,
       fix: `Check the spelling of ${code2(key)} against the .bib file, or add the entry (\`overfull cite <doi>\` can fetch it), then rebuild; or remove the \`\\cite\` if the source is not known.`,
       evidence: evidence(items.map((w) => w.raw)),
@@ -2566,13 +2566,13 @@ function undefinedCitations(list2, notInBib) {
 }
 function undefinedReferences(list2) {
   return [...groupBy(list2, "label")].map(([label, items]) => {
-    const first2 = items[0];
+    const first3 = items[0];
     return compact({
       rule: "undefined-reference",
       check: "output",
       severity: "error",
       message: `Reference to ${code2(label)} is undefined${items.length > 1 ? ` (used ${items.length} times)` : ""}`,
-      location: location(first2.file, first2.line, first2.page),
+      location: location(first3.file, first3.line, first3.page),
       detail: `There is no ${code2(`\\label{${label}}`)}, so the PDF shows ?? where it is referenced.`,
       fix: `Add ${code2(`\\label{${label}}`)} after the caption or heading it should point to, or fix the spelling in ${code2(`\\ref{${label}}`)}.`,
       evidence: evidence(items.map((w) => w.raw)),
@@ -2641,14 +2641,14 @@ function rerunProblem(references2, raw, labelsChanged) {
 }
 function duplicateLabels(list2) {
   return [...groupBy(list2, "label")].map(([label, items]) => {
-    const first2 = items[0];
+    const first3 = items[0];
     return compact({
       rule: "duplicate-label",
       check: "output",
       severity: "warning",
       message: `Label ${code2(label)} is defined more than once`,
       // LaTeX notices duplicates while reading the .aux file, which says nothing about the source.
-      location: extension(first2.file ?? "") === "aux" ? void 0 : location(first2.file, first2.line, first2.page),
+      location: extension(first3.file ?? "") === "aux" ? void 0 : location(first3.file, first3.line, first3.page),
       detail: `References to ${code2(label)} point to whichever definition LaTeX saw last, which may be the wrong one.`,
       fix: `Search for ${code2(`\\label{${label}}`)} and give each one a unique name.`,
       evidence: evidence(items.map((w) => w.raw)),
@@ -2717,16 +2717,16 @@ function fontSubstitutions(list2) {
     else groups.set(key, [w]);
   }
   return [...groups.values()].map((items) => {
-    const first2 = items[0];
-    const from = String(first2.data.from);
-    const to = String(first2.data.to);
+    const first3 = items[0];
+    const from = String(first3.data.from);
+    const to = String(first3.data.to);
     const shape = from.split("/").slice(2).join("/");
     return compact({
       rule: "font-substitution",
       check: "output",
       severity: "warning",
       message: `Font shape ${code2(from)} is not available; ${code2(to)} was used instead`,
-      location: location(first2.file, first2.line, first2.page),
+      location: location(first3.file, first3.line, first3.page),
       detail: `The font has no ${code2(shape)} variant (for example bold small caps), so the PDF shows a different style than the source asks for.`,
       fix: "Use a font family that has this shape (with pdfLaTeX, `\\usepackage[T1]{fontenc}` gives Computer Modern bold small caps), or avoid combining these styles.",
       evidence: evidence(items.map((w) => w.raw)),
@@ -2744,14 +2744,14 @@ function missingGlyphs(list2) {
   }
   return [...byFont].map(([font, items]) => {
     const chars2 = [...new Set(items.map((w) => String(w.data.char)))];
-    const first2 = items[0];
+    const first3 = items[0];
     const fontName = /^\[?([^\]:]+)/.exec(font)?.[1] ?? font;
     return compact({
       rule: "missing-glyph",
       check: "output",
       severity: "error",
       message: `${plural(chars2.length, "character")} missing from the font ${code2(fontName)}: ${chars2.slice(0, 12).join(" ")}`,
-      location: location(first2.file, first2.line, first2.page),
+      location: location(first3.file, first3.line, first3.page),
       detail: "The font has no glyph for these characters, so they are silently left out of the PDF.",
       fix: "Switch to a font that covers them (for CJK text: `\\usepackage{xeCJK}` or `luatexja`, or `\\setmainfont{Noto Serif CJK SC}`), or use a fallback font for these characters.",
       evidence: evidence(items.slice(0, 5).map((w) => w.raw)),
@@ -2760,8 +2760,8 @@ function missingGlyphs(list2) {
   });
 }
 function pdfStringTokens(list2) {
-  const first2 = list2[0];
-  if (!first2) return [];
+  const first3 = list2[0];
+  if (!first3) return [];
   const tokens = [...new Set(list2.map((w) => String(w.data.token)))];
   return [
     compact({
@@ -2769,7 +2769,7 @@ function pdfStringTokens(list2) {
       check: "output",
       severity: "info",
       message: `Math or commands in a heading were dropped from the PDF bookmarks (${tokens.map(code2).join(", ")})`,
-      location: location(first2.file, first2.line, first2.page),
+      location: location(first3.file, first3.line, first3.page),
       detail: "hyperref turns headings into PDF bookmarks, which are plain text; it removed what it could not convert.",
       fix: "Give a plain-text alternative: `\\section{\\texorpdfstring{$\\alpha < 1$}{alpha < 1}}`.",
       related: list2.length > 1 ? list2.length - 1 : void 0,
@@ -4310,7 +4310,7 @@ function pdfOutputProblems(facts) {
   for (const page of facts.pages) {
     const refs = refHits(page.text);
     if (refs.length > 0) {
-      const first2 = refs[0];
+      const first3 = refs[0];
       problems.push({
         rule: "pdf-unresolved-reference",
         check: "output",
@@ -4318,13 +4318,13 @@ function pdfOutputProblems(facts) {
         message: refs.length === 1 ? `"??" printed instead of a reference number` : `"??" printed instead of a reference number (${refs.length} times)`,
         location: { page: page.number },
         fix: "Check the label exists and is spelled the same in `\\label` and `\\ref`, then rebuild (latexmk runs LaTeX until references settle)",
-        evidence: snippet(page.text, first2.index, first2.length),
+        evidence: snippet(page.text, first3.index, first3.length),
         data: { count: refs.length }
       });
     }
     const cites = findAll(page.text, UNRESOLVED_CITE);
     if (cites.length > 0) {
-      const first2 = cites[0];
+      const first3 = cites[0];
       problems.push({
         rule: "pdf-unresolved-citation",
         check: "output",
@@ -4332,7 +4332,7 @@ function pdfOutputProblems(facts) {
         message: cites.length === 1 ? `"[?]" printed instead of a citation` : `"[?]" printed instead of a citation (${cites.length} times)`,
         location: { page: page.number },
         fix: "Add the missing key to the .bib file (or fix its spelling) and rerun biber/bibtex via latexmk",
-        evidence: snippet(page.text, first2.index, first2.length),
+        evidence: snippet(page.text, first3.index, first3.length),
         data: { count: cites.length }
       });
     }
@@ -4642,8 +4642,8 @@ function parseXml(xml) {
   }
   const head = attrs(vr[1] ?? "");
   const body = vr[2] ?? "";
-  const details = /<details\b([^>]*)>/.exec(body);
-  const d = attrs(details?.[1] ?? "");
+  const details2 = /<details\b([^>]*)>/.exec(body);
+  const d = attrs(details2?.[1] ?? "");
   const failures = [];
   const ruleRe = /<rule\b([^>]*?)(?:\/>|>([\s\S]*?)<\/rule>)/g;
   for (let m = ruleRe.exec(body); m; m = ruleRe.exec(body)) {
@@ -4707,9 +4707,9 @@ function parseJson(data) {
     const msg = isObj(ex) ? text(ex.exceptionMessage) || text(ex.message) : String(ex);
     return { compliant: false, failures: [], error: msg || "veraPDF could not validate the file" };
   }
-  const details = isObj(vr.details) ? vr.details : {};
+  const details2 = isObj(vr.details) ? vr.details : {};
   const failures = [];
-  for (const r of asArray(details.ruleSummaries ?? details.rules)) {
+  for (const r of asArray(details2.ruleSummaries ?? details2.rules)) {
     if (!isObj(r)) continue;
     const status = text(r.ruleStatus || r.status).toLowerCase();
     if (status && status !== "failed") continue;
@@ -4735,9 +4735,9 @@ function parseJson(data) {
   const statement = text(vr.statement);
   if (profile) result.profile = profile;
   if (statement) result.statement = statement;
-  const pr = num(details.passedRules);
-  const fr = num(details.failedRules);
-  const fc = num(details.failedChecks);
+  const pr = num(details2.passedRules);
+  const fr = num(details2.failedRules);
+  const fc = num(details2.failedChecks);
   if (pr !== void 0) result.passedRules = pr;
   if (fr !== void 0) result.failedRules = fr;
   if (fc !== void 0) result.failedChecks = fc;
@@ -5038,13 +5038,13 @@ function sleep(ms, signal) {
     );
   });
 }
-function retryAfterMs(header, fallback) {
-  if (header === null) return fallback;
+function retryAfterMs(header, fallback2) {
+  if (header === null) return fallback2;
   const seconds = Number(header);
   if (Number.isFinite(seconds)) return Math.min(Math.max(0, seconds * 1e3), MAX_RETRY_AFTER_MS);
   const date = Date.parse(header);
   if (Number.isFinite(date)) return Math.min(Math.max(0, date - Date.now()), MAX_RETRY_AFTER_MS);
-  return fallback;
+  return fallback2;
 }
 async function getJson(client, url, accept = "application/json", headers) {
   const res = await client.get(url, accept, headers);
@@ -5083,7 +5083,7 @@ function readAnswer(host, read) {
     throw err;
   }
 }
-var SourceUnavailableError, MAX_RETRY_AFTER_MS, BREAKER_THRESHOLD, FIRST_BYTE_TIMEOUT_MS, SLOW_FIRST_BYTE_HOSTS, CROSSREF, CROSSREF_PUBLIC, CROSSREF_POLITE, HttpClient;
+var SourceUnavailableError, MAX_RETRY_AFTER_MS, BREAKER_THRESHOLD, FIRST_BYTE_TIMEOUT_MS, SLOW_FIRST_BYTE_HOSTS, CROSSREF, DBLP_SPARQL, DBLP_SPARQL_SPACING, CROSSREF_PUBLIC, CROSSREF_POLITE, HttpClient;
 var init_http = __esm({
   "../packages/core/src/refs/http.ts"() {
     "use strict";
@@ -5098,8 +5098,10 @@ var init_http = __esm({
     MAX_RETRY_AFTER_MS = 3e4;
     BREAKER_THRESHOLD = 2;
     FIRST_BYTE_TIMEOUT_MS = 4e3;
-    SLOW_FIRST_BYTE_HOSTS = /* @__PURE__ */ new Set(["www.ebi.ac.uk"]);
+    SLOW_FIRST_BYTE_HOSTS = /* @__PURE__ */ new Set(["www.ebi.ac.uk", "sparql.dblp.org"]);
     CROSSREF = "api.crossref.org";
+    DBLP_SPARQL = "sparql.dblp.org";
+    DBLP_SPARQL_SPACING = { intervalMs: 1e3, concurrent: 1 };
     CROSSREF_PUBLIC = { intervalMs: 1100, concurrent: 1 };
     CROSSREF_POLITE = { intervalMs: 350, concurrent: 3 };
     HttpClient = class {
@@ -5133,9 +5135,17 @@ var init_http = __esm({
           "export.arxiv.org": opts.arxivIntervalMs ?? 3e3,
           [CROSSREF]: opts.crossrefIntervalMs ?? crossref.intervalMs,
           // Semantic Scholar's key allows 1 request per second; keyless requests share a pool.
-          ...opts.semanticScholarKey ? { "api.semanticscholar.org": 1100 } : {}
+          ...opts.semanticScholarKey ? { "api.semanticscholar.org": 1100 } : {},
+          [DBLP_SPARQL]: opts.dblpSparqlIntervalMs ?? DBLP_SPARQL_SPACING.intervalMs
         };
-        this.limits = { [CROSSREF]: crossref.concurrent };
+        this.limits = {
+          [CROSSREF]: crossref.concurrent,
+          [DBLP_SPARQL]: DBLP_SPARQL_SPACING.concurrent
+        };
+      }
+      /** Why the host is out for the rest of this run; undefined while it is usable. */
+      downReason(host) {
+        return this.down.get(host);
       }
       /** Marks a host as unusable for the rest of this run (e.g. a bot challenge). */
       markDown(host, reason) {
@@ -5829,9 +5839,9 @@ function authorOverlap(facts, record) {
   return matched.length / Math.min(facts.surnames.length, record.authors.length);
 }
 function firstAuthorOk(facts, record) {
-  const first2 = facts.surnames[0];
-  if (!facts.firstIsPersonal || !first2 || !record.authors.length) return null;
-  return record.authors.slice(0, 2).some((a) => recordNameMatches(first2, a));
+  const first3 = facts.surnames[0];
+  if (!facts.firstIsPersonal || !first3 || !record.authors.length) return null;
+  return record.authors.slice(0, 2).some((a) => recordNameMatches(first3, a));
 }
 function yearDiff(facts, record) {
   if (facts.year === void 0 || !record.years.length) return null;
@@ -6034,15 +6044,15 @@ function duplicateKeys(entry) {
   return keys;
 }
 function duplicateProblems(entries) {
-  const first2 = /* @__PURE__ */ new Map();
+  const first3 = /* @__PURE__ */ new Map();
   const problems = [];
   for (const entry of entries) {
     let reported = false;
     for (const k of duplicateKeys(entry)) {
       const id = `${k.kind}:${k.value}`;
-      const earlier = first2.get(id);
+      const earlier = first3.get(id);
       if (!earlier) {
-        first2.set(id, entry);
+        first3.set(id, entry);
         continue;
       }
       if (reported || earlier === entry) continue;
@@ -6137,8 +6147,8 @@ var init_crossref = __esm({
 
 // ../packages/core/src/refs/sources/dblp.ts
 function dblpSearchUrl(title) {
-  const params = new URLSearchParams({ q: title, format: "json", h: "5" });
-  return `https://dblp.org/search/publ/api?${params}`;
+  const params = new URLSearchParams({ q: title, format: "json", h: String(MAX_HITS) });
+  return `https://${SEARCH_HOST}/search/publ/api?${params}`;
 }
 function dblpPerson(text2) {
   const clean2 = text2.replace(/\s+\d{4}$/, "");
@@ -6165,24 +6175,174 @@ function fromDblp(info3) {
   if (info3.type) record.type = info3.type;
   return record;
 }
-async function dblpSearch(client, title) {
+async function searchApi(client, title) {
   const { data } = await getJson(client, dblpSearchUrl(title));
   if (!data) return [];
-  const host = "dblp.org";
-  return readAnswer(host, () => {
+  return readAnswer(SEARCH_HOST, () => {
     const hits = isObject(data.result) ? data.result.hits : void 0;
-    if (!isObject(hits)) throw unexpectedData(host);
-    return listIn(host, hits.hit, true).map((h) => {
+    if (!isObject(hits)) throw unexpectedData(SEARCH_HOST);
+    return listIn(SEARCH_HOST, hits.hit, true).map((h) => {
       const info3 = h.info;
       return info3 ? fromDblp(info3) : null;
     }).filter((r) => r !== null);
   });
 }
+function sparqlWords(title) {
+  const words2 = title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3 && /^[a-z0-9]+$/.test(w) && !STOP_WORDS.has(w));
+  return [...new Set(words2)].sort((a, b) => b.length - a.length);
+}
+async function sparql(client, query3) {
+  const url = `${SPARQL_URL}?${new URLSearchParams({ query: PREFIXES + query3 })}`;
+  const { data } = await getJson(client, url, SPARQL_ACCEPT, {
+    "User-Agent": "overfull (github.com/Amet13/overfull)"
+  });
+  if (!data) throw new SourceUnavailableError(SPARQL_HOST, `${SPARQL_HOST} answered HTTP 404`);
+  return readAnswer(SPARQL_HOST, () => {
+    const results = data.results;
+    if (!isObject(results)) throw unexpectedData(SPARQL_HOST);
+    return listIn(SPARQL_HOST, results.bindings).map((row) => {
+      if (!isObject(row)) throw unexpectedData(SPARQL_HOST);
+      return row;
+    });
+  });
+}
+function literal(s) {
+  return s.replace(/[\\"]/g, "");
+}
+async function wordSearch(client, words2, length) {
+  const rows = await sparql(
+    client,
+    `SELECT ?p ?t WHERE { ?p dblp:title ?t . ?text ql:contains-entity ?t . ?text ql:contains-word "${literal(words2.join(" "))}" } ORDER BY ASC(ABS(STRLEN(?t) - ${length})) LIMIT ${WORD_SEARCH_LIMIT}`
+  );
+  return rows.flatMap((r) => r.p?.value && r.t?.value ? [[r.p.value, r.t.value]] : []);
+}
+async function details(client, iris) {
+  const values = iris.map((iri) => `<${iri.replace(/[<>"\s]/g, "")}>`).join(" ");
+  const rows = await sparql(
+    client,
+    `SELECT ?p ?title ?year ?venue ?doi ?ee ?class ?o ?n WHERE { VALUES ?p { ${values} } ?p dblp:title ?title . OPTIONAL { ?p dblp:yearOfPublication ?year } OPTIONAL { ?p dblp:publishedIn ?venue } OPTIONAL { ?p dblp:doi ?doi } OPTIONAL { ?p dblp:primaryDocumentPage ?ee } OPTIONAL { ?p a ?class } OPTIONAL { ?p dblp:hasSignature ?s . ?s dblp:signatureOrdinal ?o ; dblp:signatureDblpName ?n } }`
+  );
+  const byIri = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const iri = r.p?.value;
+    if (!iri) continue;
+    let d = byIri.get(iri);
+    if (!d) {
+      d = {
+        years: /* @__PURE__ */ new Set(),
+        venues: /* @__PURE__ */ new Set(),
+        dois: /* @__PURE__ */ new Set(),
+        ees: /* @__PURE__ */ new Set(),
+        classes: /* @__PURE__ */ new Set(),
+        authors: /* @__PURE__ */ new Map()
+      };
+      byIri.set(iri, d);
+    }
+    d.title ??= r.title?.value;
+    const year = Number(r.year?.value);
+    if (Number.isInteger(year)) d.years.add(year);
+    if (r.venue?.value) d.venues.add(r.venue.value);
+    if (r.doi?.value) d.dois.add(r.doi.value);
+    if (r.ee?.value) d.ees.add(r.ee.value);
+    if (r.class?.value.startsWith(SCHEMA)) d.classes.add(r.class.value.slice(SCHEMA.length));
+    const ordinal = Number(r.o?.value);
+    if (Number.isInteger(ordinal) && r.n?.value) d.authors.set(ordinal, r.n.value);
+  }
+  return iris.flatMap((iri) => {
+    const d = byIri.get(iri);
+    const record = d ? fromSparql(iri, d) : null;
+    return record ? [record] : [];
+  });
+}
+function first2(values) {
+  return [...values].sort()[0];
+}
+function fromSparql(iri, d) {
+  const doi = first2(d.dois)?.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "");
+  const doiLink = [...d.ees].find((ee2) => /^https?:\/\/(?:dx\.)?doi\.org\//i.test(ee2));
+  const year = [...d.years].sort()[0];
+  const info3 = {
+    authors: {
+      author: [...d.authors.entries()].sort(([a], [b]) => a - b).map(([, text2]) => ({ text: text2 }))
+    },
+    url: iri
+  };
+  if (d.title) info3.title = d.title;
+  if (year !== void 0) info3.year = String(year);
+  const venue2 = first2(d.venues);
+  if (venue2) info3.venue = venue2;
+  if (doi) info3.doi = doi;
+  const ee = doiLink ?? first2(d.ees);
+  if (ee) info3.ee = ee;
+  const type = TYPE_NAMES.find(([cls]) => d.classes.has(cls))?.[1];
+  if (type) info3.type = type;
+  return fromDblp(info3);
+}
+async function sparqlSearch(client, title) {
+  const words2 = sparqlWords(title);
+  if (!words2.length) return [];
+  const length = title.trim().length + 1;
+  let hits = await wordSearch(client, words2.slice(0, FIRST_WORDS), length);
+  if (!hits.length && words2.length > RETRY_WORDS) {
+    hits = await wordSearch(client, words2.slice(0, RETRY_WORDS), length);
+  }
+  const best = [...new Map(hits).entries()].map(([iri, t]) => ({ iri, sim: titleSimilarity(title, t) })).filter((c) => c.sim >= MIN_SIMILARITY).sort((a, b) => b.sim - a.sim || a.iri.localeCompare(b.iri)).slice(0, MAX_HITS);
+  if (!best.length) return [];
+  return details(
+    client,
+    best.map((c) => c.iri)
+  );
+}
+async function dblpSearch(client, title) {
+  const down = client.downReason(SEARCH_HOST);
+  if (down) return fallback(client, title, down);
+  try {
+    return await searchApi(client, title);
+  } catch (err) {
+    if (!(err instanceof SourceUnavailableError) || err.host !== SEARCH_HOST) throw err;
+    return fallback(client, title, err.message);
+  }
+}
+async function fallback(client, title, why2) {
+  try {
+    return await sparqlSearch(client, title);
+  } catch (err) {
+    if (!(err instanceof SourceUnavailableError)) throw err;
+    throw new SourceUnavailableError(SPARQL_HOST, `${why2}; ${err.message}`);
+  }
+}
+var SEARCH_HOST, SPARQL_URL, SPARQL_HOST, MAX_HITS, SPARQL_ACCEPT, PREFIXES, WORD_SEARCH_LIMIT, FIRST_WORDS, RETRY_WORDS, MIN_SIMILARITY, STOP_WORDS, TYPE_NAMES, SCHEMA;
 var init_dblp = __esm({
   "../packages/core/src/refs/sources/dblp.ts"() {
     "use strict";
     init_names();
     init_http();
+    init_normalize();
+    SEARCH_HOST = "dblp.org";
+    SPARQL_URL = "https://sparql.dblp.org/sparql";
+    SPARQL_HOST = new URL(SPARQL_URL).host;
+    MAX_HITS = 5;
+    SPARQL_ACCEPT = "application/sparql-results+json";
+    PREFIXES = "PREFIX dblp: <https://dblp.org/rdf/schema#> PREFIX ql: <http://qlever.cs.uni-freiburg.de/builtin-functions/> ";
+    WORD_SEARCH_LIMIT = 100;
+    FIRST_WORDS = 6;
+    RETRY_WORDS = 3;
+    MIN_SIMILARITY = 0.5;
+    STOP_WORDS = new Set(
+      "the and for with from into onto upon via its are was were has have had this that these those their our your his her not but nor than then there here which who whom whose what when where why how can may might will shall should would could does did been being about over under between through toward towards using based".split(" ")
+    );
+    TYPE_NAMES = [
+      ["Withdrawn", "Withdrawn Items"],
+      ["Informal", "Informal and Other Publications"],
+      ["Article", "Journal Articles"],
+      ["Inproceedings", "Conference and Workshop Papers"],
+      ["Incollection", "Parts in Books or Collections"],
+      ["Book", "Books and Theses"],
+      ["Editorship", "Editorship"],
+      ["Reference", "Reference Works"],
+      ["Data", "Data and Artifacts"]
+    ];
+    SCHEMA = "https://dblp.org/rdf/schema#";
   }
 });
 
@@ -6457,8 +6617,8 @@ async function titleSearch(ctx, q, visit) {
   const author = q.firstAuthor ? foldName(q.firstAuthor) : "";
   const cacheKey = titleCacheKey(q.title, q.year, q.isTex) + (author ? `|author:${author}` : "");
   const sources = titleSources(ctx, q);
-  const first2 = sources.filter(([s]) => s === "crossref" || s === "dblp");
-  const waves = [first2, sources.filter((entry) => !first2.includes(entry))];
+  const first3 = sources.filter(([s]) => s === "crossref" || s === "dblp");
+  const waves = [first3, sources.filter((entry) => !first3.includes(entry))];
   for (const wave of waves) {
     const pending = wave.map(([source, run3]) => {
       if (ctx.deadline !== void 0 && Date.now() > ctx.deadline) {
@@ -8952,20 +9112,20 @@ function paperSizeProblems(profile, ctx) {
   const off = ctx.facts.pages.filter(
     (p) => Math.abs(p.widthMm - target.w) > TOLERANCE_MM2 || Math.abs(p.heightMm - target.h) > TOLERANCE_MM2
   );
-  const first2 = off[0];
-  if (!first2) return [];
+  const first3 = off[0];
+  if (!first3) return [];
   const other = want === "a4" ? "letter" : "a4";
-  const isOther = Math.abs(first2.widthMm - PAPER[other].w) <= TOLERANCE_MM2 && Math.abs(first2.heightMm - PAPER[other].h) <= TOLERANCE_MM2;
-  const size = isOther ? PAPER[other].label : `${first2.widthMm} \xD7 ${first2.heightMm} mm`;
+  const isOther = Math.abs(first3.widthMm - PAPER[other].w) <= TOLERANCE_MM2 && Math.abs(first3.heightMm - PAPER[other].h) <= TOLERANCE_MM2;
+  const size = isOther ? PAPER[other].label : `${first3.widthMm} \xD7 ${first3.heightMm} mm`;
   return [
     {
       rule: "paper-size-mismatch",
       check: "venue",
       severity: "warning",
-      message: `Page ${first2.number} is ${size}, venue expects ${target.label}${off.length > 1 ? ` (${off.length} pages differ)` : ""}`,
-      location: { page: first2.number },
+      message: `Page ${first3.number} is ${size}, venue expects ${target.label}${off.length > 1 ? ` (${off.length} pages differ)` : ""}`,
+      location: { page: first3.number },
       fix: want === "a4" ? "Use `\\documentclass[a4paper]{...}` or `\\usepackage[a4paper]{geometry}`" : "Use `\\documentclass[letterpaper]{...}` or `\\usepackage[letterpaper]{geometry}`",
-      data: { expected: want, widthMm: first2.widthMm, heightMm: first2.heightMm, pages: off.length }
+      data: { expected: want, widthMm: first3.widthMm, heightMm: first3.heightMm, pages: off.length }
     }
   ];
 }
@@ -9953,17 +10113,17 @@ function ruleDescriptor(id, problem3) {
 }
 function formatSarif(report, opts = {}) {
   const problems = sortedProblems(report);
-  const fallback = opts.fallbackFile ?? report.assumed?.main;
+  const fallback2 = opts.fallbackFile ?? report.assumed?.main;
   const ids = [];
-  const first2 = /* @__PURE__ */ new Map();
+  const first3 = /* @__PURE__ */ new Map();
   for (const p of problems) {
-    if (!first2.has(p.rule)) {
-      first2.set(p.rule, p);
+    if (!first3.has(p.rule)) {
+      first3.set(p.rule, p);
       ids.push(p.rule);
     }
   }
   const results = problems.map((p) => {
-    const file = p.location?.file ?? fallback;
+    const file = p.location?.file ?? fallback2;
     const line = p.location?.file ? p.location.line : void 0;
     return {
       ruleId: p.rule,
@@ -9983,7 +10143,7 @@ function formatSarif(report, opts = {}) {
     };
   });
   const log = {
-    $schema: SCHEMA,
+    $schema: SCHEMA2,
     version: "2.1.0",
     runs: [
       {
@@ -9992,7 +10152,7 @@ function formatSarif(report, opts = {}) {
             name: "overfull",
             version: report.version,
             informationUri: SITE,
-            rules: ids.map((id) => ruleDescriptor(id, first2.get(id)))
+            rules: ids.map((id) => ruleDescriptor(id, first3.get(id)))
           }
         },
         results
@@ -10002,14 +10162,14 @@ function formatSarif(report, opts = {}) {
   return `${JSON.stringify(log, null, 2)}
 `;
 }
-var SITE, SCHEMA, LEVEL;
+var SITE, SCHEMA2, LEVEL;
 var init_sarif = __esm({
   "../packages/core/src/report/sarif.ts"() {
     "use strict";
     init_rules4();
     init_shared();
     SITE = "https://amet13.github.io/overfull/";
-    SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json";
+    SCHEMA2 = "https://json.schemastore.org/sarif-2.1.0.json";
     LEVEL = {
       error: "error",
       warning: "warning",
@@ -11395,9 +11555,9 @@ ${indent}`) + "'";
         return quotedString(value, ctx);
       }
       const indent = ctx.indent || (ctx.forceBlockIndent || containsDocumentMarker(value) ? "  " : "");
-      const literal = blockQuote === "literal" ? true : blockQuote === "folded" || type === Scalar.Scalar.BLOCK_FOLDED ? false : type === Scalar.Scalar.BLOCK_LITERAL ? true : !lineLengthOverLimit(value, lineWidth, indent.length);
+      const literal2 = blockQuote === "literal" ? true : blockQuote === "folded" || type === Scalar.Scalar.BLOCK_FOLDED ? false : type === Scalar.Scalar.BLOCK_LITERAL ? true : !lineLengthOverLimit(value, lineWidth, indent.length);
       if (!value)
-        return literal ? "|\n" : ">\n";
+        return literal2 ? "|\n" : ">\n";
       let chomp;
       let endStart;
       for (endStart = value.length; endStart > 0; --endStart) {
@@ -11446,7 +11606,7 @@ ${indent}`) + "'";
         if (onComment)
           onComment();
       }
-      if (!literal) {
+      if (!literal2) {
         const foldedValue = value.replace(/\n+/g, "\n$&").replace(/(?:^|\n)([\t ].*)(?:([\n\t ]*)\n(?![\n\t ]))?/g, "$1$2").replace(/\n+/g, `$&${indent}`);
         let literalFallback = false;
         const foldOptions = getFoldOptions(ctx, true);
@@ -14728,9 +14888,9 @@ var require_resolve_block_scalar = __commonJS({
     }
     function splitLines(source) {
       const split = source.split(/\n( *)/);
-      const first2 = split[0];
-      const m = first2.match(/^( *)/);
-      const line0 = m?.[1] ? [m[1], first2.slice(m[1].length)] : ["", first2];
+      const first3 = split[0];
+      const m = first3.match(/^( *)/);
+      const line0 = m?.[1] ? [m[1], first3.slice(m[1].length)] : ["", first3];
       const lines = [line0];
       for (let i = 1; i < split.length; i += 2)
         lines.push([split[i], split[i + 1]]);
@@ -17486,7 +17646,7 @@ var require_dist = __commonJS({
 function testRefsTiming(env) {
   const testRun = Boolean(process.env.VITEST) || process.env.NODE_ENV === "test";
   if (!testRun || env.OVERFULL_TEST_NO_SPACING !== "1") return {};
-  return { arxivIntervalMs: 0, crossrefIntervalMs: 0, retryDelayMs: 0 };
+  return { arxivIntervalMs: 0, crossrefIntervalMs: 0, dblpSparqlIntervalMs: 0, retryDelayMs: 0 };
 }
 var UsageError;
 var init_io = __esm({
@@ -17839,10 +17999,10 @@ function isRegular(path) {
   }
 }
 function ambiguousMainError(candidates) {
-  const first2 = candidates[0] ?? "paper.tex";
+  const first3 = candidates[0] ?? "paper.tex";
   return new UsageError(
     `More than one .tex file here has a \\documentclass: ${candidates.join(", ")}.
-Say which is the main file: \`overfull check --main ${first2}\`, or set \`main: ${first2}\` in overfull.yml.`
+Say which is the main file: \`overfull check --main ${first3}\`, or set \`main: ${first3}\` in overfull.yml.`
   );
 }
 var SKIP_DIRS, MAX_FILES, MAX_TEX_BYTES;
@@ -18737,14 +18897,14 @@ function isNumberArray(arr, len) {
   }
   return ArrayBuffer.isView(arr) && !(arr instanceof BigInt64Array || arr instanceof BigUint64Array) && (len === null || arr.length === len);
 }
-function lookupMatrix(arr, fallback) {
-  return isNumberArray(arr, 6) ? arr : fallback;
+function lookupMatrix(arr, fallback2) {
+  return isNumberArray(arr, 6) ? arr : fallback2;
 }
-function lookupRect(arr, fallback) {
-  return isNumberArray(arr, 4) ? arr : fallback;
+function lookupRect(arr, fallback2) {
+  return isNumberArray(arr, 4) ? arr : fallback2;
 }
-function lookupNormalRect(arr, fallback) {
-  return isNumberArray(arr, 4) ? Util.normalizeRect(arr) : fallback;
+function lookupNormalRect(arr, fallback2) {
+  return isNumberArray(arr, 4) ? Util.normalizeRect(arr) : fallback2;
 }
 function parseXFAPath(path) {
   const positionPattern = /^(.+)\[(\d+)\]$/;
@@ -23631,7 +23791,7 @@ function generateFont({
   alias,
   local,
   path,
-  fallback,
+  fallback: fallback2,
   style,
   ultimate
 }, src, localFontPath, useFallback = true, usePath = true, append = "") {
@@ -23648,7 +23808,7 @@ function generateFont({
   if (alias) {
     const substitution = substitutionMap.get(alias);
     const aliasAppend = append || getStyleToAppend(style);
-    Object.assign(result, generateFont(substitution, src, localFontPath, useFallback && !fallback, usePath && !path, aliasAppend));
+    Object.assign(result, generateFont(substitution, src, localFontPath, useFallback && !fallback2, usePath && !path, aliasAppend));
   }
   if (style) {
     result.style = style;
@@ -23656,8 +23816,8 @@ function generateFont({
   if (ultimate) {
     result.ultimate = ultimate;
   }
-  if (useFallback && fallback) {
-    const fallbackInfo = substitutionMap.get(fallback);
+  if (useFallback && fallback2) {
+    const fallbackInfo = substitutionMap.get(fallback2);
     const {
       ultimate: fallbackUltimate
     } = generateFont(fallbackInfo, src, localFontPath, useFallback, usePath && !path, append);
@@ -23726,9 +23886,9 @@ function getFontSubstitution(systemFontCache, idFactory, localFontPath, baseFont
     ultimate
   } = generateFont(substitution, src, localFontPath);
   const guessFallback = ultimate === null;
-  const fallback = guessFallback ? "" : `,${ultimate}`;
+  const fallback2 = guessFallback ? "" : `,${ultimate}`;
   substitutionInfo = {
-    css: `"${getFamilyName(baseFontName)}",${loadedName}${fallback}`,
+    css: `"${getFamilyName(baseFontName)}",${loadedName}${fallback2}`,
     guessFallback,
     loadedName,
     baseFontName,
@@ -30468,9 +30628,9 @@ var init_pdf_worker = __esm({
       }
     };
     UnknownErrorException = class extends BaseException {
-      constructor(msg, details) {
+      constructor(msg, details2) {
         super(msg, "UnknownErrorException");
-        this.details = details;
+        this.details = details2;
       }
     };
     InvalidPDFException = class extends BaseException {
@@ -30641,10 +30801,10 @@ var init_pdf_worker = __esm({
         const a = m0 ** 2 + m1 ** 2;
         const b = m0 * m2 + m1 * m3;
         const c = m2 ** 2 + m3 ** 2;
-        const first2 = (a + c) / 2;
-        const second = Math.sqrt(first2 ** 2 - (a * c - b ** 2));
-        output[0] = Math.sqrt(first2 + second || 1);
-        output[1] = Math.sqrt(first2 - second || 1);
+        const first3 = (a + c) / 2;
+        const second = Math.sqrt(first3 ** 2 - (a * c - b ** 2));
+        output[0] = Math.sqrt(first3 + second || 1);
+        output[1] = Math.sqrt(first3 - second || 1);
       }
       static normalizeRect(rect) {
         const r = rect.slice(0);
@@ -44426,17 +44586,17 @@ var init_pdf_worker = __esm({
           case 3:
             const rangesCount = bytes[pos++] << 8 | bytes[pos++];
             for (i = 0; i < rangesCount; ++i) {
-              let first2 = bytes[pos++] << 8 | bytes[pos++];
-              if (i === 0 && first2 !== 0) {
+              let first3 = bytes[pos++] << 8 | bytes[pos++];
+              if (i === 0 && first3 !== 0) {
                 warn("parseFDSelect: The first range must have a first GID of 0 -- trying to recover.");
-                first2 = 0;
+                first3 = 0;
               }
               const fdIndex = bytes[pos++];
               const next = bytes[pos] << 8 | bytes[pos + 1];
-              if (next - first2 > length - fdSelect.length) {
+              if (next - first3 > length - fdSelect.length) {
                 throw new FormatError("parseFDSelect: Invalid font data.");
               }
-              for (let j = first2; j < next; ++j) {
+              for (let j = first3; j < next; ++j) {
                 fdSelect.push(fdIndex);
               }
             }
@@ -54297,13 +54457,13 @@ var init_pdf_worker = __esm({
       }
     };
     PsBinaryNode = class extends PsNode {
-      constructor(op, first2, second, valueType = PS_VALUE_TYPE.unknown) {
+      constructor(op, first3, second, valueType = PS_VALUE_TYPE.unknown) {
         super(PS_NODE.binary);
         this.op = op;
-        this.first = first2;
+        this.first = first3;
         this.second = second;
         this.valueType = valueType;
-        this.depth = Math.max(first2.depth, second.depth) + 1;
+        this.depth = Math.max(first3.depth, second.depth) + 1;
       }
     };
     PsTernaryNode = class extends PsNode {
@@ -54587,9 +54747,9 @@ var init_pdf_worker = __esm({
             this._failed = true;
             return;
           }
-          const first2 = stack.pop();
+          const first3 = stack.pop();
           const second = stack.pop();
-          stack.push(this._makeBinary(op, first2, second));
+          stack.push(this._makeBinary(op, first3, second));
           return;
         }
         if (_PSStackToTree.#unaryOps.has(op)) {
@@ -54744,25 +54904,25 @@ var init_pdf_worker = __esm({
             return false;
         }
       }
-      _makeBinary(op, first2, second) {
-        if (first2.type === PS_NODE.const && second.type === PS_NODE.const) {
-          const v = _evalBinaryConst(op, second.value, first2.value);
+      _makeBinary(op, first3, second) {
+        if (first3.type === PS_NODE.const && second.type === PS_NODE.const) {
+          const v = _evalBinaryConst(op, second.value, first3.value);
           if (v !== void 0) {
             return new PsConstNode(v);
           }
         }
-        if (this._nodesEqual(first2, second)) {
+        if (this._nodesEqual(first3, second)) {
           switch (op) {
             case TOKEN.sub:
               return new PsConstNode(0);
             case TOKEN.xor:
-              return new PsConstNode(first2.valueType === PS_VALUE_TYPE.boolean ? false : 0);
+              return new PsConstNode(first3.valueType === PS_VALUE_TYPE.boolean ? false : 0);
             case TOKEN.and:
             case TOKEN.or:
-              return first2;
+              return first3;
             case TOKEN.min:
             case TOKEN.max:
-              return first2;
+              return first3;
             case TOKEN.eq:
             case TOKEN.ge:
             case TOKEN.le:
@@ -54774,14 +54934,14 @@ var init_pdf_worker = __esm({
           }
         }
         if (op === TOKEN.eq || op === TOKEN.ne) {
-          if (first2.valueType === PS_VALUE_TYPE.unknown || second.valueType === PS_VALUE_TYPE.unknown) {
+          if (first3.valueType === PS_VALUE_TYPE.unknown || second.valueType === PS_VALUE_TYPE.unknown) {
             this._failed = true;
-          } else if (first2.valueType !== second.valueType) {
+          } else if (first3.valueType !== second.valueType) {
             return new PsConstNode(op === TOKEN.ne);
           }
         }
-        if (first2.type === PS_NODE.const) {
-          const b = first2.value;
+        if (first3.type === PS_NODE.const) {
+          const b = first3.value;
           switch (op) {
             case TOKEN.add:
               if (b === 0) {
@@ -54798,7 +54958,7 @@ var init_pdf_worker = __esm({
                 return second;
               }
               if (b === 0) {
-                return first2;
+                return first3;
               }
               if (b === -1) {
                 return this._makeUnary(TOKEN.neg, second);
@@ -54847,7 +55007,7 @@ var init_pdf_worker = __esm({
                 return second;
               }
               if (b === false) {
-                return first2;
+                return first3;
               }
               break;
             case TOKEN.or:
@@ -54855,17 +55015,17 @@ var init_pdf_worker = __esm({
                 return second;
               }
               if (b === true) {
-                return first2;
+                return first3;
               }
               break;
             case TOKEN.min:
               if (second.type === PS_NODE.binary && second.op === TOKEN.max && second.first.type === PS_NODE.const && second.first.value >= b) {
-                return first2;
+                return first3;
               }
               break;
             case TOKEN.max:
               if (second.type === PS_NODE.binary && second.op === TOKEN.min && second.first.type === PS_NODE.const && second.first.value <= b) {
-                return first2;
+                return first3;
               }
               break;
           }
@@ -54875,28 +55035,28 @@ var init_pdf_worker = __esm({
           switch (op) {
             case TOKEN.add:
               if (a === 0) {
-                return first2;
+                return first3;
               }
               break;
             case TOKEN.sub:
               if (a === 0) {
-                return this._makeUnary(TOKEN.neg, first2);
+                return this._makeUnary(TOKEN.neg, first3);
               }
               break;
             case TOKEN.mul:
               if (a === 1) {
-                return first2;
+                return first3;
               }
               if (a === 0) {
                 return second;
               }
               if (a === -1) {
-                return this._makeUnary(TOKEN.neg, first2);
+                return this._makeUnary(TOKEN.neg, first3);
               }
               break;
             case TOKEN.and:
               if (a === true) {
-                return first2;
+                return first3;
               }
               if (a === false) {
                 return second;
@@ -54904,7 +55064,7 @@ var init_pdf_worker = __esm({
               break;
             case TOKEN.or:
               if (a === false) {
-                return first2;
+                return first3;
               }
               if (a === true) {
                 return second;
@@ -54912,7 +55072,7 @@ var init_pdf_worker = __esm({
               break;
           }
         }
-        return this._checkDepth(new PsBinaryNode(op, first2, second, _binaryValueType(op, first2.valueType, second.valueType)));
+        return this._checkDepth(new PsBinaryNode(op, first3, second, _binaryValueType(op, first3.valueType, second.valueType)));
       }
       _makeUnary(op, operand) {
         if (operand.type === PS_NODE.const) {
@@ -55142,17 +55302,17 @@ var init_pdf_worker = __esm({
       _compileBinary(node) {
         const {
           op,
-          first: first2,
+          first: first3,
           second
         } = node;
         if (op === TOKEN.bitshift) {
-          if (first2.type !== PS_NODE.const || !Number.isInteger(first2.value) || !this._compileNode(second)) {
+          if (first3.type !== PS_NODE.const || !Number.isInteger(first3.value) || !this._compileNode(second)) {
             return false;
           }
-          this.ir.push(OP.SHIFT, first2.value);
+          this.ir.push(OP.SHIFT, first3.value);
           return true;
         }
-        if (!this._compileNode(second) || !this._compileNode(first2)) {
+        if (!this._compileNode(second) || !this._compileNode(first3)) {
           return false;
         }
         switch (op) {
@@ -56006,10 +56166,10 @@ var init_pdf_worker = __esm({
         }
         return true;
       }
-      _compileSafeDivNode(first2, second) {
+      _compileSafeDivNode(first3, second) {
         const tmp = this._allocLocal();
         try {
-          if (!this._compileNode(second) || !this._compileNode(first2)) {
+          if (!this._compileNode(second) || !this._compileNode(first3)) {
             return false;
           }
           const code3 = this._code;
@@ -56024,10 +56184,10 @@ var init_pdf_worker = __esm({
           this._releaseLocal(tmp);
         }
       }
-      _compileSafeIdivNode(first2, second) {
+      _compileSafeIdivNode(first3, second) {
         const tmp = this._allocLocal();
         try {
-          if (!this._compileNode(second) || !this._compileNode(first2)) {
+          if (!this._compileNode(second) || !this._compileNode(first3)) {
             return false;
           }
           const code3 = this._code;
@@ -56042,13 +56202,13 @@ var init_pdf_worker = __esm({
           this._releaseLocal(tmp);
         }
       }
-      _compileBitshiftNode(first2, second) {
-        if (first2.type !== PS_NODE.const || !Number.isInteger(first2.value) || !this._compileNode(second)) {
+      _compileBitshiftNode(first3, second) {
+        if (first3.type !== PS_NODE.const || !Number.isInteger(first3.value) || !this._compileNode(second)) {
           return false;
         }
         const code3 = this._code;
         this._emitToInt32();
-        const shift = first2.value;
+        const shift = first3.value;
         if (shift > 0) {
           code3.push(wasm_compiler_OP.i32_const);
           this._emitSLEB128(shift);
@@ -56061,8 +56221,8 @@ var init_pdf_worker = __esm({
         code3.push(wasm_compiler_OP.f64_convert_i32_s);
         return true;
       }
-      _compileModNode(first2, second) {
-        if (first2.type === PS_NODE.const && first2.value === 0) {
+      _compileModNode(first3, second) {
+        if (first3.type === PS_NODE.const && first3.value === 0) {
           this._emitF64Const(0);
           return true;
         }
@@ -56073,16 +56233,16 @@ var init_pdf_worker = __esm({
           }
           this._emitLocalTee(localA);
           const code3 = this._code;
-          if (first2.type === PS_NODE.const) {
+          if (first3.type === PS_NODE.const) {
             this._emitLocalGet(localA);
-            this._emitF64Const(first2.value);
+            this._emitF64Const(first3.value);
             code3.push(wasm_compiler_OP.f64_div, wasm_compiler_OP.f64_trunc);
-            this._emitF64Const(first2.value);
+            this._emitF64Const(first3.value);
             code3.push(wasm_compiler_OP.f64_mul, wasm_compiler_OP.f64_sub);
           } else {
             const localB = this._allocLocal();
             try {
-              if (!this._compileNode(first2)) {
+              if (!this._compileNode(first3)) {
                 return false;
               }
               this._emitLocalSet(localB);
@@ -56104,10 +56264,10 @@ var init_pdf_worker = __esm({
           this._releaseLocal(localA);
         }
       }
-      _compileAtanNode(first2, second) {
+      _compileAtanNode(first3, second) {
         const localR = this._allocLocal();
         try {
-          if (!this._compileNode(second) || !this._compileNode(first2)) {
+          if (!this._compileNode(second) || !this._compileNode(first3)) {
             return false;
           }
           const code3 = this._code;
@@ -56128,8 +56288,8 @@ var init_pdf_worker = __esm({
           this._releaseLocal(localR);
         }
       }
-      _compileBitwiseNode(op, first2, second) {
-        if (!this._compileBitwiseOperandI32(second) || !this._compileBitwiseOperandI32(first2)) {
+      _compileBitwiseNode(op, first3, second) {
+        if (!this._compileBitwiseOperandI32(second) || !this._compileBitwiseOperandI32(first3)) {
           return false;
         }
         const code3 = this._code;
@@ -56159,11 +56319,11 @@ var init_pdf_worker = __esm({
         this._emitToInt32();
         return true;
       }
-      _compileStandardBinaryNode(op, first2, second) {
-        if (first2 === second && first2.type !== PS_NODE.arg && first2.type !== PS_NODE.const && !first2.shared) {
+      _compileStandardBinaryNode(op, first3, second) {
+        if (first3 === second && first3.type !== PS_NODE.arg && first3.type !== PS_NODE.const && !first3.shared) {
           const tmp = this._allocLocal();
           try {
-            if (!this._compileNode(first2)) {
+            if (!this._compileNode(first3)) {
               return false;
             }
             this._emitLocalTee(tmp);
@@ -56171,7 +56331,7 @@ var init_pdf_worker = __esm({
           } finally {
             this._releaseLocal(tmp);
           }
-        } else if (!this._compileNode(second) || !this._compileNode(first2)) {
+        } else if (!this._compileNode(second) || !this._compileNode(first3)) {
           return false;
         }
         const code3 = this._code;
@@ -56221,25 +56381,25 @@ var init_pdf_worker = __esm({
       _compileBinaryNode(node) {
         const {
           op,
-          first: first2,
+          first: first3,
           second
         } = node;
         if (op === TOKEN.bitshift) {
-          return this._compileBitshiftNode(first2, second);
+          return this._compileBitshiftNode(first3, second);
         }
         if (op === TOKEN.div) {
-          return this._compileSafeDivNode(first2, second);
+          return this._compileSafeDivNode(first3, second);
         }
         if (op === TOKEN.idiv) {
-          return this._compileSafeIdivNode(first2, second);
+          return this._compileSafeIdivNode(first3, second);
         }
         if (op === TOKEN.mod) {
-          return this._compileModNode(first2, second);
+          return this._compileModNode(first3, second);
         }
         if (op === TOKEN.atan) {
-          return this._compileAtanNode(first2, second);
+          return this._compileAtanNode(first3, second);
         }
-        return op === TOKEN.and || op === TOKEN.or || op === TOKEN.xor ? this._compileBitwiseNode(op, first2, second) : this._compileStandardBinaryNode(op, first2, second);
+        return op === TOKEN.and || op === TOKEN.or || op === TOKEN.xor ? this._compileBitwiseNode(op, first3, second) : this._compileStandardBinaryNode(op, first3, second);
       }
       _compileNodeAsBoolI32(node) {
         if (node.type === PS_NODE.binary) {
@@ -66869,10 +67029,10 @@ var init_pdf_worker = __esm({
       [$getChildrenByClass](name) {
         return this[name];
       }
-      [$getChildrenByName](name, allTransparent, first2 = true) {
-        return Array.from(this[$getChildrenByNameIt](name, allTransparent, first2));
+      [$getChildrenByName](name, allTransparent, first3 = true) {
+        return Array.from(this[$getChildrenByNameIt](name, allTransparent, first3));
       }
-      *[$getChildrenByNameIt](name, allTransparent, first2 = true) {
+      *[$getChildrenByNameIt](name, allTransparent, first3 = true) {
         if (name === "parent") {
           yield this[_parent];
           return;
@@ -66888,7 +67048,7 @@ var init_pdf_worker = __esm({
             yield* child[$getChildrenByNameIt](name, allTransparent, false);
           }
         }
-        if (first2 && this[_attributeNames].has(name)) {
+        if (first3 && this[_attributeNames].has(name)) {
           yield new XFAAttribute(this, name, this[name]);
         }
       }
@@ -78940,8 +79100,8 @@ var init_pdf_worker = __esm({
         if (!node) {
           return "";
         }
-        const first2 = node.firstChild;
-        return first2?.nodeName === "value" ? node.children.map((child) => decodeString(child.textContent)) : decodeString(node.textContent);
+        const first3 = node.firstChild;
+        return first3?.nodeName === "value" ? node.children.map((child) => decodeString(child.textContent)) : decodeString(node.textContent);
       }
     };
     SingleIntersector = class {
@@ -80133,9 +80293,9 @@ var init_pdf_worker = __esm({
             tableState.firstEntryNum = obj;
             tableState.entryCount = parser.getObj();
           }
-          let first2 = tableState.firstEntryNum;
+          let first3 = tableState.firstEntryNum;
           const count = tableState.entryCount;
-          if (!Number.isInteger(first2) || !Number.isInteger(count)) {
+          if (!Number.isInteger(first3) || !Number.isInteger(count)) {
             throw new FormatError("Invalid XRef table: wrong types in subsection header");
           }
           for (let i = tableState.entryNum; i < count; i++) {
@@ -80161,12 +80321,12 @@ var init_pdf_worker = __esm({
               }
             }
             if (!Number.isInteger(entry.offset) || !Number.isInteger(entry.gen) || !(entry.free || entry.uncompressed)) {
-              throw new FormatError(`Invalid entry in XRef subsection: ${first2}, ${count}`);
+              throw new FormatError(`Invalid entry in XRef subsection: ${first3}, ${count}`);
             }
-            if (i === 0 && entry.free && first2 === 1) {
-              first2 = 0;
+            if (i === 0 && entry.free && first3 === 1) {
+              first3 = 0;
             }
-            this.#entries[first2 + i] ??= entry;
+            this.#entries[first3 + i] ??= entry;
           }
           tableState.entryNum = 0;
           tableState.streamPos = stream.pos;
@@ -80205,12 +80365,12 @@ var init_pdf_worker = __esm({
         const [typeFieldWidth, offsetFieldWidth, generationFieldWidth] = streamState.byteWidths;
         const entryRanges = streamState.entryRanges;
         while (entryRanges.length > 0) {
-          const [first2, n] = entryRanges;
-          if (!Number.isInteger(first2) || !Number.isInteger(n)) {
-            throw new FormatError(`Invalid XRef range fields: ${first2}, ${n}`);
+          const [first3, n] = entryRanges;
+          if (!Number.isInteger(first3) || !Number.isInteger(n)) {
+            throw new FormatError(`Invalid XRef range fields: ${first3}, ${n}`);
           }
           if (![typeFieldWidth, offsetFieldWidth, generationFieldWidth].every((width) => Number.isInteger(width) && width >= 0) || typeFieldWidth + offsetFieldWidth + generationFieldWidth === 0) {
-            throw new FormatError(`Invalid XRef entry fields length: ${first2}, ${n}`);
+            throw new FormatError(`Invalid XRef entry fields length: ${first3}, ${n}`);
           }
           for (let i = streamState.entryNum; i < n; ++i) {
             streamState.entryNum = i;
@@ -80258,7 +80418,7 @@ var init_pdf_worker = __esm({
               default:
                 throw new FormatError(`Invalid XRef entry type: ${type}`);
             }
-            this.#entries[first2 + i] ??= entry;
+            this.#entries[first3 + i] ??= entry;
           }
           streamState.entryNum = 0;
           streamState.streamPos = stream.pos;
@@ -80653,9 +80813,9 @@ var init_pdf_worker = __esm({
         if (!(stream instanceof BaseStream)) {
           throw new FormatError("bad ObjStm stream");
         }
-        const first2 = stream.dict.get("First");
+        const first3 = stream.dict.get("First");
         const n = stream.dict.get("N");
-        if (!Number.isInteger(first2) || !Number.isInteger(n)) {
+        if (!Number.isInteger(first3) || !Number.isInteger(n)) {
           throw new FormatError("invalid first and n parameters for ObjStm stream");
         }
         let parser = new Parser3({
@@ -80681,7 +80841,7 @@ var init_pdf_worker = __esm({
           }
           offsets[i] = offset;
         }
-        const start = (stream.start || 0) + first2;
+        const start = (stream.start || 0) + first3;
         const entries = new Array(n);
         for (let i = 0; i < n; ++i) {
           const length = i < n - 1 ? offsets[i + 1] - offsets[i] : void 0;
@@ -92397,9 +92557,9 @@ var init_pdf2 = __esm({
       }
     };
     UnknownErrorException2 = class extends BaseException2 {
-      constructor(msg, details) {
+      constructor(msg, details2) {
         super(msg, "UnknownErrorException");
-        this.details = details;
+        this.details = details2;
       }
     };
     InvalidPDFException2 = class extends BaseException2 {
@@ -92579,10 +92739,10 @@ var init_pdf2 = __esm({
         const a = m0 ** 2 + m1 ** 2;
         const b = m0 * m2 + m1 * m3;
         const c = m2 ** 2 + m3 ** 2;
-        const first2 = (a + c) / 2;
-        const second = Math.sqrt(first2 ** 2 - (a * c - b ** 2));
-        output[0] = Math.sqrt(first2 + second || 1);
-        output[1] = Math.sqrt(first2 - second || 1);
+        const first3 = (a + c) / 2;
+        const second = Math.sqrt(first3 ** 2 - (a * c - b ** 2));
+        output[0] = Math.sqrt(first3 + second || 1);
+        output[1] = Math.sqrt(first3 - second || 1);
       }
       static normalizeRect(rect) {
         const r = rect.slice(0);
@@ -93922,11 +94082,11 @@ var init_pdf2 = __esm({
           if (/^[a-z]$/i.test(event.key)) {
             return;
           }
-          const fallback = _KeyboardManager.#codeToKey(event.code);
-          if (fallback === null || fallback === event.key) {
+          const fallback2 = _KeyboardManager.#codeToKey(event.code);
+          if (fallback2 === null || fallback2 === event.key) {
             return;
           }
-          shortcuts2 = this.callbacks.get(fallback);
+          shortcuts2 = this.callbacks.get(fallback2);
           if (!shortcuts2) {
             return;
           }
@@ -94923,22 +95083,22 @@ var init_pdf2 = __esm({
         }
         return Promise.all(promises);
       }
-      #dispatchUpdateStates(details) {
-        const hasChanged = Object.entries(details).some(([key, value]) => this.#previousStates[key] !== value);
+      #dispatchUpdateStates(details2) {
+        const hasChanged = Object.entries(details2).some(([key, value]) => this.#previousStates[key] !== value);
         if (hasChanged) {
           this._eventBus.dispatch("editingstateschanged", {
             source: this,
-            details: Object.assign(this.#previousStates, details)
+            details: Object.assign(this.#previousStates, details2)
           });
-          if (this.#mode === AnnotationEditorType2.HIGHLIGHT && details.hasSelectedEditor === false) {
+          if (this.#mode === AnnotationEditorType2.HIGHLIGHT && details2.hasSelectedEditor === false) {
             this.#dispatchUpdateUI([[AnnotationEditorParamsType.HIGHLIGHT_FREE, true]]);
           }
         }
       }
-      #dispatchUpdateUI(details) {
+      #dispatchUpdateUI(details2) {
         this._eventBus.dispatch("annotationeditorparamschanged", {
           source: this,
-          details
+          details: details2
         });
       }
       setEditingState(isEditing) {
@@ -97916,10 +98076,10 @@ var init_pdf2 = __esm({
             div.setAttribute("data-l10n-id", _AnnotationEditor._l10nResizer[name]);
           }
         }
-        const first2 = this.#allResizerDivs[0];
+        const first3 = this.#allResizerDivs[0];
         let firstPosition = 0;
         for (const div of children) {
-          if (div === first2) {
+          if (div === first3) {
             break;
           }
           firstPosition++;
@@ -100737,12 +100897,12 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         this.dependencyTracker = dependencyTracker ?? null;
         this.imagesTracker = imagesTracker ?? null;
       }
-      getObject(opIdx, data, fallback = null) {
+      getObject(opIdx, data, fallback2 = null) {
         if (typeof data === "string") {
           this.dependencyTracker?.recordNamedDependency(opIdx, data);
           return data.startsWith("g_") ? this.commonObjs.get(data) : this.objs.get(data);
         }
-        return fallback;
+        return fallback2;
       }
       beginDrawing({
         transform,
@@ -101139,14 +101299,14 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               this.dependencyTracker?.recordSimpleData("filter", opIdx);
               let filter = this.filterFactory.addFilter(value);
               this.ctx.filter = filter;
-              let fallback = null;
+              let fallback2 = null;
               if (value && (filter === "none" || !FeatureTest2.isCanvasFilterSupported || this.ctx.filter === "none" || this.ctx.filter === "")) {
                 this.ctx.filter = filter = "none";
-                fallback = new TransferMapsFallback(value);
+                fallback2 = new TransferMapsFallback(value);
               }
               this.current.transferMaps = filter;
-              if (fallback || this.current.transferMapsFallback) {
-                this.current.transferMapsFallback = fallback;
+              if (fallback2 || this.current.transferMapsFallback) {
+                this.current.transferMapsFallback = fallback2;
                 if (!this.current.patternFill) {
                   this.ctx.fillStyle = this.#transferColor(this.current.fillColor);
                 }
@@ -119297,10 +119457,10 @@ async function runVeraPdf(pdf, env, opts = {}) {
     return parseVeraPdfReport(r.stdout || r.stderr);
   };
   const flavour = verapdfFlavour(opts.pdfuaPart);
-  const first2 = await attempt(flavour);
-  if (!first2.error || opts.pdfuaPart !== void 0) return first2;
+  const first3 = await attempt(flavour);
+  if (!first3.error || opts.pdfuaPart !== void 0) return first3;
   const ua1 = await attempt("ua1");
-  return ua1.error ? first2 : ua1;
+  return ua1.error ? first3 : ua1;
 }
 var init_verapdf2 = __esm({
   "../packages/cli/src/verapdf.ts"() {
@@ -119913,9 +120073,9 @@ function input(env, name) {
   const t = v?.trim();
   return t ? t : void 0;
 }
-function boolInput(env, name, fallback) {
+function boolInput(env, name, fallback2) {
   const v = input(env, name);
-  if (v === void 0) return fallback;
+  if (v === void 0) return fallback2;
   if (/^(true|yes|1|on)$/i.test(v)) return true;
   if (/^(false|no|0|off)$/i.test(v)) return false;
   throw new Error(`Input "${name}" must be true or false, got "${v}"`);
