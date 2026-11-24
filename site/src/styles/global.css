@@ -1,33 +1,10 @@
 /*
- * Overfull: the site is set like the papers it checks. Latin Modern and Fira
- * Sans are the templates' own fonts; sections are numbered like \section;
+ * Overfull: the site is set like a paper. Libertinus Serif and Sans (from
+ * @fontsource, imported in Base.astro); sections are numbered like \section;
  * tables use booktabs rules (a heavy top and bottom rule, a light mid rule);
  * red is an editor's correction, and the black box is TeX's overfull rule.
  */
 
-/* ---------- Fonts: Latin Modern from src/fonts (see its README); Fira Sans
-   and Commit Mono come from @fontsource, imported in Base.astro ---------- */
-@font-face {
-  font-family: "Latin Modern Roman";
-  src: url("../fonts/LM-regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Latin Modern Roman";
-  src: url("../fonts/LM-italic.woff2") format("woff2");
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Latin Modern Roman";
-  src: url("../fonts/LM-bold.woff2") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
 /* ---------- Tokens ---------- */
 :root {
   color-scheme: light;
@@ -35,7 +12,7 @@
   --table: #fcfcfa;
   --paper: #fcfcfa; /* the page: near white, no tint */
   --paper-2: #f0f0ec; /* shaded boxes */
-  --ink: #111114; /* Latin Modern is light on screens: near-black ink */
+  --ink: #141418;
   --ink-2: #34343a;
   --ink-3: #55555e;
   --hair: #cfcfca;
@@ -64,8 +41,8 @@
   --scroll-shade: #141a2b33;
 
   /* Type */
-  --serif: "Latin Modern Roman", "Latin Modern", "CMU Serif", Georgia, serif;
-  --sans: "Fira Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --serif: "Libertinus Serif", "Linux Libertine O", "STIX Two Text", Georgia, serif;
+  --sans: "Libertinus Sans", "Linux Biolinum O", "Gill Sans", sans-serif;
   --mono: "Commit Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
   /* Modular scale, ratio 1.25 on a 19px base */
@@ -78,7 +55,7 @@
   --s4: 2.899rem;
   --s5: 3.624rem;
   --lh: 1.5;
-  --measure: 40rem; /* about 70 characters of Latin Modern at --s0 */
+  --measure: 40rem; /* about 66 characters of Libertinus at --s0 */
   --margin-w: 14rem;
   --gap: 2.5rem;
 }
@@ -202,7 +179,7 @@ h1,
 h2,
 h3,
 h4 {
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.15;
   text-wrap: balance;
   margin: 0;
