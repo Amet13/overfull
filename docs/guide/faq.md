@@ -83,10 +83,6 @@ GitHub Copilot, Gemini CLI (with a one-line setting) and others. See
 MIT-0. You can use them for your thesis or paper without attribution or licence
 notices.
 
-## I used tex-thesis. Is it gone?
-
-It became Overfull. See [Migrate from tex-thesis](./migrate-from-tex-thesis.md).
-
 ## Are the messages available in other languages?
 
 Not yet, and there is no plan to translate them in this project. Every problem

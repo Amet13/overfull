@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 3.x (Overfull) | Yes |
-| tex-thesis 2.x and older | No |
+| 3.x | Yes |
+| Older | No |
 
 ## Reporting a vulnerability
 
