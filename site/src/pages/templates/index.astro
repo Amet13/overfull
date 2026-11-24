@@ -160,14 +160,12 @@ const md = (s: string) =>
     }
   }
   .tpl h2 {
-    font-variant-caps: small-caps;
-    letter-spacing: 0.03em;
   }
   .tpl h3 {
     font-size: var(--s-1);
     font-weight: 400;
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.09em;
+    font-family: var(--sans);
+    font-weight: 600;
     color: var(--ink-3);
     margin: 1.25rem 0 0.4rem;
   }
@@ -216,8 +214,8 @@ const md = (s: string) =>
     display: inline-block;
     margin-top: 0.6rem;
     font-size: var(--s-1);
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.08em;
+    font-family: var(--sans);
+    font-weight: 600;
     color: var(--ink-2);
     border-bottom: 1px solid var(--pencil);
   }
@@ -282,7 +280,6 @@ const md = (s: string) =>
   }
   .m-author {
     font-size: var(--s-2);
-    font-variant-caps: small-caps;
     color: var(--ink-2);
   }
   .m-small {

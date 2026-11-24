@@ -50,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ### Changed
 
+- Website: set in Latin Modern, the templates' own typeface (with Fira Sans), and laid out like a paper: numbered sections instead of capitalised labels, booktabs rules on tables, no window chrome, coloured side stripes or rotated stamps
 - Docs: "How it compares" covers Overleaf's built-in Citation Reviewer, and the
   Overleaf page tells you to download the PDF and log from "Logs and output
   files" for the browser check.

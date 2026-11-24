@@ -91,8 +91,9 @@ const reproduced = groups.reduce((n, g) => n + g.rules.filter((r) => r.hasCase).
     gap: 0.3rem;
   }
   .filter label {
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.09em;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.85em;
     color: var(--ink-2);
   }
   .filter-count {
@@ -107,8 +108,9 @@ const reproduced = groups.reduce((n, g) => n + g.rules.filter((r) => r.hasCase).
     margin: 2rem 0 0;
     padding: 0.6rem 0;
     border-block: 1px solid var(--hair);
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.08em;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.85em;
     clear: both;
   }
   .jump a {
@@ -142,8 +144,6 @@ const reproduced = groups.reduce((n, g) => n + g.rules.filter((r) => r.hasCase).
     grid-row: span 2;
   }
   .group-head h2 {
-    font-variant-caps: small-caps;
-    letter-spacing: 0.03em;
   }
   .group-head p {
     margin: 0.2rem 0 0;
@@ -185,8 +185,8 @@ const reproduced = groups.reduce((n, g) => n + g.rules.filter((r) => r.hasCase).
   }
   .rule-case {
     grid-column: 2;
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.08em;
+    font-family: var(--sans);
+    font-weight: 600;
     font-size: var(--s-1);
     color: var(--ok);
   }

@@ -157,8 +157,6 @@ const description = `${plain(rule.summary)} Fix: ${plain(rule.fix)}`;
   .rule h2 {
     font-size: var(--s1);
     margin: 2rem 0 0.5rem;
-    font-variant-caps: small-caps;
-    letter-spacing: 0.03em;
   }
   .fix .caret {
     color: var(--pencil);
@@ -172,8 +170,9 @@ const description = `${plain(rule.summary)} Fix: ${plain(rule.fix)}`;
     margin: 0 0 0.75rem;
   }
   .facts dt {
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.08em;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.85em;
     color: var(--ink-3);
   }
   .facts dd {
@@ -190,8 +189,9 @@ const description = `${plain(rule.summary)} Fix: ${plain(rule.fix)}`;
     margin-top: 0.5rem !important;
   }
   .repro {
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.07em;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.85em;
     color: var(--ok);
     margin: 0;
   }
@@ -218,8 +218,9 @@ const description = `${plain(rule.summary)} Fix: ${plain(rule.fix)}`;
     min-width: 0;
   }
   figcaption {
-    font-variant-caps: all-small-caps;
-    letter-spacing: 0.08em;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 0.85em;
     color: var(--ink-2);
     margin-bottom: 0.35rem;
   }
@@ -240,11 +241,7 @@ const description = `${plain(rule.summary)} Fix: ${plain(rule.fix)}`;
     max-height: 30rem;
   }
   .log {
-    border-left-color: var(--pencil);
     white-space: pre;
-  }
-  .case-fixed :global(pre) {
-    border-left-color: var(--ok);
   }
   .case-grid {
     max-width: calc(var(--measure) + var(--margin-w) + var(--gap));
