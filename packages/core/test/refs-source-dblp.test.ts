@@ -215,7 +215,7 @@ describe('dblp SPARQL fallback', () => {
     let most = 0;
     const inner = walledDblp();
     const fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-      if (!String(input).includes('sparql.dblp.org')) return inner.f.fetch(input, init);
+      if (new URL(String(input)).host !== 'sparql.dblp.org') return inner.f.fetch(input, init);
       agents.push(new Headers(init?.headers).get('user-agent'));
       most = Math.max(most, ++inFlight);
       try {
