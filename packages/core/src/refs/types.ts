@@ -155,6 +155,8 @@ export interface RefsOptions {
    * polite-pool limits. Tests set 0.
    */
   crossrefIntervalMs?: number;
+  /** Minimum spacing between dblp SPARQL queries in ms (default 1000). Tests set 0. */
+  dblpSparqlIntervalMs?: number;
   /** Base delay before the single retry on 429/5xx when no Retry-After is given (default 1000). */
   retryDelayMs?: number;
   /** Disambiguates title lookups: an author surname and/or publication year. */

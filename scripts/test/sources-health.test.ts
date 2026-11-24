@@ -1,5 +1,8 @@
 /** scripts/sources-health.mjs: probe outcomes and the issue body, without the network. */
 import { describe, expect, it } from 'vitest';
+import { HttpClient } from '../../packages/core/src/refs/http.js';
+import { titleSimilarity } from '../../packages/core/src/refs/normalize.js';
+import { dblpSearch } from '../../packages/core/src/refs/sources/dblp.js';
 // @ts-expect-error: a plain .mjs script without type declarations
 import { PROBES, probe, probeAll, report } from '../sources-health.mjs';
 
@@ -42,7 +45,7 @@ describe('sources-health', () => {
     expect(report(results)).toBe('');
   });
 
-  it('a bot wall is broken; the report names the source and says why', async () => {
+  it('a bot wall with no fallback left is broken; the report names the source and says why', async () => {
     const s = healthySources();
     s.dblpSearch = async () => {
       throw new Error('dblp.org returned a non-JSON page (HTTP 202)');
@@ -50,6 +53,37 @@ describe('sources-health', () => {
     const results = (await probeAll(deps(s), 0)) as Result[];
     expect(results.find((r) => r.source === 'dblp')).toMatchObject({ status: 'broken' });
     expect(report(results)).toContain('| dblp | dblp.org returned a non-JSON page (HTTP 202) |');
+  });
+
+  it('dblp behind a bot wall is healthy while its SPARQL service answers', async () => {
+    const raft = 'https://dblp.org/rec/conf/usenix/OngaroO14';
+    const sparql = (bindings: unknown[]) =>
+      new Response(JSON.stringify({ head: {}, results: { bindings } }), {
+        headers: { 'content-type': 'application/sparql-results+json' },
+      });
+    const lit = (value: string) => ({ type: 'literal', value });
+    const fetch = (async (input: string | URL | Request) => {
+      const u = new URL(String(input));
+      if (u.host === 'dblp.org')
+        return new Response('<title>Making sure you&#39;re not a bot!</title>', { status: 202 });
+      const q = u.searchParams.get('query') ?? '';
+      // The invented control: no title has all its words.
+      if (q.includes('hypergraph')) return sparql([]);
+      const title = lit('In Search of an Understandable Consensus Algorithm.');
+      if (q.includes('contains-word'))
+        return sparql([{ p: { type: 'uri', value: raft }, t: title }]);
+      return sparql([
+        { p: { type: 'uri', value: raft }, title, o: lit('1'), n: lit('Diego Ongaro') },
+      ]);
+    }) as typeof globalThis.fetch;
+    const p = PROBES.find((x: { source: string }) => x.source === 'dblp');
+    const r = (await probe(p, {
+      sources: { dblpSearch },
+      client: new HttpClient({ fetch, retryDelayMs: 0, dblpSparqlIntervalMs: 0 }),
+      opts: {},
+      similarity: titleSimilarity,
+    })) as Result;
+    expect(r).toEqual({ source: 'dblp', status: 'ok', detail: '' });
   });
 
   it('a 429 without a key is a note, with a key it is broken', async () => {

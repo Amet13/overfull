@@ -107,6 +107,7 @@ Command line, Action and MCP server:
 | doi.org | `doi.org` | The DOI | An entry with a DOI; `cite <doi>`; `cite` of a preprint whose published version has a DOI. doi.org passes the request on to the DOI's registration agency (for example CrossRef, or DataCite through `data.crosscite.org`), which then sees the DOI too. |
 | CrossRef | `api.crossref.org` | Title, first author's surname and year; the DOIs of matched works; your `mailto` if set | Title search for an entry without a DOI or other identifier, and `cite "<title>"` (with `--author` and `--year`). The retraction check asks for the DOIs of the works that matched, up to 40 per request. |
 | DBLP | `dblp.org` | Title | Title search. |
+| DBLP SPARQL | `sparql.dblp.org` | Words of the title; dblp record ids | Title search, when `dblp.org` answers with a bot wall or not at all. |
 | arXiv | `export.arxiv.org` | arXiv ids; title | An entry with an arXiv id (one request for many ids), `cite arXiv:<id>`, and the second wave of a title search. |
 | OpenAlex | `api.openalex.org` | Title; a DOI, or arXiv's DOI `10.48550/arXiv.<id>`; your `mailto` and `OPENALEX_API_KEY` if set | A DOI or arXiv id when doi.org or arXiv cannot answer. Title search when `OPENALEX_API_KEY` is set, and without a key when DBLP gave no answer. |
 | Semantic Scholar | `api.semanticscholar.org` | Title; `SEMANTIC_SCHOLAR_API_KEY` if set | Title search, only when the indexes above found nothing. |

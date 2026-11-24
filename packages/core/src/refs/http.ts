@@ -1,7 +1,7 @@
 /**
  * Polite HTTP: first-byte (4 s) and total (10 s) timeouts, one retry on 429/5xx
  * honoring Retry-After, per-host minimum spacing and request limits (arXiv, CrossRef,
- * Semantic Scholar with a key), and a per-host circuit breaker:
+ * Semantic Scholar with a key, dblp's SPARQL service), and a per-host circuit breaker:
  * after 2 consecutive timeouts, network errors or 5xx answers the host is skipped
  * for the rest of the run. Until a host has answered once (and while it is failing)
  * only one request to it is in flight, so concurrent entries do not all wait out
@@ -34,10 +34,18 @@ const FIRST_BYTE_TIMEOUT_MS = 4000;
 /**
  * Hosts that run the whole search before they send headers, so a healthy answer can
  * start later than FIRST_BYTE_TIMEOUT_MS: Europe PMC's search took 0.6 to 15 s per
- * request on 2026-11-18, whatever the query. They get the whole timeout instead.
+ * request on 2026-11-18, whatever the query; dblp's SPARQL service took 0.6 to 3 s, and
+ * up to 28 s for the first query after a quiet spell. They get the whole timeout instead.
  */
-const SLOW_FIRST_BYTE_HOSTS = new Set(['www.ebi.ac.uk']);
+const SLOW_FIRST_BYTE_HOSTS = new Set(['www.ebi.ac.uk', 'sparql.dblp.org']);
 const CROSSREF = 'api.crossref.org';
+/**
+ * dblp's SPARQL service is one shared machine, and each query costs it real work: one
+ * query at a time, at least a second apart. Its robots.txt allows /sparql (the
+ * Crawl-delay there is for crawlers of the site).
+ */
+const DBLP_SPARQL = 'sparql.dblp.org';
+const DBLP_SPARQL_SPACING = { intervalMs: 1000, concurrent: 1 };
 
 /**
  * CrossRef's limits (its REST API documentation, "Etiquette"): the public pool allows about
@@ -106,8 +114,17 @@ export class HttpClient {
       [CROSSREF]: opts.crossrefIntervalMs ?? crossref.intervalMs,
       // Semantic Scholar's key allows 1 request per second; keyless requests share a pool.
       ...(opts.semanticScholarKey ? { 'api.semanticscholar.org': 1100 } : {}),
+      [DBLP_SPARQL]: opts.dblpSparqlIntervalMs ?? DBLP_SPARQL_SPACING.intervalMs,
     };
-    this.limits = { [CROSSREF]: crossref.concurrent };
+    this.limits = {
+      [CROSSREF]: crossref.concurrent,
+      [DBLP_SPARQL]: DBLP_SPARQL_SPACING.concurrent,
+    };
+  }
+
+  /** Why the host is out for the rest of this run; undefined while it is usable. */
+  downReason(host: string): string | undefined {
+    return this.down.get(host);
   }
 
   /** Marks a host as unusable for the rest of this run (e.g. a bot challenge). */
