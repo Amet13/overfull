@@ -3,7 +3,7 @@
   "name": "io.github.Amet13/overfull",
   "title": "Overfull",
   "description": "LaTeX preflight: build log, PDF, references, PDF/UA and venue rules, with rule ids and fixes",
-  "version": "3.1.2",
+  "version": "3.2.0",
   "websiteUrl": "https://amet13.github.io/overfull/",
   "repository": {
     "url": "https://github.com/Amet13/overfull",
@@ -12,7 +12,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/amet13/overfull:3.1.2-check",
+      "identifier": "ghcr.io/amet13/overfull:3.2.0-check",
       "transport": {
         "type": "stdio"
       },
