@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ## [Unreleased]
 
+## [v3.2.0] - 2026-11-25
+
+Changes merged since v3.1.2, each after the full test suite and the template
+builds passed. Released automatically by autorelease.yml.
+
 ### Added
 
 - `OVERFULL_NO_DOCKER=1` makes Overfull act as if Docker were absent (no image checks or Docker fallbacks)
@@ -110,6 +115,121 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
   without veraPDF's GUI jar: 229 MB to 178 MB compressed content.
 - CI: the image jobs in `ci.yml` only read the layer cache that `image.yml` writes;
   the full image's cache keeps only its own layers (`mode=min`).
+- Remove every mention of the old project
+- Website: back to Libertinus; drop the colophon, the licence and the tex-thesis note
+- Test: match the SPARQL host exactly, not as a substring of the URL
+- References: ask dblp's SPARQL service when its search API is walled
+- Website: set it like the papers it checks
+- Reference sources: Europe PMC first-byte time, keyless 429 note, mature pnpm pins
+- Venue and Action: linear acknowledgments heading; private temp folder for the Action report
+- Test: compare the skills symlink target with / on every platform
+- Test: use the shared tempDir helper in the venue deadline test
+- Test: one case per image.yml path filter in the automerge test
+- Document the browser check's profiles, DOIs and limits; changelog
+- Rebuild action/dist for the venue and anonymity changes
+- Raise the coverage floors to just under the measured numbers
+- MCP stdio test: no Docker in the server subprocess
+- Read the PDF for anonymity-acknowledgments
+- Privacy doc test: read the browser sources list from pipeline.ts
+- Add a deadline field to venue profiles
+- Site: run the browser check through a DOM-free pipeline, with a parity test
+- Stop ci and image.yml overwriting each other's layer cache
+- Pin Debian packages and fonts in the images; jlink the check image's Java
+- Remove dead exports, check eval rule ids, sharpen snapshot tests
+- VS Code task: build the ${workspaceFolder} variable without an escape
+- Run the live lookup tests weekly and document them
+- Share report rendering between check and the Action; test the Action
+- Document packaging, the MCP Registry step and usage counts
+- Record public usage counts monthly, without telemetry
+- Serve Homebrew, Scoop, Nix and the MCP Registry from this repository
+- Test uncovered CLI and core paths
+- MCP: typed input schemas instead of casts in the argument validator
+- Test reference-duplicate, reference-uncited and verapdf-error
+- check --watch tests: wait on output, not fixed sleeps
+- Tests: drop unused helper copies, share the live ones, clean up temp dirs
+- Add check --gcc and init --here --vscode for editor diagnostics
+- MCP stdio test: wait on stdout events, not a polling budget
+- Test CLI code against the core sources, not core/dist
+- Guard: read a .bib file through one open handle
+- Docs and changelog for the template, skill and guard changes
+- Paper template: one \author that anonymous mode changes
+- Site: drop tags from table labels with a plain scan, not a regex
+- Agent instructions: venue kit, make fallback, arXiv facts, fewer contradictions
+- Site: table labels carry no angle brackets at all
+- Slides template: basic accessibility checks and a bibliography
+- Thesis template: front matter, declaration, AI-use stub, self-lettering appendices
+- Docs: the browser check resolves arXiv DOIs through doi.org (DataCite)
+- Rebuild the Action for the arXiv DOI lookup
+- Note the browser check and site fixes in the changelog
+- Test the site fixes: DataCite lookups, profiles, limits, focus, tables
+- Site: keyboard-scrollable tables, hero fixes, theme toggle, descriptions
+- Browser check: allow DataCite hosts, venue profiles, file limits
+- Look up arXiv ids by their DataCite DOI when arXiv may not be asked
+- Paper template: anonymous mode, camera-ready, limitations, theorems, algorithms
+- Test: escape backslashes too when building a Markdown table cell
+- Rebuild the Action for the new cite line in overfull --help
+- Templates: keep figure PDFs, slim image, make targets for agents, preflight workflow
+- Docs: compare with Overleaf's Citation Reviewer; PDF and log for Overleaf
+- Repository hygiene: Node 22, one TeX Live pin, .gitattributes, stale names
+- Corpus: real TeX Live logs for bibliography-stale; no case for font-feature-missing
+- Bibliography attribution: stop an unclosed label or key at the next entry
+- Guard: allow removing whole .bib entries, act only in Overfull projects
+- Tests never use the machine's Docker; add OVERFULL_NO_DOCKER
+- Docs: one list of data sent online; test the CLI reference against --help
+- Log analysis: one way to match whitespace after \bibitem; explicit rerun anchors
+- Release notes: minor bump for additions, one heading each, dated
+- Note the log, venue and arXiv fixes in the changelog; rebuild the Action
+- Test: read the revision file directly instead of running cat
+- Add corpus cases for the seven log rules that had none
+- Dependabot: semver-major-days only where it is supported (npm)
+- Compile pdf.js in the standalone bundle only when a PDF is read
+- Docs: watchdog sweep, release order, tag ruleset
+- CI: verdict for every main commit, fewer runners, self-restart
+- Release: build and tag images before the tag; publish edge after ci
+- Automerge: update branches behind main, start only what applies
+- Watchdog: hourly sweep for runs started with GITHUB_TOKEN
+- Rewrite the arXiv bibliography rules for arXiv's current build
+- Rebuild action/dist for the CLI changes
+- Document the CLI changes and the skipped report status
+- Add an MCP build tool behind --allow-build; word MCP errors for clients
+- Ask in init only when a person can answer; add --yes; catch template typos
+- Make overfull diff work in a fresh project; one exit code for an incomplete PDF
+- Find overfull.yml above the current folder; validate pages and doctor input
+- Regenerate pnpm lockfile during pin updates
+- Sync pnpm lockfile version
+- Initial plan
+- Update pinned tools
+- Use one problem order and one code-span rule in every report format
+- Attribute .bbl errors in linear time and only inside the bibliography
+- Fix bibliography tool, rerun folding and spanning boxes in log analysis
+- Find the innermost open file in constant time in the log parser
+- Skip the author check for venue classes that hide the authors
+- Keep reference answers between check --watch runs
+- Let CLI tests turn off the reference request spacing
+- Docs: slim image first, and how to run the images as yourself
+- CI: smoke-test the images as a non-root user
+- Default the Docker image to 3-slim
+- Install missing TeX packages with --engine docker, and survive tlmgr updates
+- Turn .dockerignore into an allow-list
+- Complete the slim image and let any user install packages in it
+- Install veraPDF without its GUI
+- Reuse the check image's heavy layer across releases
+- Make LaTeX start fast for non-root users in the TeX images
+- Strip CDATA in one linear pass (arXiv answers, veraPDF reports)
+- Tests: Windows paths in tool-paths, parsed hostnames in fetch fakes
+- veraPDF reports: decode out-of-range numeric entities without throwing
+- Docs: references in any script, DOI fallbacks, CrossRef spacing, mailto
+- init: offer references.mailto from git user.email, with consent
+- Make reference checking correct and resilient
+- Describe the new protections in SECURITY.md
+- Verify build provenance in the installers when gh is logged in
+- Delay new dependency versions and gate the release job
+- Run tools by absolute path, never by bare name
+- Refuse symlinked report files in check --write and the Action
+- Never take over a fork PR in automation-pr.sh
+- Sanitize publisher BibTeX with an allowlist of TeX commands
+- Ignore references.cache: project in the project's own config
+- Dependency updates: npm group, sigstore/cosign-installer.
 
 ### Fixed
 
